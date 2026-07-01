@@ -173,7 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func loadFormatter() {
-        updateFormatterMenu()
+        // Ladezustand sofort sichtbar machen (load() ist asynchron und kann dauern).
+        formatterMenuItem?.title = "Formatter: Modell wird geladen …"
         Task {
             await formatter.load()
             updateFormatterMenu()

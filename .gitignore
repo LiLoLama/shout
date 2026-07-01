@@ -4,3 +4,5 @@ build/
 .DS_Store
 .swiftpm/
 Package.resolved
+# Von xcodegen aus project.yml generiert — nicht versionieren
+*.xcodeproj/

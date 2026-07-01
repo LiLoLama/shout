@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         requestPermissions()
         installHotkeyMonitors()
         loadModel()
-        discoverFormatter()
+        loadFormatter()
     }
 
     // MARK: - Menu-Bar
@@ -130,16 +130,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         formattingToggleItem?.state = formattingEnabled ? .on : .off
         if formatter.isReady {
             formatterMenuItem?.title = "Formatter: \(formatter.activeModelName)"
+        } else if formatter.isLoading {
+            formatterMenuItem?.title = "Formatter: Modell wird geladen …"
         } else {
-            formatterMenuItem?.title = "Formatter: kein LLM-Server (Rohtext)"
+            formatterMenuItem?.title = "Formatter: nicht geladen (Rohtext)"
         }
     }
 
     @objc private func toggleFormatting() {
         formattingEnabled.toggle()
-        // Falls gerade erst eingeschaltet und noch kein Server gefunden: erneut suchen.
+        // Falls gerade erst eingeschaltet und Modell noch nicht geladen: laden.
         if formattingEnabled, !formatter.isReady {
-            discoverFormatter()
+            loadFormatter()
         }
     }
 
@@ -170,9 +172,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func discoverFormatter() {
+    private func loadFormatter() {
+        updateFormatterMenu()
         Task {
-            await formatter.discoverModel()
+            await formatter.load()
             updateFormatterMenu()
         }
     }

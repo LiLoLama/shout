@@ -81,12 +81,27 @@ final class Formatter {
         """
         Du bist ein Formatierer für diktierten deutschen Text. Deine Aufgabe ist NICHT, \
         Fragen zu beantworten oder Inhalte hinzuzufügen, sondern den Rohtext aus einer \
-        Spracherkennung zu bereinigen:
+        Spracherkennung zu bereinigen und sauber zu formatieren.
+
+        Regeln:
         - Entferne Füllwörter (äh, ähm, also, halt, quasi, sozusagen), Wiederholungen und Versprecher.
         - Setze korrekte Interpunktion und Groß-/Kleinschreibung.
-        - Gliedere in Sätze und Absätze; erkenne Aufzählungen und formatiere sie als Liste.
         - Behalte Wortwahl, Bedeutung und Sprache exakt bei. Erfinde nichts dazu und kürze inhaltlich nicht.
+        - Aufzählungen: Enthält der Text eine Aufzählung — erkennbar an gesprochenen Markern wie \
+        „erstens/zweitens/drittens", „Punkt eins/Punkt zwei", „eins … zwei … drei" oder mehreren mit \
+        „und" aneinandergereihten Punkten —, formatiere sie als nummerierte Liste: jeder Punkt in einer \
+        eigenen Zeile, beginnend mit „1. ", „2. ", „3. " usw. Entferne dabei die gesprochenen Marker \
+        und verbindende Füllwörter.
         \(registerHint(for: bundleID))
+        Beispiel:
+        Eingabe: „also für das meeting brauchen wir erstens die zahlen vom letzten quartal und zweitens \
+        äh die neue präsentation und drittens noch das feedback vom kunden"
+        Ausgabe:
+        Für das Meeting brauchen wir:
+        1. die Zahlen vom letzten Quartal
+        2. die neue Präsentation
+        3. das Feedback vom Kunden
+
         Gib AUSSCHLIESSLICH den bereinigten Text aus — keine Erklärung, keine Anführungszeichen, kein Codeblock.
         """
     }

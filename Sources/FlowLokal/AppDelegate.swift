@@ -2,11 +2,11 @@ import AppKit
 import AVFoundation
 import ApplicationServices
 
-/// Verdrahtet die v0-Kernschleife:
-///   Hotkey (Right ⌥ halten) → Aufnahme → WhisperKit → Text an Cursor einfügen.
+/// Verdrahtet die Diktier-Pipeline:
+///   Hotkey (Right ⌥ halten) → Aufnahme → WhisperKit → [Formatting-LLM] → Text an Cursor.
 ///
-/// Bewusst simpel gehalten: kein VAD, kein Formatting-LLM, kein Kontext.
-/// Das sind die nächsten Ausbaustufen (siehe README).
+/// v0 = ASR + Rohtext. v1 = optionaler lokaler Formatting-Layer (LM Studio/Ollama).
+/// Noch offen: VAD/Auto-Stop, Personal Dictionary, gelernte Stil-Edits.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
@@ -16,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case loadingModel
         case idle
         case recording
-        case transcribing
+        case working   // transkribieren + formatieren
     }
 
     private var state: State = .loadingModel {
@@ -28,14 +28,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let recorder = AudioRecorder()
     private let transcriber = Transcriber()
     private let injector = TextInjector()
+    private let formatter = Formatter()
 
     private var statusItem: NSStatusItem!
     private var statusMenuItem: NSMenuItem!
+    private var formatterMenuItem: NSMenuItem!
+    private var formattingToggleItem: NSMenuItem!
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
     /// keyCode der rechten Wahltaste (⌥) auf macOS.
     private let rightOptionKeyCode: UInt16 = 61
+
+    /// Ziel-App zum Zeitpunkt des Aufnahmestarts (fürs app-abhängige Register).
+    private var targetBundleID: String?
+
+    private let formattingEnabledKey = "formattingEnabled"
+    private var formattingEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(formattingEnabled, forKey: formattingEnabledKey)
+            updateFormatterMenu()
+        }
+    }
+
+    // MARK: - Init
+
+    override init() {
+        if UserDefaults.standard.object(forKey: formattingEnabledKey) == nil {
+            formattingEnabled = true
+        } else {
+            formattingEnabled = UserDefaults.standard.bool(forKey: formattingEnabledKey)
+        }
+        super.init()
+    }
 
     // MARK: - App-Lifecycle
 
@@ -44,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         requestPermissions()
         installHotkeyMonitors()
         loadModel()
+        discoverFormatter()
     }
 
     // MARK: - Menu-Bar
@@ -51,19 +77,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
+
         statusMenuItem = NSMenuItem(title: "Modell wird geladen …", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
+
+        formatterMenuItem = NSMenuItem(title: "Formatter: suche …", action: nil, keyEquivalent: "")
+        formatterMenuItem.isEnabled = false
+        menu.addItem(formatterMenuItem)
+
         menu.addItem(.separator())
+
+        formattingToggleItem = NSMenuItem(
+            title: "Formatierung", action: #selector(toggleFormatting), keyEquivalent: "f"
+        )
+        formattingToggleItem.target = self
+        menu.addItem(formattingToggleItem)
+
         menu.addItem(
             NSMenuItem(title: "Rechte ⌥-Taste halten zum Diktieren", action: nil, keyEquivalent: "")
         )
+
         menu.addItem(.separator())
-        menu.addItem(
-            NSMenuItem(title: "Beenden", action: #selector(quit), keyEquivalent: "q")
-        )
+        let quitItem = NSMenuItem(title: "Beenden", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
         statusItem.menu = menu
         updateStatusItem()
+        updateFormatterMenu()
     }
 
     private func updateStatusItem() {
@@ -78,9 +120,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .recording:
             button.title = "🔴"
             statusMenuItem?.title = "Aufnahme läuft …"
-        case .transcribing:
+        case .working:
             button.title = "✍️"
-            statusMenuItem?.title = "Transkribiere …"
+            statusMenuItem?.title = "Verarbeite …"
+        }
+    }
+
+    private func updateFormatterMenu() {
+        formattingToggleItem?.state = formattingEnabled ? .on : .off
+        if formatter.isReady {
+            formatterMenuItem?.title = "Formatter: \(formatter.activeModelName)"
+        } else {
+            formatterMenuItem?.title = "Formatter: kein LLM-Server (Rohtext)"
+        }
+    }
+
+    @objc private func toggleFormatting() {
+        formattingEnabled.toggle()
+        // Falls gerade erst eingeschaltet und noch kein Server gefunden: erneut suchen.
+        if formattingEnabled, !formatter.isReady {
+            discoverFormatter()
         }
     }
 
@@ -91,16 +150,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Rechte / Permissions
 
     private func requestPermissions() {
-        // Mikrofon: löst den TCC-Dialog aus (NSMicrophoneUsageDescription muss in Info.plist stehen).
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
-
-        // Accessibility: nötig für globales Tasten-Monitoring UND für das Einfügen via ⌘V.
-        // Der Prompt schickt den Nutzer in die Systemeinstellungen.
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
-    // MARK: - Modell laden
+    // MARK: - Modelle laden
 
     private func loadModel() {
         state = .loadingModel
@@ -115,14 +170,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func discoverFormatter() {
+        Task {
+            await formatter.discoverModel()
+            updateFormatterMenu()
+        }
+    }
+
     // MARK: - Hotkey
 
     private func installHotkeyMonitors() {
-        // Global: greift, wenn eine andere App im Vordergrund ist (braucht Accessibility).
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleFlagsChanged(event)
         }
-        // Local: greift, wenn unsere App selbst aktiv wäre.
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleFlagsChanged(event)
             return event
@@ -136,13 +196,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isKeyDown, state == .idle {
             startRecording()
         } else if !isKeyDown, state == .recording {
-            stopAndTranscribe()
+            stopAndProcess()
         }
     }
 
     // MARK: - Aufnahme-Steuerung
 
     private func startRecording() {
+        // Ziel-App merken, solange sie noch im Vordergrund ist.
+        targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         do {
             try recorder.start()
             state = .recording
@@ -151,20 +213,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func stopAndTranscribe() {
+    private func stopAndProcess() {
         let samples = recorder.stop()
-        state = .transcribing
+        state = .working
+        let bundleID = targetBundleID
+        let useFormatting = formattingEnabled
 
         Task {
             defer { state = .idle }
             guard !samples.isEmpty else { return }
             do {
-                let text = try await transcriber.transcribe(samples)
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return }
-                injector.insert(trimmed)
+                let raw = try await transcriber.transcribe(samples)
+                var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !output.isEmpty else { return }
+
+                if useFormatting {
+                    output = await formatter.format(output, bundleID: bundleID)
+                }
+
+                let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !final.isEmpty else { return }
+                injector.insert(final)
             } catch {
-                NSLog("Transkription fehlgeschlagen: \(error)")
+                NSLog("Verarbeitung fehlgeschlagen: \(error)")
             }
         }
     }

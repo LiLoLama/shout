@@ -553,7 +553,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             try recorder.start()
             state = .recording
             recIndicator.show()
+            dlog("REC start (mode=\(settings.mode), target=\(targetBundleID ?? "?"))")
         } catch {
+            dlog("REC start FAILED \(error)")
             NSLog("Aufnahme-Start fehlgeschlagen: \(error)")
         }
     }
@@ -564,23 +566,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         state = .working
         let bundleID = targetBundleID
         let useFormatting = formattingEnabled
+        dlog("REC stop samples=\(samples.count)")
 
         Task {
             defer { state = .idle }
-            guard !samples.isEmpty else { return }
+            guard !samples.isEmpty else { dlog("ABORT: samples leer"); return }
             do {
                 let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)
+                dlog("transcribed len=\(raw.count)")
                 var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !output.isEmpty else { return }
+                guard !output.isEmpty else { dlog("ABORT: transcript leer"); return }
 
                 if useFormatting {
                     output = await formatter.format(output, bundleID: bundleID, termHint: dictionary.termHint)
+                    dlog("formatted len=\(output.count)")
                 }
                 // Gelernte/manuelle Korrekturen als letztes anwenden — sie gewinnen immer.
                 output = dictionary.applyCorrections(to: output)
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !final.isEmpty else { return }
+                guard !final.isEmpty else { dlog("ABORT: final leer"); return }
+                dlog("PASTE call len=\(final.count)")
                 injector.paste(final)
                 lastInsertedText = final
 
@@ -592,6 +598,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.correctionWatcher.begin(inserted: inserted)
                 }
             } catch {
+                dlog("ERROR Verarbeitung: \(error)")
                 NSLog("Verarbeitung fehlgeschlagen: \(error)")
             }
         }

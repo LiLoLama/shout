@@ -12,9 +12,7 @@ final class TextInjector {
     private let virtualKeyV: CGKeyCode = 0x09  // "v"
 
     func paste(_ text: String) {
-        NSLog("SHOUT-INJECT trusted=%@ target=%@",
-              AXIsProcessTrusted() ? "yes" : "no",
-              NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")
+        dlog("PASTE trusted=\(AXIsProcessTrusted()) target=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?") len=\(text.count)")
 
         let pasteboard = NSPasteboard.general
         let previous = pasteboard.string(forType: .string)

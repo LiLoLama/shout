@@ -1,102 +1,78 @@
 import AppKit
 import Foundation
+import MLXLLM
+import MLXLMCommon
+import MLXHuggingFace
+import HuggingFace
+import Tokenizers
 
-/// Der Formatting-Layer (v1): schickt das Roh-Transkript an einen lokalen,
-/// OpenAI-kompatiblen LLM-Server (LM Studio auf :1234 oder Ollama auf :11434)
-/// und bekommt bereinigten Text zurück — Füllwörter raus, Interpunktion,
-/// Absätze, app-abhängiges Register.
+/// Der Formatting-Layer (v2): lädt ein Gemma-Modell **direkt in den Prozess**
+/// (MLX, Apple Silicon) — kein LM Studio, kein Ollama, kein Server. Das Modell
+/// wird beim ersten Start einmalig von Hugging Face geholt und danach lokal
+/// gecached; es lebt anschließend komplett in der App.
 ///
-/// Grundprinzip: **niemals blockieren.** Ist kein Server da, das Diktat zu
-/// kurz, oder tritt ein Fehler auf, geben wir einfach den Rohtext zurück.
+/// Grundprinzip wie bisher: **niemals blockieren.** Ist das Modell noch nicht
+/// geladen, das Diktat zu kurz oder tritt ein Fehler auf, kommt der Rohtext zurück.
 final class Formatter {
 
     struct Config {
-        var baseURL = URL(string: "http://localhost:1234/v1")!
+        /// Registriertes, schlankes Text-Gemma-4 (4-bit) — schnell, gut im Deutschen.
+        var modelID = "mlx-community/gemma-4-e4b-it-4bit"
         /// Diktate kürzer als das fügen wir roh ein (spart LLM-Latenz).
         var minCharsForFormatting = 40
-        var requestTimeout: TimeInterval = 20
     }
 
     private let config: Config
-    private let session: URLSession
-    private var modelID: String?
+    private var container: ModelContainer?
 
-    var isReady: Bool { modelID != nil }
-    var activeModelName: String { modelID ?? "—" }
+    private(set) var isReady = false
+    private(set) var isLoading = false
+    var activeModelName: String { isReady ? config.modelID : "—" }
 
     init(config: Config = Config()) {
         self.config = config
-        let sc = URLSessionConfiguration.default
-        sc.timeoutIntervalForRequest = config.requestTimeout
-        self.session = URLSession(configuration: sc)
     }
 
-    // MARK: - Modell-Discovery
+    // MARK: - Modell laden
 
-    /// Fragt den Server nach verfügbaren Modellen und wählt bevorzugt Gemma.
-    /// Setzt `modelID` (oder nil, wenn kein Server erreichbar ist).
-    @discardableResult
-    func discoverModel() async -> Bool {
-        struct ModelsResponse: Decodable {
-            struct M: Decodable { let id: String }
-            let data: [M]
+    /// Lädt (und beim ersten Mal: downloadet) das Modell in den Prozess.
+    /// Idempotent — mehrfaches Aufrufen schadet nicht.
+    func load() async {
+        guard !isReady, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let cfg = ModelConfiguration(id: config.modelID)
+            container = try await #huggingFaceLoadModelContainer(configuration: cfg)
+            isReady = true
+        } catch {
+            NSLog("Formatter-Modell konnte nicht geladen werden: \(error)")
+            isReady = false
         }
-        var req = URLRequest(url: config.baseURL.appendingPathComponent("models"))
-        req.httpMethod = "GET"
-
-        guard let (data, resp) = try? await session.data(for: req),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              let parsed = try? JSONDecoder().decode(ModelsResponse.self, from: data),
-              !parsed.data.isEmpty else {
-            modelID = nil
-            return false
-        }
-        let ids = parsed.data.map(\.id)
-        // Bevorzuge Gemma (stark im Deutschen), sonst das erste verfügbare Modell.
-        modelID = ids.first(where: { $0.lowercased().contains("gemma") }) ?? ids.first
-        return modelID != nil
     }
 
     // MARK: - Formatierung
 
     /// Liefert bereinigten Text — oder den (getrimmten) Rohtext bei kurzem
-    /// Diktat, fehlendem Server oder jedem Fehler.
+    /// Diktat, noch nicht geladenem Modell oder jedem Fehler.
     func format(_ raw: String, bundleID: String?) async -> String {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let modelID else { return text }
+        guard isReady, let container else { return text }
         guard text.count >= config.minCharsForFormatting else { return text }
 
-        let body: [String: Any] = [
-            "model": modelID,
-            "temperature": 0.2,
-            "stream": false,
-            "messages": [
-                ["role": "system", "content": systemPrompt(for: bundleID)],
-                ["role": "user", "content": text]
-            ]
-        ]
-        guard let payload = try? JSONSerialization.data(withJSONObject: body) else { return text }
-
-        var req = URLRequest(url: config.baseURL.appendingPathComponent("chat/completions"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = payload
-
-        guard let (data, resp) = try? await session.data(for: req),
-              (resp as? HTTPURLResponse)?.statusCode == 200 else { return text }
-
-        struct ChatResponse: Decodable {
-            struct Choice: Decodable {
-                struct Msg: Decodable { let content: String }
-                let message: Msg
-            }
-            let choices: [Choice]
+        do {
+            let session = ChatSession(
+                container,
+                instructions: systemPrompt(for: bundleID),
+                generateParameters: GenerateParameters(temperature: 0.2)
+            )
+            let out = try await session.respond(to: text)
+            let cleaned = stripArtifacts(out)
+            return cleaned.isEmpty ? text : cleaned
+        } catch {
+            NSLog("Formatierung fehlgeschlagen: \(error)")
+            return text
         }
-        guard let parsed = try? JSONDecoder().decode(ChatResponse.self, from: data),
-              let out = parsed.choices.first?.message.content else { return text }
-
-        let cleaned = stripArtifacts(out)
-        return cleaned.isEmpty ? text : cleaned
     }
 
     // MARK: - Prompt
@@ -105,12 +81,27 @@ final class Formatter {
         """
         Du bist ein Formatierer für diktierten deutschen Text. Deine Aufgabe ist NICHT, \
         Fragen zu beantworten oder Inhalte hinzuzufügen, sondern den Rohtext aus einer \
-        Spracherkennung zu bereinigen:
+        Spracherkennung zu bereinigen und sauber zu formatieren.
+
+        Regeln:
         - Entferne Füllwörter (äh, ähm, also, halt, quasi, sozusagen), Wiederholungen und Versprecher.
         - Setze korrekte Interpunktion und Groß-/Kleinschreibung.
-        - Gliedere in Sätze und Absätze; erkenne Aufzählungen und formatiere sie als Liste.
         - Behalte Wortwahl, Bedeutung und Sprache exakt bei. Erfinde nichts dazu und kürze inhaltlich nicht.
+        - Aufzählungen: Enthält der Text eine Aufzählung — erkennbar an gesprochenen Markern wie \
+        „erstens/zweitens/drittens", „Punkt eins/Punkt zwei", „eins … zwei … drei" oder mehreren mit \
+        „und" aneinandergereihten Punkten —, formatiere sie als nummerierte Liste: jeder Punkt in einer \
+        eigenen Zeile, beginnend mit „1. ", „2. ", „3. " usw. Entferne dabei die gesprochenen Marker \
+        und verbindende Füllwörter.
         \(registerHint(for: bundleID))
+        Beispiel:
+        Eingabe: „also für das meeting brauchen wir erstens die zahlen vom letzten quartal und zweitens \
+        äh die neue präsentation und drittens noch das feedback vom kunden"
+        Ausgabe:
+        Für das Meeting brauchen wir:
+        1. die Zahlen vom letzten Quartal
+        2. die neue Präsentation
+        3. das Feedback vom Kunden
+
         Gib AUSSCHLIESSLICH den bereinigten Text aus — keine Erklärung, keine Anführungszeichen, kein Codeblock.
         """
     }

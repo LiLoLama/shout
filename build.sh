@@ -1,30 +1,33 @@
 #!/usr/bin/env bash
 #
-# Baut FlowLokal und bündelt es zu einer signierten .app mit Info.plist.
-# Ein echtes .app-Bundle ist nötig, damit macOS die Mikrofon- und
-# Accessibility-Berechtigungen sauber vergeben kann.
+# Baut Flow Lokal als echtes Xcode-App-Bundle via xcodebuild.
+#
+# WICHTIG: MLX (mlx-swift) kompiliert seine Metal-Shader NUR über xcodebuild,
+# nicht über `swift build` (CLI). Deshalb ist der Xcode-Weg zwingend — sonst
+# fehlt die default.metallib und die App crasht beim Modell-Laden.
 #
 set -euo pipefail
 cd "$(dirname "$0")"
 
-CONFIG="${1:-release}"
-APP_NAME="Flow Lokal"
-APP="build/${APP_NAME}.app"
-BIN="FlowLokal"
+CONFIG="${1:-Debug}"
+DERIVED="build"
 
-echo "▶ Kompiliere ($CONFIG) …"
-swift build -c "$CONFIG"
+echo "▶ Generiere Xcode-Projekt …"
+xcodegen generate
 
-BUILD_BIN="$(swift build -c "$CONFIG" --show-bin-path)/$BIN"
+echo "▶ Baue ($CONFIG) via xcodebuild …"
+# -skipPackagePluginValidation: mlx-swift nutzt das Build-Tool-Plugin "CudaBuild"
+# -skipMacroValidation: mlx-swift-lm nutzt swift-syntax-Macros
+# Beide würden sonst eine interaktive Freigabe verlangen, die headless fehlt.
+xcodebuild \
+    -project FlowLokal.xcodeproj \
+    -scheme FlowLokal \
+    -configuration "$CONFIG" \
+    -derivedDataPath "$DERIVED" \
+    -skipPackagePluginValidation \
+    -skipMacroValidation \
+    build
 
-echo "▶ Bündle $APP …"
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BUILD_BIN" "$APP/Contents/MacOS/$BIN"
-cp Resources/Info.plist "$APP/Contents/Info.plist"
-
-echo "▶ Signiere (ad-hoc) …"
-codesign --force --deep --sign - "$APP"
-
+APP="$DERIVED/Build/Products/$CONFIG/Flow Lokal.app"
 echo "✅ Fertig: $APP"
 echo "   Starten mit:  open \"$APP\""

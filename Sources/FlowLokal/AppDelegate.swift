@@ -151,6 +151,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.makeKeyAndOrderFront(nil)
     }
 
+    @objc private func pasteLastDictation() {
+        let text = lastInsertedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        injector.paste(text)
+    }
+
     private func learnFromManualEdit(original: String, edited: String) {
         let subs = CorrectionWatcher.wordSubstitutions(from: original, to: edited)
         guard !subs.isEmpty else { return }
@@ -191,6 +197,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         correctItem.keyEquivalentModifierMask = [.command, .option]
         correctItem.target = self
         menu.addItem(correctItem)
+
+        let pasteLastItem = NSMenuItem(title: "Zuletzt Gesprochenes einfügen", action: #selector(pasteLastDictation), keyEquivalent: "v")
+        pasteLastItem.keyEquivalentModifierMask = [.command, .control]
+        pasteLastItem.target = self
+        menu.addItem(pasteLastItem)
 
         let openItem = NSMenuItem(title: "shout. öffnen …", action: #selector(openMainWindow), keyEquivalent: ",")
         openItem.target = self
@@ -461,8 +472,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         // Fester Hotkey ⌥⌘C → letztes Diktat korrigieren (keyCode 8 = "c").
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if mods == [.command, .option], event.keyCode == 8 {
+        if mods == [.command, .option], event.keyCode == 8 {   // ⌥⌘C
             openCorrectionWindow()
+            return
+        }
+        if mods == [.command, .control], event.keyCode == 9 {   // ⌃⌘V = zuletzt Gesprochenes einfügen
+            pasteLastDictation()
             return
         }
         if settings.matchesKeyDown(event) { handleTrigger(down: true) }
@@ -566,7 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }
-                injector.insert(final)
+                injector.paste(final)
                 lastInsertedText = final
 
                 // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das

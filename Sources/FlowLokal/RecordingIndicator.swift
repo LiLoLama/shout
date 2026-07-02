@@ -14,7 +14,7 @@ final class RecordingIndicator {
 
     private let model = LevelModel()
     private var panel: NSPanel?
-    private let size = NSSize(width: 74, height: 26)
+    private let size = NSSize(width: 78, height: 32)
 
     func show() {
         guard panel == nil else { return }
@@ -74,20 +74,20 @@ private struct RecordingPill: View {
     @ObservedObject var model: RecordingIndicator.LevelModel
 
     // Gewichtung je Balken (Mitte höher) für die Wellenform-Form.
-    private let weights: [CGFloat] = [0.45, 0.7, 0.9, 1.0, 0.9, 0.7, 0.45]
+    private let weights: [CGFloat] = [0.5, 0.75, 0.92, 1.0, 0.92, 0.75, 0.5]
     private let minH: CGFloat = 3
-    private let maxH: CGFloat = 16
+    private let maxH: CGFloat = 24
 
     var body: some View {
         HStack(spacing: 3) {
             ForEach(weights.indices, id: \.self) { i in
                 Capsule()
                     .fill(Color.shoutLive)
-                    .frame(width: 3, height: height(i))
-                    .animation(.easeOut(duration: 0.12), value: model.level)
+                    .frame(width: 3.2, height: height(i))
+                    .animation(.easeOut(duration: 0.1), value: model.level)
             }
         }
-        .frame(width: 74, height: 26)
+        .frame(width: 78, height: 32)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
     }

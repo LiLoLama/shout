@@ -3,32 +3,44 @@ import ApplicationServices
 
 /// Fügt Text an der aktuellen Cursor-Position ein.
 ///
-/// v0-Ansatz: Text ins Pasteboard schreiben und ein synthetisches ⌘V posten.
-/// Robust und app-übergreifend, braucht aber die Accessibility-Berechtigung.
-/// (Direktes Tippen via CGEvent-Keystrokes wäre eine spätere Alternative,
-/// verliert aber bei Sonderzeichen/Umlauten schnell an Zuverlässigkeit.)
+/// Ablauf: Text in die Zwischenablage → kurz warten (damit sie sicher bereit
+/// ist) → synthetisches ⌘V → danach die vorherige Zwischenablage
+/// wiederherstellen, damit shout. sie nicht dauerhaft überschreibt.
+/// Braucht die Bedienungshilfen-Freigabe (für ⌘V).
 final class TextInjector {
 
     private let virtualKeyV: CGKeyCode = 0x09  // "v"
 
-    func insert(_ text: String) {
-        // Diagnose: das synthetische ⌘V braucht die Bedienungshilfen-Freigabe.
-        // Fehlt sie, wird das Einfügen still verschluckt (Clipboard wird trotzdem gesetzt).
+    func paste(_ text: String) {
         NSLog("SHOUT-INJECT trusted=%@ target=%@",
               AXIsProcessTrusted() ? "yes" : "no",
               NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")
 
         let pasteboard = NSPasteboard.general
+        let previous = pasteboard.string(forType: .string)
+
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
-        let source = CGEventSource(stateID: .combinedSessionState)
+        // Kurze Pause, damit die Zwischenablage sicher übernommen ist, bevor ⌘V kommt
+        // (behebt das gelegentliche „Einfügen kommt nicht an").
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
+            self?.postCommandV()
+            // Nach dem Einfügen die vorherige Zwischenablage zurückschreiben.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                if let previous { pb.setString(previous, forType: .string) }
+            }
+        }
+    }
 
+    private func postCommandV() {
+        let source = CGEventSource(stateID: .combinedSessionState)
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: virtualKeyV, keyDown: true)
         keyDown?.flags = .maskCommand
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: virtualKeyV, keyDown: false)
         keyUp?.flags = .maskCommand
-
         keyDown?.post(tap: .cghidEventTap)
         keyUp?.post(tap: .cghidEventTap)
     }

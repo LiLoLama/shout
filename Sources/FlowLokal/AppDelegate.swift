@@ -74,7 +74,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     // MARK: - App-Lifecycle
 
+    /// Standard-Menüleiste mit Bearbeiten-Befehlen — sonst funktioniert ⌘C/⌘V/⌘X
+    /// in Textfeldern nicht (Menüleisten-Apps haben sonst kein „Bearbeiten"-Menü).
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "shout. beenden", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+
+        let editItem = NSMenuItem()
+        mainMenu.addItem(editItem)
+        let editMenu = NSMenu(title: "Bearbeiten")
+        editMenu.addItem(withTitle: "Widerrufen", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Wiederholen", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Ausschneiden", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Kopieren", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Einsetzen", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Alles auswählen", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupMainMenu()
         // Gespeichertes Mikrofon wiederherstellen (leer/nil = Systemstandard).
         let savedUID = UserDefaults.standard.string(forKey: micUIDKey)
         recorder.preferredDeviceUID = (savedUID?.isEmpty == false) ? savedUID : nil

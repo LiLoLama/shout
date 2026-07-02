@@ -64,9 +64,9 @@ struct DictionaryView: View {
             }
             .frame(maxWidth: 560)
             .frame(maxWidth: .infinity)
-            .padding(28)
+            .padding(.horizontal, 28).padding(.top, 42).padding(.bottom, 28)
         }
-        .background(Color.shoutPanel)
+        .background(Color.shoutWindow)
         .scrollContentBackground(.hidden)
     }
 

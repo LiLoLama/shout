@@ -382,8 +382,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 760, height: 560))
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
+            window.setContentSize(NSSize(width: 780, height: 580))
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: .darkAqua)
             window.delegate = self

@@ -7,8 +7,8 @@ final class DashboardModel: ObservableObject {
     @Published var tab: Tab = .aufnahme
 }
 
-/// Das Hauptfenster von shout. — ein echtes, öffenbares App-Fenster mit den
-/// wichtigsten Einstellungen und Platzhaltern für künftige (Pro-)Funktionen.
+/// Hauptfenster im Mischpult-Look: eigene Graphit-Seitenleiste mit Wortmarke,
+/// rechts die Einstellungs-Panels.
 struct DashboardView: View {
     @ObservedObject var model: DashboardModel
     @ObservedObject var settings: RecordingSettings
@@ -16,50 +16,91 @@ struct DashboardView: View {
     let onRecordHotkey: () -> Void
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $model.tab) {
-                Section {
-                    row(.aufnahme, "Aufnahme & Text", "mic.fill")
-                    row(.woerterbuch, "Wörterbuch", "text.book.closed.fill")
-                }
-                Section("Bald verfügbar") {
-                    row(.verlauf, "Verlauf", "clock.arrow.circlepath", soon: true)
-                    row(.statistik, "Statistiken", "chart.bar.xaxis", soon: true)
-                    row(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath", soon: true)
-                    row(.konto, "Konto & Lizenz", "person.crop.circle", soon: true)
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 208, ideal: 216, max: 240)
-        } detail: {
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 224)
+                .background(Color.shoutSidebar)
+            Rectangle().fill(Color.black.opacity(0.45)).frame(width: 1)
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.shoutPanel)
+                .background(Color.shoutWindow)
         }
-        .frame(minWidth: 720, minHeight: 540)
+        .frame(minWidth: 780, minHeight: 580)
         .tint(Color.shoutLive)
         .preferredColorScheme(.dark)
+        .ignoresSafeArea()
     }
 
-    private func row(_ tab: DashboardModel.Tab, _ title: String, _ icon: String, soon: Bool = false) -> some View {
-        HStack {
-            Label(title, systemImage: icon)
-            if soon {
-                Spacer()
-                Text("Bald")
-                    .font(.caption2).fontWeight(.semibold)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.22), in: Capsule())
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .tag(tab)
+    // MARK: - Seitenleiste
+
+    private var statusText: String {
+        let verb = settings.mode == .hold ? "halten" : "drücken"
+        return "\(settings.hotkeyDescription) \(verb)"
     }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Kopfbereich: Wortmarke + Status
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 0) {
+                    Text("shout").font(.system(size: 23, weight: .bold))
+                    Text(".").font(.system(size: 23, weight: .bold)).foregroundStyle(Color.shoutLive)
+                }
+                HStack(spacing: 6) {
+                    Circle().fill(Color.shoutLive).frame(width: 6, height: 6)
+                    Text("Bereit · \(statusText)").font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
+                }
+            }
+            .padding(.horizontal, 18).padding(.top, 42).padding(.bottom, 20)
+
+            navRow(.aufnahme, "Aufnahme & Text", "mic.fill")
+            navRow(.woerterbuch, "Wörterbuch", "text.book.closed.fill")
+
+            Text("BALD VERFÜGBAR")
+                .font(.system(size: 10, weight: .semibold)).tracking(0.9)
+                .foregroundStyle(Color(white: 0.38))
+                .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 6)
+
+            navRow(.verlauf, "Verlauf", "clock.arrow.circlepath", soon: true)
+            navRow(.statistik, "Statistiken", "chart.bar.xaxis", soon: true)
+            navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath", soon: true)
+            navRow(.konto, "Konto & Lizenz", "person.crop.circle", soon: true)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func navRow(_ tab: DashboardModel.Tab, _ title: String, _ icon: String, soon: Bool = false) -> some View {
+        let active = model.tab == tab
+        return Button { model.tab = tab } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 13)).frame(width: 20)
+                Text(title).font(.system(size: 13, weight: active ? .semibold : .regular))
+                Spacer(minLength: 4)
+                if soon {
+                    Text("Bald").font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Color.white.opacity(0.10)))
+                        .foregroundStyle(Color(white: 0.5))
+                }
+            }
+            .foregroundStyle(active ? Color.white : Color(white: 0.64))
+            .padding(.horizontal, 11).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(active ? Color.shoutLive.opacity(0.18) : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 1)
+    }
+
+    // MARK: - Detail
 
     @ViewBuilder private var detail: some View {
         switch model.tab {
         case .aufnahme:
-            ScrollView { SettingsView(settings: settings, onRecordHotkey: onRecordHotkey).padding(.vertical, 8) }
+            SettingsView(settings: settings, onRecordHotkey: onRecordHotkey)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:
@@ -89,9 +130,9 @@ private struct ComingSoon: View {
             Image(systemName: icon)
                 .font(.system(size: 46, weight: .light))
                 .foregroundStyle(Color.shoutLive.opacity(0.9))
-            Text(title).font(.title2).fontWeight(.semibold)
+            Text(title).font(.title2).fontWeight(.semibold).foregroundStyle(Color(white: 0.92))
             Text(desc)
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.callout).foregroundStyle(Color(white: 0.6))
                 .multilineTextAlignment(.center).frame(maxWidth: 360)
             Text("Bald verfügbar · shout. Pro")
                 .font(.caption).fontWeight(.semibold)

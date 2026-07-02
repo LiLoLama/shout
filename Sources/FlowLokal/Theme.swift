@@ -10,4 +10,8 @@ extension Color {
     static let shoutPanelHi = Color(red: 0.19, green: 0.19, blue: 0.21)
     /// Vertiefte Flächen (Inset).
     static let shoutInset = Color(red: 0.10, green: 0.10, blue: 0.12)
+    /// Fenster-Hintergrund (dunkler als die Panels, damit sie sich abheben).
+    static let shoutWindow = Color(red: 0.105, green: 0.105, blue: 0.125)
+    /// Seitenleisten-Hintergrund (noch etwas dunkler).
+    static let shoutSidebar = Color(red: 0.085, green: 0.085, blue: 0.10)
 }

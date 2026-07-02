@@ -84,6 +84,7 @@ struct DictionaryView: View {
             .padding(20)
         }
         .frame(minWidth: 440, minHeight: 500)
+        .tint(Color.shoutLive)
     }
 
     private var header: some View {

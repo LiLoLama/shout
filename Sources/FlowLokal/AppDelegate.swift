@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var dictionaryWindow: NSWindow?
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
+    private let recIndicator = RecordingIndicator()
     private var lastInsertedText = ""
     private var correctionWindow: NSWindow?
 
@@ -325,6 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.setContentSize(NSSize(width: 480, height: 540))
             window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
             window.delegate = self
             dictionaryWindow = window
         }
@@ -344,6 +346,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             window.title = "shout. — Einstellungen"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
             window.delegate = self
             settingsWindow = window
         }
@@ -497,6 +500,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         do {
             try recorder.start()
             state = .recording
+            recIndicator.show()
         } catch {
             NSLog("Aufnahme-Start fehlgeschlagen: \(error)")
         }
@@ -504,6 +508,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func stopAndProcess() {
         let samples = recorder.stop()
+        recIndicator.hide()
         state = .working
         let bundleID = targetBundleID
         let useFormatting = formattingEnabled

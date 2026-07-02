@@ -48,5 +48,6 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
+        .tint(Color.shoutLive)
     }
 }

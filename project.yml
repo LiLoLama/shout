@@ -28,8 +28,10 @@ targets:
     platform: macOS
     sources:
       - Sources/FlowLokal
+      - Resources/Assets.xcassets
     settings:
       base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Bundle-ID bewusst unverändert (com.inthezone.flowlokal), damit die
         # bestehende Accessibility-Freigabe trotz Umbenennung erhalten bleibt.
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.flowlokal

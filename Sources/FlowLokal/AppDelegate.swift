@@ -38,6 +38,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastInsertedText = ""
     private var correctionWindow: NSWindow?
 
+    private let settings = RecordingSettings()
+    private var settingsWindow: NSWindow?
+
+    // Hotkey-Aufnahme (Recorder in den Einstellungen)
+    private var isCapturingHotkey = false
+    private var captureKeyDownSeen = false
+    private var captureModifierKeyCode: UInt16?
+
     private var micMenu: NSMenu!
     private let micUIDKey = "preferredMicUID"
 
@@ -48,9 +56,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var loginToggleItem: NSMenuItem!
     private var globalMonitor: Any?
     private var localMonitor: Any?
-
-    /// keyCode der rechten Wahltaste (⌥) auf macOS.
-    private let rightOptionKeyCode: UInt16 = 61
 
     /// Ziel-App zum Zeitpunkt des Aufnahmestarts (fürs app-abhängige Register).
     private var targetBundleID: String?
@@ -90,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Automatisches Lernen: erkannte Korrektur → Wörterbuch + Popup mit Rückgängig.
         correctionWatcher.onLearn = { [weak self] wrong, right in
             self?.handleLearnedCorrection(wrong: wrong, right: right)
+        }
+
+        // Auto-Stopp: Stille erkannt → Aufnahme beenden (nur im Umschalt-Modus aktiv).
+        recorder.onSilence = { [weak self] in
+            guard let self, self.state == .recording else { return }
+            self.stopAndProcess()
         }
     }
 
@@ -183,14 +194,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dictItem.target = self
         menu.addItem(dictItem)
 
+        let settingsItem = NSMenuItem(title: "Einstellungen …", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         micMenu = NSMenu()
         let micItem = NSMenuItem(title: "Mikrofon", action: nil, keyEquivalent: "")
         micItem.submenu = micMenu
         menu.addItem(micItem)
-
-        menu.addItem(
-            NSMenuItem(title: "Rechte ⌥-Taste halten zum Diktieren", action: nil, keyEquivalent: "")
-        )
 
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Beenden", action: #selector(quit), keyEquivalent: "q")
@@ -209,7 +220,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Wird beim Öffnen des Menüs aufgerufen → Geräteliste ist immer aktuell.
     func menuWillOpen(_ menu: NSMenu) {
-        if menu === statusItem.menu { rebuildMicMenu() }
+        if menu === statusItem.menu {
+            rebuildMicMenu()
+            updateStatusItem()
+        }
     }
 
     private func rebuildMicMenu() {
@@ -267,7 +281,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             statusMenuItem?.title = "Modell wird geladen …"
         case .idle:
             button.title = "🎙️"
-            statusMenuItem?.title = "Bereit — ⌥ halten zum Diktieren"
+            let verb = settings.mode == .hold ? "halten" : "drücken"
+            statusMenuItem?.title = "Bereit — \(settings.hotkeyDescription) \(verb)"
         case .recording:
             button.title = "🔴"
             statusMenuItem?.title = "Aufnahme läuft …"
@@ -320,7 +335,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dictionaryWindow?.makeKeyAndOrderFront(nil)
     }
 
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            let view = SettingsView(settings: settings, onRecordHotkey: { [weak self] in
+                self?.beginHotkeyCapture()
+            })
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+            window.title = "shout. — Einstellungen"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            settingsWindow = window
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.center()
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     func windowWillClose(_ notification: Notification) {
+        // Falls die Hotkey-Aufnahme noch lief, abbrechen.
+        if isCapturingHotkey { endHotkeyCapture() }
         // Zurück zur reinen Menu-Bar-App (kein Dock-Icon).
         NSApp.setActivationPolicy(.accessory)
     }
@@ -360,39 +395,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Hotkey
 
     private func installHotkeyMonitors() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
+        for matching in [NSEvent.EventTypeMask.flagsChanged, .keyDown, .keyUp] {
+            NSEvent.addGlobalMonitorForEvents(matching: matching) { [weak self] event in
+                self?.route(event)
+            }
+            NSEvent.addLocalMonitorForEvents(matching: matching) { [weak self] event in
+                self?.route(event)
+                return event
+            }
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
-            return event
-        }
-        // Globaler Hotkey ⌥⌘C → letztes Diktat korrigieren.
-        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyDown(event)
-        }
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyDown(event)
-            return event
+    }
+
+    private func route(_ event: NSEvent) {
+        switch event.type {
+        case .flagsChanged: handleFlagsChanged(event)
+        case .keyDown: handleKeyDown(event)
+        case .keyUp: handleKeyUp(event)
+        default: break
         }
     }
 
     private func handleKeyDown(_ event: NSEvent) {
+        if isCapturingHotkey {
+            captureKeyDownSeen = true
+            settings.setRegular(keyCode: event.keyCode, modifiers: event.modifierFlags)
+            endHotkeyCapture()
+            return
+        }
+        // Fester Hotkey ⌥⌘C → letztes Diktat korrigieren (keyCode 8 = "c").
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        // keyCode 8 = "c"
         if mods == [.command, .option], event.keyCode == 8 {
             openCorrectionWindow()
+            return
         }
+        if settings.matchesKeyDown(event) { handleTrigger(down: true) }
+    }
+
+    private func handleKeyUp(_ event: NSEvent) {
+        guard !isCapturingHotkey else { return }
+        if settings.matchesKeyUp(event) { handleTrigger(down: false) }
     }
 
     private func handleFlagsChanged(_ event: NSEvent) {
-        guard event.keyCode == rightOptionKeyCode else { return }
-        let isKeyDown = event.modifierFlags.contains(.option)
+        if isCapturingHotkey {
+            handleCaptureFlagsChanged(event)
+            return
+        }
+        if let pressed = settings.modifierPressed(in: event) {
+            handleTrigger(down: pressed)
+        }
+    }
 
-        if isKeyDown, state == .idle {
-            startRecording()
-        } else if !isKeyDown, state == .recording {
-            stopAndProcess()
+    /// Setzt Start/Stopp je nach Modus.
+    private func handleTrigger(down: Bool) {
+        switch settings.mode {
+        case .hold:
+            if down, state == .idle { startRecording() }
+            else if !down, state == .recording { stopAndProcess() }
+        case .toggle:
+            guard down else { return }   // nur der Tastendruck zählt
+            if state == .idle { startRecording() }
+            else if state == .recording { stopAndProcess() }
+        }
+    }
+
+    // MARK: - Hotkey aufnehmen (aus den Einstellungen)
+
+    func beginHotkeyCapture() {
+        isCapturingHotkey = true
+        captureKeyDownSeen = false
+        captureModifierKeyCode = nil
+        settings.isCapturing = true
+    }
+
+    private func endHotkeyCapture() {
+        isCapturingHotkey = false
+        settings.isCapturing = false
+    }
+
+    /// Reine Modifier-Taste (z. B. rechte ⌥): beim Loslassen erfassen, sofern
+    /// keine normale Taste gedrückt wurde.
+    private func handleCaptureFlagsChanged(_ event: NSEvent) {
+        let flag = RecordingSettings.flag(forModifierKeyCode: event.keyCode)
+        guard !flag.isEmpty else { return }
+        if event.modifierFlags.contains(flag) {
+            captureModifierKeyCode = event.keyCode          // gedrückt
+        } else if !captureKeyDownSeen, captureModifierKeyCode == event.keyCode {
+            settings.setModifierOnly(keyCode: event.keyCode)  // losgelassen → erfassen
+            endHotkeyCapture()
         }
     }
 
@@ -401,6 +491,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func startRecording() {
         // Ziel-App merken, solange sie noch im Vordergrund ist.
         targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        // Auto-Stopp nur im Umschalt-Modus sinnvoll (im Halten-Modus stoppt das Loslassen).
+        recorder.autoStopEnabled = (settings.mode == .toggle && settings.autoStop)
+        recorder.silenceSeconds = settings.silenceSeconds
         do {
             try recorder.start()
             state = .recording

@@ -22,10 +22,26 @@ final class AudioRecorder {
     /// Gewünschtes Eingabegerät (stabile Core-Audio-UID). nil = Systemstandard.
     var preferredDeviceUID: String?
 
+    // MARK: - Auto-Stopp (Stille-Erkennung)
+
+    var autoStopEnabled = false
+    var silenceSeconds = 1.5
+    /// Wird einmal aufgerufen, wenn nach erkannter Sprache lang genug Stille war.
+    var onSilence: (() -> Void)?
+
+    private let speechRMSThreshold: Float = 0.015
+    private var heardSpeech = false
+    private var silenceAccumulated = 0.0
+    private var silenceFired = false
+
     func start() throws {
         lock.lock()
         samples.removeAll(keepingCapacity: true)
         lock.unlock()
+
+        heardSpeech = false
+        silenceAccumulated = 0
+        silenceFired = false
 
         // Frische Engine je Aufnahme, damit ein Gerätewechsel sauber greift.
         engine = AVAudioEngine()
@@ -107,5 +123,29 @@ final class AudioRecorder {
         lock.lock()
         samples.append(contentsOf: chunk)
         lock.unlock()
+
+        detectSilence(in: chunk)
+    }
+
+    /// Verfolgt die Lautstärke (RMS) und meldet, wenn nach Sprache lang genug Stille war.
+    private func detectSilence(in chunk: [Float]) {
+        guard autoStopEnabled, !silenceFired, !chunk.isEmpty else { return }
+
+        var sumSquares: Float = 0
+        for sample in chunk { sumSquares += sample * sample }
+        let rms = (sumSquares / Float(chunk.count)).squareRoot()
+        let duration = Double(chunk.count) / 16_000.0
+
+        if rms > speechRMSThreshold {
+            heardSpeech = true
+            silenceAccumulated = 0
+        } else if heardSpeech {
+            silenceAccumulated += duration
+            if silenceAccumulated >= silenceSeconds {
+                silenceFired = true
+                let callback = onSilence
+                DispatchQueue.main.async { callback?() }
+            }
+        }
     }
 }

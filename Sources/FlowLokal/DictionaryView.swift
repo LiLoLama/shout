@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Verwaltungs-Oberfläche fürs persönliche Wörterbuch: Begriffe und
-/// Korrektur-Paare (falsch → richtig) selbst anlegen und löschen.
+/// Wörterbuch im Mischpult-Look: Begriffe + Korrekturen selbst verwalten.
 struct DictionaryView: View {
     @ObservedObject var dictionary: PersonalDictionary
 
@@ -11,98 +10,131 @@ struct DictionaryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-
-                GroupBox(label: Label("Begriffe", systemImage: "text.book.closed")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Eigennamen & Fachbegriffe, die exakt so geschrieben werden sollen.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            TextField("Neuer Begriff (z. B. inthezone)", text: $newTerm)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit(addTerm)
+            VStack(alignment: .leading, spacing: 22) {
+                ConsolePanel(title: "Wörter, die shout. richtig schreiben soll") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            consoleField("Neuer Begriff (z. B. inthezone)", text: $newTerm) { addTerm() }
                             Button("Hinzufügen", action: addTerm)
+                                .buttonStyle(ConsoleButtonStyle())
                                 .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                         if dictionary.contents.terms.isEmpty {
-                            Text("Noch keine Begriffe.").font(.caption).foregroundStyle(.tertiary)
+                            Text("Noch keine Begriffe.").font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
                         } else {
-                            ForEach(dictionary.contents.terms, id: \.self) { term in
-                                HStack {
-                                    Text(term)
-                                    Spacer()
-                                    Button {
-                                        dictionary.removeTerm(term)
-                                    } label: {
-                                        Image(systemName: "trash").foregroundStyle(.red)
-                                    }
-                                    .buttonStyle(.borderless)
-                                }
-                                Divider()
-                            }
+                            FlowChips(terms: dictionary.contents.terms) { dictionary.removeTerm($0) }
                         }
                     }
-                    .padding(6)
+                    .padding(16)
                 }
 
-                GroupBox(label: Label("Korrekturen", systemImage: "arrow.triangle.2.circlepath")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Falsch erkanntes Wort → richtige Schreibweise. Wird künftig automatisch ersetzt.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            TextField("falsch", text: $newWrong).textFieldStyle(.roundedBorder)
-                            Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                            TextField("richtig", text: $newRight).textFieldStyle(.roundedBorder)
+                ConsolePanel(title: "Automatisch verbessert") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            consoleField("falsch", text: $newWrong) {}
+                            Image(systemName: "arrow.right").font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
+                            consoleField("richtig", text: $newRight) { addCorrection() }
                             Button("Hinzufügen", action: addCorrection)
+                                .buttonStyle(ConsoleButtonStyle())
                                 .disabled(newWrong.trimmingCharacters(in: .whitespaces).isEmpty
                                           || newRight.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                         if dictionary.contents.corrections.isEmpty {
-                            Text("Noch keine Korrekturen.").font(.caption).foregroundStyle(.tertiary)
+                            Text("Noch keine Korrekturen — shout. lernt sie auch automatisch, wenn du ein Wort ausbesserst.")
+                                .font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
+                                .fixedSize(horizontal: false, vertical: true)
                         } else {
                             ForEach(dictionary.contents.corrections) { c in
-                                HStack {
-                                    Text(c.wrong).foregroundStyle(.secondary)
-                                    Image(systemName: "arrow.right").font(.caption).foregroundStyle(.tertiary)
-                                    Text(c.right)
+                                HStack(spacing: 9) {
+                                    Text(c.wrong).foregroundStyle(Color(white: 0.55)).strikethrough()
+                                    Image(systemName: "arrow.right").font(.system(size: 10)).foregroundStyle(Color(white: 0.45))
+                                    Text(c.right).fontWeight(.semibold).foregroundStyle(Color.shoutLive)
                                     Spacer()
-                                    Button {
-                                        dictionary.removeCorrection(c)
-                                    } label: {
-                                        Image(systemName: "trash").foregroundStyle(.red)
-                                    }
-                                    .buttonStyle(.borderless)
+                                    Button { dictionary.removeCorrection(c) } label: {
+                                        Image(systemName: "trash").foregroundStyle(Color(white: 0.5))
+                                    }.buttonStyle(.borderless)
                                 }
-                                Divider()
+                                .font(.system(size: 13))
+                                .padding(.vertical, 3)
                             }
                         }
                     }
-                    .padding(6)
+                    .padding(16)
                 }
             }
-            .padding(20)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+            .padding(28)
         }
-        .frame(minWidth: 440, minHeight: 500)
-        .tint(Color.shoutLive)
+        .background(Color.shoutPanel)
+        .scrollContentBackground(.hidden)
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Wörterbuch").font(.title2).bold()
-            Text("shout. merkt sich diese Begriffe und Korrekturen für künftige Diktate.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
+    private func consoleField(_ placeholder: String, text: Binding<String>, onSubmit: @escaping () -> Void) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .foregroundStyle(Color(white: 0.92))
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color(red: 0.09, green: 0.09, blue: 0.105)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.black.opacity(0.5)))
+            .onSubmit(onSubmit)
     }
 
     private func addTerm() {
-        dictionary.addTerm(newTerm)
-        newTerm = ""
+        dictionary.addTerm(newTerm); newTerm = ""
+    }
+    private func addCorrection() {
+        dictionary.addCorrection(wrong: newWrong, right: newRight); newWrong = ""; newRight = ""
+    }
+}
+
+/// Begriffe als umbrechende „Chips" mit Löschen-Button.
+private struct FlowChips: View {
+    let terms: [String]
+    let onDelete: (String) -> Void
+
+    var body: some View {
+        FlexWrap(spacing: 7, lineSpacing: 7) {
+            ForEach(terms, id: \.self) { term in
+                HStack(spacing: 6) {
+                    Text(term).font(.system(size: 13))
+                    Button { onDelete(term) } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    }.buttonStyle(.borderless).foregroundStyle(Color(white: 0.5))
+                }
+                .foregroundStyle(Color(white: 0.9))
+                .padding(.horizontal, 11).padding(.vertical, 6)
+                .background(Capsule().fill(Color(red: 0.09, green: 0.09, blue: 0.105)))
+                .overlay(Capsule().strokeBorder(Color.black.opacity(0.5)))
+            }
+        }
+    }
+}
+
+/// Einfaches umbrechendes Layout für die Chips.
+private struct FlexWrap: Layout {
+    var spacing: CGFloat = 7
+    var lineSpacing: CGFloat = 7
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > maxWidth, x > 0 { x = 0; y += lineH + lineSpacing; lineH = 0 }
+            x += s.width + spacing; lineH = max(lineH, s.height)
+        }
+        return CGSize(width: maxWidth == .infinity ? x : maxWidth, height: y + lineH)
     }
 
-    private func addCorrection() {
-        dictionary.addCorrection(wrong: newWrong, right: newRight)
-        newWrong = ""
-        newRight = ""
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, lineH: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += lineH + lineSpacing; lineH = 0 }
+            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+            x += s.width + spacing; lineH = max(lineH, s.height)
+        }
     }
 }

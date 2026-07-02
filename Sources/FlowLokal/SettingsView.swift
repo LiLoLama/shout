@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Einstellungen: Aufnahme-Modus, Hotkey, Auto-Stopp.
+/// „Aufnahme & Text" im Mischpult-Look — Graphit-Panels mit Klartext-Labels.
 struct SettingsView: View {
     @ObservedObject var settings: RecordingSettings
     let onRecordHotkey: () -> Void
@@ -10,63 +10,66 @@ struct SettingsView: View {
     @State private var devices: [AudioDevices.Device] = []
 
     var body: some View {
-        Form {
-            Section("Aufnahme") {
-                Picker("Modus", selection: $settings.mode) {
-                    Text("Taste halten (Push-to-talk)").tag(RecordingSettings.Mode.hold)
-                    Text("Umschalten (drücken = start/stopp)").tag(RecordingSettings.Mode.toggle)
-                }
-                .pickerStyle(.radioGroup)
-
-                HStack {
-                    Text("Aufnahme-Taste")
-                    Spacer()
-                    if settings.isCapturing {
-                        Text("Taste drücken …").foregroundStyle(.secondary)
-                    } else {
-                        Text(settings.hotkeyDescription).fontWeight(.semibold)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                ConsolePanel(title: "Aufnahme") {
+                    FieldRow(title: "Aufnahme-Art",
+                             help: settings.mode == .hold
+                                ? "Taste gedrückt halten, beim Loslassen wird eingefügt."
+                                : "Einmal drücken zum Starten, nochmal zum Stoppen.") {
+                        ConsoleSegmented(selection: $settings.mode,
+                                         options: [(.hold, "Halten"), (.toggle, "Umschalten")])
                     }
-                    Button(settings.isCapturing ? "…" : "Ändern", action: onRecordHotkey)
-                        .disabled(settings.isCapturing)
-                }
-                Text("Tipp: Eine einzelne Modifier-Taste (z. B. rechte ⌥) drücken und loslassen, oder eine Kombi wie ⌥⌘Leertaste.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("Automatisch stoppen") {
-                Toggle("Bei Sprechpause automatisch stoppen", isOn: $settings.autoStop)
-                if settings.mode == .hold {
-                    Text("Nur im Umschalt-Modus wirksam (im Halten-Modus stoppt das Loslassen).")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if settings.autoStop {
-                    HStack {
-                        Text("Pause bis Stopp")
-                        Slider(value: $settings.silenceSeconds, in: 0.5...3.0, step: 0.1)
-                        Text(String(format: "%.1f s", settings.silenceSeconds))
-                            .monospacedDigit().frame(width: 44, alignment: .trailing)
+                    ConsoleDivider()
+                    FieldRow(title: "So startest du",
+                             help: "Drück die Taste, mit der du diktieren willst.") {
+                        HStack(spacing: 10) {
+                            Keycap(text: settings.isCapturing ? "Taste drücken …" : settings.hotkeyDescription)
+                            Button("Ändern", action: onRecordHotkey)
+                                .buttonStyle(ConsoleButtonStyle())
+                                .disabled(settings.isCapturing)
+                        }
                     }
-                }
-            }
-
-            Section("Text") {
-                Toggle("Text automatisch aufräumen", isOn: $formattingEnabled)
-                Text("Entfernt Füllwörter, setzt Satzzeichen und formatiert Aufzählungen.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("Mikrofon") {
-                Picker("Eingang", selection: $micUID) {
-                    Text("Systemstandard").tag("")
-                    ForEach(devices) { device in
-                        Text(device.name).tag(device.uid)
+                    ConsoleDivider()
+                    FieldRow(title: "Von selbst aufhören",
+                             help: "Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus).") {
+                        Toggle("", isOn: $settings.autoStop).labelsHidden().toggleStyle(ConsoleToggleStyle())
+                    }
+                    if settings.autoStop {
+                        ConsoleDivider()
+                        FieldRow(title: "Pause bis Stopp") {
+                            HStack(spacing: 12) {
+                                Slider(value: $settings.silenceSeconds, in: 0.5...3.0, step: 0.1)
+                                    .frame(width: 130).tint(Color.shoutLive)
+                                Keycap(text: String(format: "%.1f s", settings.silenceSeconds))
+                            }
+                        }
                     }
                 }
+
+                ConsolePanel(title: "Text") {
+                    FieldRow(title: "Text automatisch aufräumen",
+                             help: "Füllwörter raus, Satzzeichen und Aufzählungen setzen.") {
+                        Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(ConsoleToggleStyle())
+                    }
+                }
+
+                ConsolePanel(title: "Mikrofon") {
+                    FieldRow(title: "Eingang") {
+                        Picker("", selection: $micUID) {
+                            Text("Systemstandard").tag("")
+                            ForEach(devices) { device in Text(device.name).tag(device.uid) }
+                        }
+                        .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 220)
+                    }
+                }
             }
+            .frame(maxWidth: 520)
+            .frame(maxWidth: .infinity)
+            .padding(28)
         }
-        .formStyle(.grouped)
-        .frame(minWidth: 420)
-        .tint(Color.shoutLive)
+        .background(Color.shoutPanel)
+        .scrollContentBackground(.hidden)
         .onAppear { devices = AudioDevices.inputDevices() }
     }
 }

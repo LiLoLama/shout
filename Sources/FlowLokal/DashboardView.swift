@@ -20,6 +20,7 @@ struct DashboardView: View {
     let generateProfile: (String) async -> String?
     let onExport: () -> String
     let onImport: () -> String
+    let onInsertHistory: (String) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -111,7 +112,7 @@ struct DashboardView: View {
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:
-            HistoryView(history: history)
+            HistoryView(history: history, onInsert: onInsertHistory)
         case .statistik:
             StatisticsView(stats: stats, history: history, dictionary: dictionary, generateProfile: generateProfile)
         case .sync:

@@ -66,6 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Ziel-App zum Zeitpunkt des Aufnahmestarts (fürs app-abhängige Register).
     private var targetBundleID: String?
 
+    /// Zuletzt aktive Fremd-App (nicht shout.) — Ziel fürs Einfügen aus dem Verlauf.
+    private var lastExternalApp: NSRunningApplication?
+
     private let formattingEnabledKey = "formattingEnabled"
     /// Einzige Quelle der Wahrheit: UserDefaults (Menü UND Dashboard steuern sie).
     private var formattingEnabled: Bool {
@@ -128,6 +131,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.recIndicator.updateLevel(level)
         }
 
+        // Zuletzt aktive Fremd-App verfolgen (Ziel fürs Einfügen aus dem Verlauf).
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(externalAppActivated(_:)),
+            name: NSWorkspace.didActivateApplicationNotification, object: nil
+        )
+
         // Beim allerersten Start das Hauptfenster zeigen (sichtbare App statt nur Menüleiste).
         if !UserDefaults.standard.bool(forKey: "didShowDashboard") {
             UserDefaults.standard.set(true, forKey: "didShowDashboard")
@@ -184,6 +193,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let text = lastInsertedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         injector.paste(text)
+    }
+
+    @objc private func externalAppActivated(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        if app.bundleIdentifier != Bundle.main.bundleIdentifier { lastExternalApp = app }
+    }
+
+    /// Fügt Text aus dem Verlauf am Cursor ein: zuletzt aktive App nach vorn holen,
+    /// dann einfügen (mit Clipboard-Wiederherstellung wie beim Diktat).
+    private func insertFromHistory(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        lastInsertedText = trimmed
+        if let app = lastExternalApp {
+            app.activate()
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                self.injector.paste(trimmed)
+            }
+        } else {
+            // Kein Ziel bekannt → wenigstens in die Zwischenablage.
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(trimmed, forType: .string)
+        }
     }
 
     private func learnFromManualEdit(original: String, edited: String) {
@@ -372,7 +405,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() },
                 generateProfile: { [weak self] sample in await self?.formatter.describeVoice(from: sample) ?? nil },
                 onExport: { [weak self] in self?.exportData() ?? "" },
-                onImport: { [weak self] in self?.importData() ?? "" }
+                onImport: { [weak self] in self?.importData() ?? "" },
+                onInsertHistory: { [weak self] text in self?.insertFromHistory(text) }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."

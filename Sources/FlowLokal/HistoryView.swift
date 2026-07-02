@@ -4,6 +4,7 @@ import AppKit
 /// Verlauf der Diktate — nach Tagen gruppiert, mit Kopieren/Löschen.
 struct HistoryView: View {
     @ObservedObject var history: DictationHistory
+    let onInsert: (String) -> Void
 
     var body: some View {
         ScrollView {
@@ -45,7 +46,9 @@ struct HistoryView: View {
                 .font(.system(size: 13.5)).foregroundStyle(Color(white: 0.9))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
+                Button { onInsert(entry.text) } label: { Image(systemName: "arrow.down.doc") }
+                    .help("Am Cursor einfügen (in der zuletzt aktiven App)")
                 Button { copy(entry.text) } label: { Image(systemName: "doc.on.doc") }
                     .help("In die Zwischenablage kopieren")
                 Button { history.delete(entry) } label: { Image(systemName: "trash") }

@@ -78,6 +78,12 @@ final class StatsStore: ObservableObject {
         Set(data.activeDays).contains(Self.dayKey(date))
     }
 
+    /// Ersetzt die Statistik-Daten (für Import).
+    func replaceData(_ newData: Data) {
+        data = newData
+        save()
+    }
+
     // MARK: - Persistenz
 
     private func load() {

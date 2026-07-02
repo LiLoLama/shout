@@ -43,6 +43,12 @@ final class DictationHistory: ObservableObject {
         save()
     }
 
+    /// Ersetzt alle Einträge (für Import).
+    func replaceEntries(_ newEntries: [Entry]) {
+        entries = newEntries
+        save()
+    }
+
     // MARK: - Persistenz
 
     private func load() {

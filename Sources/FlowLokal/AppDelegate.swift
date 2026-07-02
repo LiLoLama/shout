@@ -3,6 +3,7 @@ import AVFoundation
 import ApplicationServices
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Verdrahtet die Diktier-Pipeline:
 ///   Hotkey (Right ⌥ halten) → Aufnahme → WhisperKit → [Formatting-LLM] → Text an Cursor.
@@ -369,7 +370,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 model: dashboardModel, settings: settings, dictionary: dictionary,
                 history: history, stats: stats, license: license,
                 onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() },
-                generateProfile: { [weak self] sample in await self?.formatter.describeVoice(from: sample) ?? nil }
+                generateProfile: { [weak self] sample in await self?.formatter.describeVoice(from: sample) ?? nil },
+                onExport: { [weak self] in self?.exportData() ?? "" },
+                onImport: { [weak self] in self?.importData() ?? "" }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."
@@ -387,6 +390,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Export / Import (lokales „Sync")
+
+    private func exportData() -> String {
+        let snapshot = SettingsSnapshot(
+            mode: settings.mode.rawValue,
+            autoStop: settings.autoStop,
+            silenceSeconds: settings.silenceSeconds,
+            keyCode: Int(settings.keyCode),
+            modifiers: Int(settings.modifiers),
+            isModifierOnly: settings.isModifierOnly,
+            formattingEnabled: UserDefaults.standard.object(forKey: "formattingEnabled") as? Bool,
+            preferredMicUID: UserDefaults.standard.string(forKey: "preferredMicUID"),
+            voiceProfile: UserDefaults.standard.string(forKey: "voiceProfile"),
+            licenseKey: UserDefaults.standard.string(forKey: "licenseKey")
+        )
+        let bundle = BackupBundle(dictionary: dictionary.contents, history: history.entries,
+                                  stats: stats.data, settings: snapshot)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(bundle) else { return "Export fehlgeschlagen." }
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "shout-backup.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return "Export abgebrochen." }
+        do { try data.write(to: url); return "Exportiert nach \(url.lastPathComponent)." }
+        catch { return "Export fehlgeschlagen: \(error.localizedDescription)" }
+    }
+
+    private func importData() -> String {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return "Import abgebrochen." }
+        guard let data = try? Data(contentsOf: url) else { return "Datei nicht lesbar." }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let bundle = try? decoder.decode(BackupBundle.self, from: data) else {
+            return "Ungültige Backup-Datei."
+        }
+
+        dictionary.replaceContents(bundle.dictionary)
+        history.replaceEntries(bundle.history)
+        stats.replaceData(bundle.stats)
+
+        let s = bundle.settings
+        if let m = s.mode, let mode = RecordingSettings.Mode(rawValue: m) { settings.mode = mode }
+        if let a = s.autoStop { settings.autoStop = a }
+        if let sec = s.silenceSeconds { settings.silenceSeconds = sec }
+        if let kc = s.keyCode { settings.keyCode = UInt16(kc) }
+        if let md = s.modifiers { settings.modifiers = UInt(md) }
+        if let mo = s.isModifierOnly { settings.isModifierOnly = mo }
+        if let f = s.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
+        if let mic = s.preferredMicUID { UserDefaults.standard.set(mic, forKey: "preferredMicUID") }
+        if let vp = s.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
+        if let lk = s.licenseKey, !lk.isEmpty { license.activate(lk) }
+        updateStatusItem()
+
+        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate."
     }
 
     /// Klick aufs Dock-/Launchpad-Icon öffnet das Hauptfenster wieder.

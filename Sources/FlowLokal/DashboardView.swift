@@ -18,6 +18,8 @@ struct DashboardView: View {
     @ObservedObject var license: LicenseStore
     let onRecordHotkey: () -> Void
     let generateProfile: (String) async -> String?
+    let onExport: () -> String
+    let onImport: () -> String
 
     var body: some View {
         HStack(spacing: 0) {
@@ -68,14 +70,8 @@ struct DashboardView: View {
             navRow(.woerterbuch, "Wörterbuch", "text.book.closed.fill")
             navRow(.verlauf, "Verlauf", "clock.arrow.circlepath")
             navRow(.statistik, "Statistiken", "chart.bar.xaxis")
+            navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath")
             navRow(.konto, "Konto & Lizenz", "person.crop.circle")
-
-            Text("BALD VERFÜGBAR")
-                .font(.system(size: 10, weight: .semibold)).tracking(0.9)
-                .foregroundStyle(Color(white: 0.38))
-                .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 6)
-
-            navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath", soon: true)
 
             Spacer()
         }
@@ -119,36 +115,9 @@ struct DashboardView: View {
         case .statistik:
             StatisticsView(stats: stats, history: history, dictionary: dictionary, generateProfile: generateProfile)
         case .sync:
-            ComingSoon(icon: "arrow.triangle.2.circlepath", title: "Sync & Geräte",
-                       desc: "Wörterbuch und Einstellungen sicher zwischen deinen Macs abgleichen.")
+            SyncView(onExport: onExport, onImport: onImport)
         case .konto:
             LicenseView(license: license)
         }
-    }
-}
-
-/// Platzhalter-Seite für noch nicht gebaute Funktionen.
-private struct ComingSoon: View {
-    let icon: String
-    let title: String
-    let desc: String
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 46, weight: .light))
-                .foregroundStyle(Color.shoutLive.opacity(0.9))
-            Text(title).font(.title2).fontWeight(.semibold).foregroundStyle(Color(white: 0.92))
-            Text(desc)
-                .font(.callout).foregroundStyle(Color(white: 0.6))
-                .multilineTextAlignment(.center).frame(maxWidth: 360)
-            Text("Bald verfügbar · shout. Pro")
-                .font(.caption).fontWeight(.semibold)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Color.shoutLive.opacity(0.16), in: Capsule())
-                .foregroundStyle(Color.shoutLive)
-        }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

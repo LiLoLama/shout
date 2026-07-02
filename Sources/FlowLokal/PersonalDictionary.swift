@@ -83,6 +83,12 @@ final class PersonalDictionary: ObservableObject {
         save()
     }
 
+    /// Ersetzt den kompletten Inhalt (für Import).
+    func replaceContents(_ newContents: Contents) {
+        contents = newContents
+        save()
+    }
+
     // MARK: - Anwendung
 
     /// Ersetzt bekannte Falsch-Schreibungen wortgenau (case-insensitive) durch die

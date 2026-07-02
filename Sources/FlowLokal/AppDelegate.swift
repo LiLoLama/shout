@@ -35,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var dictionaryWindow: NSWindow?
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
+    private var lastInsertedText = ""
+    private var correctionWindow: NSWindow?
 
     private var micMenu: NSMenu!
     private let micUIDKey = "preferredMicUID"
@@ -92,14 +94,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func handleLearnedCorrection(wrong: String, right: String) {
+        addLearned(wrong: wrong, right: right, showUndo: true)
+    }
+
+    private func addLearned(wrong: String, right: String, showUndo: Bool) {
         let termExisted = dictionary.contents.terms.contains {
             $0.caseInsensitiveCompare(right) == .orderedSame
         }
         dictionary.addCorrection(wrong: wrong, right: right)
+        guard showUndo else { return }
         toast.show(wrong: wrong, right: right) { [weak self] in
             guard let self else { return }
             self.dictionary.removeCorrection(PersonalDictionary.Correction(wrong: wrong, right: right))
             if !termExisted { self.dictionary.removeTerm(right) }
+        }
+    }
+
+    // MARK: - Manuelles Korrigieren (universell, in jeder App)
+
+    @objc private func openCorrectionWindow() {
+        guard !lastInsertedText.isEmpty else { return }
+        let original = lastInsertedText
+
+        let view = CorrectionView(
+            original: original,
+            onApply: { [weak self] edited in
+                self?.learnFromManualEdit(original: original, edited: edited)
+                self?.correctionWindow?.close()
+            },
+            onCancel: { [weak self] in self?.correctionWindow?.close() }
+        )
+        let hosting = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "shout. — Korrigieren"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        correctionWindow = window
+
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func learnFromManualEdit(original: String, edited: String) {
+        let subs = CorrectionWatcher.wordSubstitutions(from: original, to: edited)
+        guard !subs.isEmpty else { return }
+        for (wrong, right) in subs {
+            addLearned(wrong: wrong, right: right, showUndo: subs.count == 1)
         }
     }
 
@@ -130,6 +173,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         loginToggleItem.target = self
         menu.addItem(loginToggleItem)
+
+        let correctItem = NSMenuItem(title: "Letztes Diktat korrigieren …", action: #selector(openCorrectionWindow), keyEquivalent: "c")
+        correctItem.keyEquivalentModifierMask = [.command, .option]
+        correctItem.target = self
+        menu.addItem(correctItem)
 
         let dictItem = NSMenuItem(title: "Wörterbuch …", action: #selector(openDictionary), keyEquivalent: "")
         dictItem.target = self
@@ -319,6 +367,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.handleFlagsChanged(event)
             return event
         }
+        // Globaler Hotkey ⌥⌘C → letztes Diktat korrigieren.
+        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleKeyDown(event)
+        }
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleKeyDown(event)
+            return event
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) {
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        // keyCode 8 = "c"
+        if mods == [.command, .option], event.keyCode == 8 {
+            openCorrectionWindow()
+        }
     }
 
     private func handleFlagsChanged(_ event: NSEvent) {
@@ -368,6 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }
                 injector.insert(final)
+                lastInsertedText = final
 
                 // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
                 // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.

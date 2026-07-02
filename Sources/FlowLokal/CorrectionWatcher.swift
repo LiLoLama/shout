@@ -136,4 +136,23 @@ final class CorrectionWatcher {
               wrong.lowercased() != right.lowercased() else { return nil }
         return (wrong, right)
     }
+
+    /// Wie `detectSingleWordCorrection`, aber liefert ALLE Wort-Ersetzungen
+    /// (gleiche Wortanzahl). Für den expliziten Korrektur-Dialog, wo mehrere
+    /// Wörter auf einmal ausgebessert werden dürfen.
+    static func wordSubstitutions(from old: String, to new: String) -> [(String, String)] {
+        let oldWords = old.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).map(String.init)
+        let newWords = new.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).map(String.init)
+        guard oldWords.count == newWords.count else { return [] }
+
+        var subs: [(String, String)] = []
+        for (a, b) in zip(oldWords, newWords) where a != b {
+            let wrong = a.trimmingCharacters(in: .punctuationCharacters)
+            let right = b.trimmingCharacters(in: .punctuationCharacters)
+            if wrong.count >= 2, right.count >= 2, wrong.lowercased() != right.lowercased() {
+                subs.append((wrong, right))
+            }
+        }
+        return subs
+    }
 }

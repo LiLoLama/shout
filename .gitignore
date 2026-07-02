@@ -6,3 +6,6 @@ build/
 Package.resolved
 # Von xcodegen aus project.yml generiert — nicht versionieren
 *.xcodeproj/
+
+# Lizenz-Signatur (geheim)
+.license-signing/

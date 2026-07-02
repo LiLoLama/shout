@@ -15,6 +15,7 @@ struct DashboardView: View {
     @ObservedObject var dictionary: PersonalDictionary
     @ObservedObject var history: DictationHistory
     @ObservedObject var stats: StatsStore
+    @ObservedObject var license: LicenseStore
     let onRecordHotkey: () -> Void
     let generateProfile: (String) async -> String?
 
@@ -45,9 +46,16 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Kopfbereich: Wortmarke + Status
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 0) {
-                    Text("shout").font(.system(size: 23, weight: .bold))
-                    Text(".").font(.system(size: 23, weight: .bold)).foregroundStyle(Color.shoutLive)
+                HStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        Text("shout").font(.system(size: 23, weight: .bold))
+                        Text(".").font(.system(size: 23, weight: .bold)).foregroundStyle(Color.shoutLive)
+                    }
+                    Text(license.isPro ? "Pro" : "Free")
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Capsule().fill(license.isPro ? Color.shoutLive.opacity(0.20) : Color.white.opacity(0.10)))
+                        .foregroundStyle(license.isPro ? Color.shoutLive : Color(white: 0.6))
                 }
                 HStack(spacing: 6) {
                     Circle().fill(Color.shoutLive).frame(width: 6, height: 6)
@@ -60,6 +68,7 @@ struct DashboardView: View {
             navRow(.woerterbuch, "Wörterbuch", "text.book.closed.fill")
             navRow(.verlauf, "Verlauf", "clock.arrow.circlepath")
             navRow(.statistik, "Statistiken", "chart.bar.xaxis")
+            navRow(.konto, "Konto & Lizenz", "person.crop.circle")
 
             Text("BALD VERFÜGBAR")
                 .font(.system(size: 10, weight: .semibold)).tracking(0.9)
@@ -67,7 +76,6 @@ struct DashboardView: View {
                 .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 6)
 
             navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath", soon: true)
-            navRow(.konto, "Konto & Lizenz", "person.crop.circle", soon: true)
 
             Spacer()
         }
@@ -114,8 +122,7 @@ struct DashboardView: View {
             ComingSoon(icon: "arrow.triangle.2.circlepath", title: "Sync & Geräte",
                        desc: "Wörterbuch und Einstellungen sicher zwischen deinen Macs abgleichen.")
         case .konto:
-            ComingSoon(icon: "person.crop.circle", title: "Konto & Lizenz",
-                       desc: "Lizenz verwalten, shout. Pro freischalten und Team-Plätze vergeben.")
+            LicenseView(license: license)
         }
     }
 }

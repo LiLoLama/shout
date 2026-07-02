@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dictionary = PersonalDictionary()
     private let history = DictationHistory()
     private let stats = StatsStore()
+    private let license = LicenseStore()
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
     private let recIndicator = RecordingIndicator()
@@ -339,7 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if dashboardWindow == nil {
             let view = DashboardView(
                 model: dashboardModel, settings: settings, dictionary: dictionary,
-                history: history, stats: stats,
+                history: history, stats: stats, license: license,
                 onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() },
                 generateProfile: { [weak self] sample in await self?.formatter.describeVoice(from: sample) ?? nil }
             )

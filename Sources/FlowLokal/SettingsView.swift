@@ -5,6 +5,10 @@ struct SettingsView: View {
     @ObservedObject var settings: RecordingSettings
     let onRecordHotkey: () -> Void
 
+    @AppStorage("formattingEnabled") private var formattingEnabled = true
+    @AppStorage("preferredMicUID") private var micUID = ""
+    @State private var devices: [AudioDevices.Device] = []
+
     var body: some View {
         Form {
             Section("Aufnahme") {
@@ -44,10 +48,25 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            Section("Text") {
+                Toggle("Text automatisch aufräumen", isOn: $formattingEnabled)
+                Text("Entfernt Füllwörter, setzt Satzzeichen und formatiert Aufzählungen.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section("Mikrofon") {
+                Picker("Eingang", selection: $micUID) {
+                    Text("Systemstandard").tag("")
+                    ForEach(devices) { device in
+                        Text(device.name).tag(device.uid)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 420)
         .tint(Color.shoutLive)
+        .onAppear { devices = AudioDevices.inputDevices() }
     }
 }

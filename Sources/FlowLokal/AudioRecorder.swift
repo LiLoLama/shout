@@ -28,6 +28,8 @@ final class AudioRecorder {
     var silenceSeconds = 1.5
     /// Wird einmal aufgerufen, wenn nach erkannter Sprache lang genug Stille war.
     var onSilence: (() -> Void)?
+    /// Laufender Eingangspegel 0…1 (für den Aufnahme-Hinweis). Läuft über den Main-Thread.
+    var onLevel: ((Float) -> Void)?
 
     private let speechRMSThreshold: Float = 0.015
     private var heardSpeech = false
@@ -124,18 +126,24 @@ final class AudioRecorder {
         samples.append(contentsOf: chunk)
         lock.unlock()
 
-        detectSilence(in: chunk)
+        analyze(chunk)
     }
 
-    /// Verfolgt die Lautstärke (RMS) und meldet, wenn nach Sprache lang genug Stille war.
-    private func detectSilence(in chunk: [Float]) {
-        guard autoStopEnabled, !silenceFired, !chunk.isEmpty else { return }
+    /// Berechnet einmal den RMS-Pegel und nutzt ihn für Live-Pegel + Stille-Erkennung.
+    private func analyze(_ chunk: [Float]) {
+        guard !chunk.isEmpty else { return }
 
         var sumSquares: Float = 0
         for sample in chunk { sumSquares += sample * sample }
         let rms = (sumSquares / Float(chunk.count)).squareRoot()
-        let duration = Double(chunk.count) / 16_000.0
 
+        // Live-Pegel 0…1 (Sprache ~0,05–0,25 → skaliert & begrenzt).
+        let level = min(1, rms * 6)
+        let levelCallback = onLevel
+        DispatchQueue.main.async { levelCallback?(level) }
+
+        guard autoStopEnabled, !silenceFired else { return }
+        let duration = Double(chunk.count) / 16_000.0
         if rms > speechRMSThreshold {
             heardSpeech = true
             silenceAccumulated = 0

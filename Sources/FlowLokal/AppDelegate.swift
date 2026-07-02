@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let settings = RecordingSettings()
     private var settingsWindow: NSWindow?
 
+    private let dashboardModel = DashboardModel()
+    private var dashboardWindow: NSWindow?
+
     // Hotkey-Aufnahme (Recorder in den Einstellungen)
     private var isCapturingHotkey = false
     private var captureKeyDownSeen = false
@@ -62,22 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var targetBundleID: String?
 
     private let formattingEnabledKey = "formattingEnabled"
+    /// Einzige Quelle der Wahrheit: UserDefaults (Menü UND Dashboard steuern sie).
     private var formattingEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(formattingEnabled, forKey: formattingEnabledKey)
-            updateFormatterMenu()
-        }
-    }
-
-    // MARK: - Init
-
-    override init() {
-        if UserDefaults.standard.object(forKey: formattingEnabledKey) == nil {
-            formattingEnabled = true
-        } else {
-            formattingEnabled = UserDefaults.standard.bool(forKey: formattingEnabledKey)
-        }
-        super.init()
+        get { UserDefaults.standard.object(forKey: formattingEnabledKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: formattingEnabledKey); updateFormatterMenu() }
     }
 
     // MARK: - App-Lifecycle
@@ -102,6 +93,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         recorder.onSilence = { [weak self] in
             guard let self, self.state == .recording else { return }
             self.stopAndProcess()
+        }
+        // Live-Pegel → schwebender Aufnahme-Hinweis reagiert auf Audio.
+        recorder.onLevel = { [weak self] level in
+            self?.recIndicator.updateLevel(level)
+        }
+
+        // Beim allerersten Start das Hauptfenster zeigen (sichtbare App statt nur Menüleiste).
+        if !UserDefaults.standard.bool(forKey: "didShowDashboard") {
+            UserDefaults.standard.set(true, forKey: "didShowDashboard")
+            openDashboard(.aufnahme)
         }
     }
 
@@ -191,13 +192,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         correctItem.target = self
         menu.addItem(correctItem)
 
-        let dictItem = NSMenuItem(title: "Wörterbuch …", action: #selector(openDictionary), keyEquivalent: "")
+        let openItem = NSMenuItem(title: "shout. öffnen …", action: #selector(openMainWindow), keyEquivalent: ",")
+        openItem.target = self
+        menu.addItem(openItem)
+
+        let dictItem = NSMenuItem(title: "Wörterbuch …", action: #selector(openDictionaryTab), keyEquivalent: "")
         dictItem.target = self
         menu.addItem(dictItem)
-
-        let settingsItem = NSMenuItem(title: "Einstellungen …", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
 
         micMenu = NSMenu()
         let micItem = NSMenuItem(title: "Mikrofon", action: nil, keyEquivalent: "")
@@ -356,10 +357,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
+    // MARK: - Hauptfenster (Dashboard)
+
+    @objc private func openMainWindow() { openDashboard(.aufnahme) }
+    @objc private func openDictionaryTab() { openDashboard(.woerterbuch) }
+
+    private func openDashboard(_ tab: DashboardModel.Tab) {
+        dashboardModel.tab = tab
+        if dashboardWindow == nil {
+            let view = DashboardView(
+                model: dashboardModel, settings: settings, dictionary: dictionary,
+                onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() }
+            )
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+            window.title = "shout."
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.setContentSize(NSSize(width: 760, height: 560))
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.delegate = self
+            window.center()
+            dashboardWindow = window
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        dashboardWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Klick aufs Dock-/Launchpad-Icon öffnet das Hauptfenster wieder.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openDashboard(dashboardModel.tab)
+        return true
+    }
+
     func windowWillClose(_ notification: Notification) {
         // Falls die Hotkey-Aufnahme noch lief, abbrechen.
         if isCapturingHotkey { endHotkeyCapture() }
-        // Zurück zur reinen Menu-Bar-App (kein Dock-Icon).
+        // Zurück zur reinen Menu-Bar-App (kein Dock-Icon), sobald kein Fenster mehr offen ist.
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -494,6 +528,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func startRecording() {
         // Ziel-App merken, solange sie noch im Vordergrund ist.
         targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        // Aktuelles Mikrofon aus den Einstellungen (Menü oder Dashboard) übernehmen.
+        let micUID = UserDefaults.standard.string(forKey: micUIDKey)
+        recorder.preferredDeviceUID = (micUID?.isEmpty == false) ? micUID : nil
         // Auto-Stopp nur im Umschalt-Modus sinnvoll (im Halten-Modus stoppt das Loslassen).
         recorder.autoStopEnabled = (settings.mode == .toggle && settings.autoStop)
         recorder.silenceSeconds = settings.silenceSeconds

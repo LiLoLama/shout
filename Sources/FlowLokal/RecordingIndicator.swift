@@ -1,18 +1,26 @@
 import AppKit
 import SwiftUI
 
-/// Minimaler, textloser Aufnahme-Hinweis: eine kleine schwebende Wellenform
-/// unten mittig am Bildschirm — nur sichtbar, während aufgenommen wird.
+/// Minimaler, textloser Aufnahme-Hinweis: eine kleine, halbtransparente
+/// Wellenform unten am Bildschirm, die auf den Mikrofon-Pegel reagiert —
+/// nur sichtbar, während aufgenommen wird.
 @MainActor
 final class RecordingIndicator {
 
+    /// Pegelmodell, an das die schwebende Pille gebunden ist.
+    final class LevelModel: ObservableObject {
+        @Published var level: Float = 0
+    }
+
+    private let model = LevelModel()
     private var panel: NSPanel?
-    private let size = NSSize(width: 96, height: 34)
+    private let size = NSSize(width: 74, height: 26)
 
     func show() {
         guard panel == nil else { return }
+        model.level = 0
 
-        let hosting = NSHostingView(rootView: RecordingPill())
+        let hosting = NSHostingView(rootView: RecordingPill(model: model))
         hosting.frame = NSRect(origin: .zero, size: size)
 
         let panel = NSPanel(
@@ -31,16 +39,21 @@ final class RecordingIndicator {
 
         if let screen = NSScreen.main {
             let vf = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: vf.midX - size.width / 2, y: vf.minY + 26))
+            panel.setFrameOrigin(NSPoint(x: vf.midX - size.width / 2, y: vf.minY + 12))
         }
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.22
-            panel.animator().alphaValue = 1
+            panel.animator().alphaValue = 0.9   // etwas durchsichtig
         }
         self.panel = panel
+    }
+
+    /// Neuen Pegel (0…1) einspeisen — geglättet.
+    func updateLevel(_ level: Float) {
+        model.level = model.level * 0.5 + level * 0.5
     }
 
     func hide() {
@@ -55,30 +68,32 @@ final class RecordingIndicator {
     }
 }
 
-/// Die schwebende Pille: nur eine pulsierende Wellenform, kein Text.
+/// Die schwebende Pille: Wellenform, deren Balken auf den Pegel reagieren.
+/// Kein Text. Bei Stille schrumpfen die Balken auf ein kleines Minimum.
 private struct RecordingPill: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var animating = false
+    @ObservedObject var model: RecordingIndicator.LevelModel
 
-    private let heights: [CGFloat] = [7, 15, 11, 19, 9, 14, 8]
+    // Gewichtung je Balken (Mitte höher) für die Wellenform-Form.
+    private let weights: [CGFloat] = [0.45, 0.7, 0.9, 1.0, 0.9, 0.7, 0.45]
+    private let minH: CGFloat = 3
+    private let maxH: CGFloat = 16
 
     var body: some View {
-        HStack(spacing: 3.5) {
-            ForEach(heights.indices, id: \.self) { i in
+        HStack(spacing: 3) {
+            ForEach(weights.indices, id: \.self) { i in
                 Capsule()
                     .fill(Color.shoutLive)
-                    .frame(width: 3.5, height: heights[i])
-                    .scaleEffect(y: (animating && !reduceMotion) ? 1.0 : 0.5, anchor: .center)
-                    .animation(
-                        reduceMotion ? nil :
-                            .easeInOut(duration: 0.55).repeatForever().delay(Double(i) * 0.07),
-                        value: animating
-                    )
+                    .frame(width: 3, height: height(i))
+                    .animation(.easeOut(duration: 0.12), value: model.level)
             }
         }
-        .frame(width: 96, height: 34)
+        .frame(width: 74, height: 26)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
-        .onAppear { animating = true }
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
+    }
+
+    private func height(_ i: Int) -> CGFloat {
+        let l = CGFloat(model.level)
+        return minH + (maxH - minH) * min(1, l * weights[i])
     }
 }

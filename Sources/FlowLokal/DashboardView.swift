@@ -13,6 +13,7 @@ struct DashboardView: View {
     @ObservedObject var model: DashboardModel
     @ObservedObject var settings: RecordingSettings
     @ObservedObject var dictionary: PersonalDictionary
+    @ObservedObject var history: DictationHistory
     let onRecordHotkey: () -> Void
 
     var body: some View {
@@ -55,13 +56,13 @@ struct DashboardView: View {
 
             navRow(.aufnahme, "Aufnahme & Text", "mic.fill")
             navRow(.woerterbuch, "Wörterbuch", "text.book.closed.fill")
+            navRow(.verlauf, "Verlauf", "clock.arrow.circlepath")
 
             Text("BALD VERFÜGBAR")
                 .font(.system(size: 10, weight: .semibold)).tracking(0.9)
                 .foregroundStyle(Color(white: 0.38))
                 .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 6)
 
-            navRow(.verlauf, "Verlauf", "clock.arrow.circlepath", soon: true)
             navRow(.statistik, "Statistiken", "chart.bar.xaxis", soon: true)
             navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath", soon: true)
             navRow(.konto, "Konto & Lizenz", "person.crop.circle", soon: true)
@@ -104,8 +105,7 @@ struct DashboardView: View {
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:
-            ComingSoon(icon: "clock.arrow.circlepath", title: "Verlauf",
-                       desc: "Deine letzten Diktate an einem Ort — durchsuchen, erneut einfügen und exportieren.")
+            HistoryView(history: history)
         case .statistik:
             ComingSoon(icon: "chart.bar.xaxis", title: "Statistiken",
                        desc: "Wörter pro Tag, gesparte Tipp-Zeit und deine häufigsten Korrekturen.")

@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let injector = TextInjector()
     private let formatter = Formatter()
     private let dictionary = PersonalDictionary()
+    private let history = DictationHistory()
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
     private let recIndicator = RecordingIndicator()
@@ -336,7 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardModel.tab = tab
         if dashboardWindow == nil {
             let view = DashboardView(
-                model: dashboardModel, settings: settings, dictionary: dictionary,
+                model: dashboardModel, settings: settings, dictionary: dictionary, history: history,
                 onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -545,6 +546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 guard !final.isEmpty else { return }
                 injector.paste(final)
                 lastInsertedText = final
+                history.add(final)
 
                 // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
                 // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.

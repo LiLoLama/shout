@@ -1,88 +1,88 @@
-# Flow Lokal
+# shout.
 
-Ein voll-lokaler Wispr-Flow-Klon für macOS (Apple Silicon). Diktieren per
-Hotkey, Transkription und Formatierung laufen komplett on-device — kein Cloud,
-keine Netzwerkabhängigkeit, volle Privatsphäre.
-
-**Status: v2** — Diktat + In-Process-Formatting laufen:
+Ein voll-lokales Diktier-Tool für macOS (Apple Silicon) — angelehnt an Wispr Flow,
+aber komplett on-device: **kein Cloud, keine Netzwerkabhängigkeit, volle Privatsphäre.**
 
 ```
-Rechte ⌥-Taste halten → Aufnahme → WhisperKit (large-v3-turbo, ANE)
-→ lokales Gemma-4 (MLX, in-process) formatiert → Text an Cursor
+Hotkey (Standard: rechte ⌥) → Aufnahme → WhisperKit (large-v3-turbo, ANE)
+→ lokales Gemma-4 (MLX, in-process) räumt Text auf → Einfügen am Cursor
 ```
 
-Drin: ASR (de), Formatting-Layer (Füllwörter raus, Interpunktion, nummerierte
-Listen, app-abhängiges Register), Menu-Bar-Toggles (Formatierung, Autostart).
-Noch nicht: VAD/Auto-Stop, Personal Dictionary, gelernte Stil-Edits.
+## Funktionen
 
-## Bauen (WICHTIG: xcodebuild, nicht `swift build`)
+- **Transkription** on-device via WhisperKit (Deutsch), mit Wörterbuch-Biasing.
+- **Formatierung** über ein lokales LLM (Gemma-4, MLX): Füllwörter raus,
+  Interpunktion, nummerierte Listen, app-abhängiges Register.
+- **Persönliches Wörterbuch:** Begriffe + Korrekturen (falsch→richtig), manuell
+  pflegbar **und** automatisch lernend (beobachtet Korrekturen im Zielfeld über
+  die Accessibility-API); universelles Nachlernen per **⌃⌘V**.
+- **Aufnahme-Modi:** Halten (Push-to-talk) oder Umschalten, frei wählbarer Hotkey,
+  optionaler Auto-Stopp bei Sprechpause.
+- **Mikrofon-Auswahl**, Autostart bei Login.
+- **Schwebender, textloser Aufnahme-Hinweis** unten am Bildschirm, der auf den
+  Live-Pegel reagiert.
+- **Dashboard-Fenster** im flachen Graphit-Look (Aufnahme & Text, Wörterbuch,
+  Platzhalter für künftige Pro-Funktionen).
 
-MLX kompiliert seine Metal-Shader nur über `xcodebuild`. `swift build` (CLI)
-erzeugt keine `metallib` → App crasht beim Modell-Laden. Deshalb:
+## Bauen (WICHTIG: `xcodebuild`, nicht `swift build`)
+
+MLX kompiliert seine Metal-Shader nur über `xcodebuild`; `swift build` (CLI) erzeugt
+keine `metallib` → die App crasht beim Modell-Laden. Der Build läuft daher über ein
+per **xcodegen** generiertes Xcode-Projekt:
 
 ```bash
-./build.sh          # xcodegen generate + xcodebuild, signiert mit "Flow Lokal Self-Signed"
+./build.sh          # xcodegen generate + xcodebuild (Debug), signiert mit "Flow Lokal Self-Signed"
+./build.sh Release  # Release-Build
 ```
 
-Einmalige Voraussetzung: `brew install xcodegen` und die Metal-Toolchain
-(`xcodebuild -downloadComponent MetalToolchain`). Die App liegt danach unter
-`build/Build/Products/Debug/Flow Lokal.app`.
+Einmalige Voraussetzungen:
+- `brew install xcodegen`
+- Metal-Toolchain: `xcodebuild -downloadComponent MetalToolchain`
+- Selbstsigniertes Zertifikat „Flow Lokal Self-Signed" in der Login-Keychain
+  (für stabile Accessibility-Freigabe über Rebuilds hinweg).
 
-## Architektur (Zielbild)
+App liegt danach unter `build/Build/Products/<Config>/shout.app`.
+Installation: `cp -R build/Build/Products/Release/shout.app /Applications/`.
 
-| Stufe | v0 | später |
-|-------|----|--------|
-| Trigger | Push-to-talk (⌥ halten) | + Toggle, konfigurierbarer Hotkey |
-| VAD/Endpointing | — (Tastendruck = Grenze) | Silero VAD, Auto-Stop bei Stille |
-| ASR | whisper-large-v3-turbo (WhisperKit/ANE), Sprache `de` | Personal-Dictionary-Biasing im `initial_prompt` |
-| Formatting | — (Rohtext) | lokales LLM (Qwen2.5-32B / Llama-3.3-70B via MLX/Ollama) |
-| Kontext | — | Accessibility-API: Text um Cursor + aktive App |
-| Injection | Pasteboard + synthetisches ⌘V | direktes Tippen als Option |
-
-## Voraussetzungen
-
-- macOS 14+ auf Apple Silicon
-- Xcode 26 / Swift 5.10+ Toolchain
-
-## Bauen & Starten
-
-```bash
-./build.sh
-open "build/Flow Lokal.app"
-```
-
-Beim ersten Start:
+## Erster Start
 
 1. **Mikrofon** erlauben (Dialog erscheint automatisch).
-2. **Bedienungshilfen** (Accessibility) erlauben: Systemeinstellungen →
-   Datenschutz & Sicherheit → Bedienungshilfen → „Flow Lokal" aktivieren.
-   Nötig für globales Tasten-Monitoring und das Einfügen via ⌘V.
-3. Beim allerersten Start lädt WhisperKit das Modell einmalig herunter
-   (einige hundert MB) und cached es danach lokal — das kann einen Moment dauern
-   (Menu-Bar-Icon zeigt ⏳).
+2. **Bedienungshilfen** (Accessibility) für `shout.app` aktivieren:
+   Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen.
+   Nötig für globalen Hotkey **und** das Einfügen via ⌘V.
+3. Beim allerersten Start werden WhisperKit- und Gemma-Modell einmalig geladen
+   (einige GB) und lokal gecached.
 
 ## Bedienung
 
-- Menu-Bar-Icon zeigt den Zustand: ⏳ lädt · 🎙️ bereit · 🔴 Aufnahme · ✍️ transkribiert
-- **Rechte ⌥-Taste halten**, sprechen, loslassen → Text erscheint am Cursor.
+- Menu-Bar-Icon zeigt den Zustand: ⏳ lädt · 🎙️ bereit · 🔴 Aufnahme · ✍️ verarbeitet
+- **Rechte ⌥ halten**, sprechen, loslassen → Text erscheint am Cursor.
+- **⌃⌘V** — zuletzt Gesprochenes erneut einfügen.
+- **⌥⌘C** — letztes Diktat korrigieren (lernt die Korrektur).
+- **⌘,** — Fenster öffnen.
 
 ## Projektstruktur
 
 ```
 Sources/FlowLokal/
-├── main.swift          App-Start (Menu-Bar-only)
-├── AppDelegate.swift   Zustandsmaschine, Hotkey, Verdrahtung
-├── AudioRecorder.swift Mikrofon → 16-kHz-Mono-Float (AVAudioConverter)
-├── Transcriber.swift   WhisperKit-Hülle (Modell laden, transkribieren)
-└── TextInjector.swift  Pasteboard + ⌘V
-Resources/Info.plist    Bundle-Config (LSUIElement, Mikrofon-Text)
-build.sh                Build → signierte .app
+├── main.swift            App-Start (Menu-Bar + Fenster)
+├── AppDelegate.swift     Zustandsmaschine, Hotkeys, Menü, Fenster, Verdrahtung
+├── AudioRecorder.swift   Mikrofon → 16-kHz-Mono-Float, Live-Pegel, Auto-Stopp
+├── Transcriber.swift     WhisperKit-Hülle (+ Wörterbuch-Biasing, Retry)
+├── Formatter.swift       Gemma-4 (MLX) Formatting-Layer
+├── TextInjector.swift    Pasteboard + ⌘V (mit Delay & Clipboard-Wiederherstellung)
+├── PersonalDictionary.swift  Begriffe + Korrekturen (JSON in Application Support)
+├── CorrectionWatcher.swift   Auto-Lernen aus Korrekturen (Accessibility)
+├── RecordingIndicator.swift  Schwebende, pegel-reaktive Aufnahme-Pille
+├── RecordingSettings.swift   Modus, Hotkey, Auto-Stopp (UserDefaults)
+├── AudioDevices.swift    Mikrofon-Enumeration (Core Audio)
+├── DashboardView / SettingsView / DictionaryView / ConsoleUI  UI (flacher Look)
+└── Theme.swift           Farben (Graphit + „live"-Orange)
+project.yml               xcodegen-Projektdefinition
+build.sh                  xcodegen + xcodebuild → signierte .app
 ```
 
 ## Modellwechsel
 
-In `Transcriber.swift` die Konstante `modelName` anpassen:
-
-- `large-v3-v20240930_turbo` — Standard, schnell (ANE)
-- `large-v3-v20240930_626MB` — kompakter
-- `large-v3` — volle Qualität, langsamer
+- ASR: `modelName` in `Transcriber.swift` (`large-v3-v20240930_turbo` u. a.).
+- Formatting: `modelID` in `Formatter.swift` (`mlx-community/gemma-4-e4b-it-4bit`).

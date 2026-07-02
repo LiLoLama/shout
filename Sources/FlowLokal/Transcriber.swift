@@ -26,7 +26,6 @@ final class Transcriber {
         // Prompt-Biasing kann bei Folge-Aufnahmen leeren Text verursachen →
         // dann einmal ohne Biasing nachziehen (rettet die Transkription).
         if text.isEmpty, !biasTerms.isEmpty {
-            dlog("transcribe leer mit Bias → Retry ohne Bias")
             return try await run(samples: samples, biasTerms: [])
         }
         return text

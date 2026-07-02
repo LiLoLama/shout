@@ -32,7 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let injector = TextInjector()
     private let formatter = Formatter()
     private let dictionary = PersonalDictionary()
-    private var dictionaryWindow: NSWindow?
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
     private let recIndicator = RecordingIndicator()
@@ -40,7 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var correctionWindow: NSWindow?
 
     private let settings = RecordingSettings()
-    private var settingsWindow: NSWindow?
 
     private let dashboardModel = DashboardModel()
     private var dashboardWindow: NSWindow?
@@ -328,45 +326,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApplication.shared.terminate(nil)
     }
 
-    // MARK: - Wörterbuch-Fenster
-
-    @objc private func openDictionary() {
-        if dictionaryWindow == nil {
-            let hosting = NSHostingController(rootView: DictionaryView(dictionary: dictionary))
-            let window = NSWindow(contentViewController: hosting)
-            window.title = "shout. — Wörterbuch"
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 480, height: 540))
-            window.isReleasedWhenClosed = false
-            window.appearance = NSAppearance(named: .darkAqua)
-            window.delegate = self
-            dictionaryWindow = window
-        }
-        // Accessory-Apps zeigen sonst kein Fenster im Vordergrund → kurz auf .regular.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        dictionaryWindow?.center()
-        dictionaryWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    @objc private func openSettings() {
-        if settingsWindow == nil {
-            let view = SettingsView(settings: settings, onRecordHotkey: { [weak self] in
-                self?.beginHotkeyCapture()
-            })
-            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = "shout. — Einstellungen"
-            window.styleMask = [.titled, .closable]
-            window.isReleasedWhenClosed = false
-            window.appearance = NSAppearance(named: .darkAqua)
-            window.delegate = self
-            settingsWindow = window
-        }
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.center()
-        settingsWindow?.makeKeyAndOrderFront(nil)
-    }
 
     // MARK: - Hauptfenster (Dashboard)
 
@@ -556,9 +515,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             try recorder.start()
             state = .recording
             recIndicator.show()
-            dlog("REC start (mode=\(settings.mode), target=\(targetBundleID ?? "?"))")
         } catch {
-            dlog("REC start FAILED \(error)")
             NSLog("Aufnahme-Start fehlgeschlagen: \(error)")
         }
     }
@@ -569,27 +526,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         state = .working
         let bundleID = targetBundleID
         let useFormatting = formattingEnabled
-        dlog("REC stop samples=\(samples.count)")
 
         Task {
             defer { state = .idle }
-            guard !samples.isEmpty else { dlog("ABORT: samples leer"); return }
+            guard !samples.isEmpty else { return }
             do {
                 let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)
-                dlog("transcribed len=\(raw.count)")
                 var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !output.isEmpty else { dlog("ABORT: transcript leer"); return }
+                guard !output.isEmpty else { return }
 
                 if useFormatting {
                     output = await formatter.format(output, bundleID: bundleID, termHint: dictionary.termHint)
-                    dlog("formatted len=\(output.count)")
                 }
                 // Gelernte/manuelle Korrekturen als letztes anwenden — sie gewinnen immer.
                 output = dictionary.applyCorrections(to: output)
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !final.isEmpty else { dlog("ABORT: final leer"); return }
-                dlog("PASTE call len=\(final.count)")
+                guard !final.isEmpty else { return }
                 injector.paste(final)
                 lastInsertedText = final
 
@@ -601,7 +554,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.correctionWatcher.begin(inserted: inserted)
                 }
             } catch {
-                dlog("ERROR Verarbeitung: \(error)")
                 NSLog("Verarbeitung fehlgeschlagen: \(error)")
             }
         }

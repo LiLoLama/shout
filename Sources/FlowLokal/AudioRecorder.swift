@@ -137,8 +137,9 @@ final class AudioRecorder {
         for sample in chunk { sumSquares += sample * sample }
         let rms = (sumSquares / Float(chunk.count)).squareRoot()
 
-        // Live-Pegel 0…1 (Sprache ~0,05–0,25 → skaliert & begrenzt).
-        let level = min(1, rms * 6)
+        // Live-Pegel 0…1: sqrt-Kurve für kräftigeren Ausschlag, mit kleinem
+        // Rauschabzug, damit Stille wirklich klein bleibt.
+        let level = min(1, max(0, rms.squareRoot() - 0.05) * 3.2)
         let levelCallback = onLevel
         DispatchQueue.main.async { levelCallback?(level) }
 

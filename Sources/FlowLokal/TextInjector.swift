@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 
 /// Fügt Text an der aktuellen Cursor-Position ein.
 ///
@@ -11,6 +12,12 @@ final class TextInjector {
     private let virtualKeyV: CGKeyCode = 0x09  // "v"
 
     func insert(_ text: String) {
+        // Diagnose: das synthetische ⌘V braucht die Bedienungshilfen-Freigabe.
+        // Fehlt sie, wird das Einfügen still verschluckt (Clipboard wird trotzdem gesetzt).
+        NSLog("SHOUT-INJECT trusted=%@ target=%@",
+              AXIsProcessTrusted() ? "yes" : "no",
+              NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)

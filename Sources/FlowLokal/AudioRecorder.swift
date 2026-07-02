@@ -139,7 +139,7 @@ final class AudioRecorder {
 
         // Live-Pegel 0…1: sqrt-Kurve für kräftigeren Ausschlag, mit kleinem
         // Rauschabzug, damit Stille wirklich klein bleibt.
-        let level = min(1, max(0, rms.squareRoot() - 0.05) * 3.2)
+        let level = min(1, max(0, rms.squareRoot() - 0.04) * 5.5)
         let levelCallback = onLevel
         DispatchQueue.main.async { levelCallback?(level) }
 

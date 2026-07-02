@@ -27,22 +27,35 @@ final class CorrectionWatcher {
     /// Startet die Beobachtung des aktuell fokussierten Feldes.
     func begin(inserted: String) {
         stop()
-        guard AXIsProcessTrusted() else { return }
+        guard AXIsProcessTrusted() else {
+            NSLog("SHOUT-LEARN: Accessibility nicht erlaubt")
+            return
+        }
 
         let systemWide = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
               let focused = focusedRef,
               CFGetTypeID(focused) == AXUIElementGetTypeID()
-        else { return }
+        else {
+            NSLog("SHOUT-LEARN: kein fokussiertes UI-Element")
+            return
+        }
         let el = focused as! AXUIElement
 
-        guard let value = Self.stringValue(of: el) else { return }
+        var pid: pid_t = 0
+        AXUIElementGetPid(el, &pid)
+        let appID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? "unbekannt"
+
+        guard let value = Self.stringValue(of: el) else {
+            NSLog("SHOUT-LEARN: %@ gibt keinen Text ueber Accessibility preis -> Lernen hier nicht moeglich", appID)
+            return
+        }
         element = el
         baseline = value
 
-        var pid: pid_t = 0
-        guard AXUIElementGetPid(el, &pid) == .success, pid != 0 else { return }
+        guard pid != 0 else { return }
+        NSLog("SHOUT-LEARN: beobachte %@ (Textlaenge %d)", appID, value.count)
 
         let callback: AXObserverCallback = { _, _, _, refcon in
             guard let refcon else { return }
@@ -89,7 +102,10 @@ final class CorrectionWatcher {
     private func evaluate() {
         guard let element, let current = Self.stringValue(of: element), current != baseline else { return }
         if let (wrong, right) = Self.detectSingleWordCorrection(from: baseline, to: current) {
+            NSLog("SHOUT-LEARN: Einzelwort-Korrektur erkannt (Längen \(wrong.count)→\(right.count))")
             onLearn?(wrong, right)
+        } else {
+            NSLog("SHOUT-LEARN: Änderung erkannt, aber keine eindeutige Einzelwort-Korrektur → nichts gelernt")
         }
         // Baseline nachziehen, damit eine weitere Korrektur erkannt werden kann.
         baseline = current

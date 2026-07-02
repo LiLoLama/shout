@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import ApplicationServices
+import ServiceManagement
 
 /// Verdrahtet die Diktier-Pipeline:
 ///   Hotkey (Right ⌥ halten) → Aufnahme → WhisperKit → [Formatting-LLM] → Text an Cursor.
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenuItem: NSMenuItem!
     private var formatterMenuItem: NSMenuItem!
     private var formattingToggleItem: NSMenuItem!
+    private var loginToggleItem: NSMenuItem!
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
@@ -94,6 +96,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         formattingToggleItem.target = self
         menu.addItem(formattingToggleItem)
 
+        loginToggleItem = NSMenuItem(
+            title: "Beim Login starten", action: #selector(toggleLoginItem), keyEquivalent: ""
+        )
+        loginToggleItem.target = self
+        menu.addItem(loginToggleItem)
+
         menu.addItem(
             NSMenuItem(title: "Rechte ⌥-Taste halten zum Diktieren", action: nil, keyEquivalent: "")
         )
@@ -106,6 +114,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
         updateStatusItem()
         updateFormatterMenu()
+        updateLoginMenu()
+    }
+
+    // MARK: - Autostart bei Login
+
+    private func updateLoginMenu() {
+        loginToggleItem?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+    }
+
+    @objc private func toggleLoginItem() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSLog("Login-Item umschalten fehlgeschlagen: \(error)")
+        }
+        updateLoginMenu()
     }
 
     private func updateStatusItem() {

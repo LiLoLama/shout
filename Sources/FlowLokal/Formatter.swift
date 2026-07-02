@@ -67,8 +67,6 @@ final class Formatter {
                 generateParameters: GenerateParameters(temperature: 0.2)
             )
             let out = try await session.respond(to: text)
-            NSLog("FLOWLOKAL FORMAT-IN: %@", text)
-            NSLog("FLOWLOKAL FORMAT-OUT-RAW: %@", out)
             let cleaned = stripArtifacts(out)
             return cleaned.isEmpty ? text : cleaned
         } catch {

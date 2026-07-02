@@ -4,15 +4,29 @@ Ein voll-lokaler Wispr-Flow-Klon für macOS (Apple Silicon). Diktieren per
 Hotkey, Transkription und Formatierung laufen komplett on-device — kein Cloud,
 keine Netzwerkabhängigkeit, volle Privatsphäre.
 
-**Status: v0** — die Kernschleife steht:
+**Status: v2** — Diktat + In-Process-Formatting laufen:
 
 ```
 Rechte ⌥-Taste halten → Aufnahme → WhisperKit (large-v3-turbo, ANE)
-→ Text an der Cursor-Position einfügen
+→ lokales Gemma-4 (MLX, in-process) formatiert → Text an Cursor
 ```
 
-Noch nicht drin (kommende Stufen): VAD/Auto-Stop, LLM-Formatting-Layer,
-App-/Kontext-Bewusstsein, Personal Dictionary, gelernte Stil-Edits.
+Drin: ASR (de), Formatting-Layer (Füllwörter raus, Interpunktion, nummerierte
+Listen, app-abhängiges Register), Menu-Bar-Toggles (Formatierung, Autostart).
+Noch nicht: VAD/Auto-Stop, Personal Dictionary, gelernte Stil-Edits.
+
+## Bauen (WICHTIG: xcodebuild, nicht `swift build`)
+
+MLX kompiliert seine Metal-Shader nur über `xcodebuild`. `swift build` (CLI)
+erzeugt keine `metallib` → App crasht beim Modell-Laden. Deshalb:
+
+```bash
+./build.sh          # xcodegen generate + xcodebuild, signiert mit "Flow Lokal Self-Signed"
+```
+
+Einmalige Voraussetzung: `brew install xcodegen` und die Metal-Toolchain
+(`xcodebuild -downloadComponent MetalToolchain`). Die App liegt danach unter
+`build/Build/Products/Debug/Flow Lokal.app`.
 
 ## Architektur (Zielbild)
 

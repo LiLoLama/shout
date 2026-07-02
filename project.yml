@@ -38,8 +38,9 @@ targets:
         # Menu-Bar-App ohne Dock-Icon
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Flow Lokal nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln."
-        # Ad-hoc-Signatur (später ggf. selbstsigniertes Zertifikat für stabile Accessibility-Freigabe)
-        CODE_SIGN_IDENTITY: "-"
+        # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
+        # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
+        CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"
         CODE_SIGN_STYLE: Manual
         SWIFT_VERSION: "5.10"
     dependencies:

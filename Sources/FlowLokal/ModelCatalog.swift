@@ -36,15 +36,19 @@ enum ModelCatalog {
 
     static let formatting: [Option] = [
         .init(id: "mlx-community/gemma-4-e2b-it-4bit", name: "Gemma 4 · E2B", note: "~2 GB · sehr schnell", minRAMGB: 8),
-        .init(id: "mlx-community/gemma-4-e4b-it-4bit", name: "Gemma 4 · E4B", note: "~3 GB · guter Standard", minRAMGB: 16),
-        .init(id: "mlx-community/gemma-2-9b-it-4bit", name: "Gemma 2 · 9B", note: "~5,5 GB · beste Formatierung", minRAMGB: 24),
+        .init(id: "mlx-community/gemma-4-e4b-it-4bit", name: "Gemma 4 · E4B", note: "~5 GB · guter Standard", minRAMGB: 16),
+        .init(id: "mlx-community/gemma-2-9b-it-4bit", name: "Gemma 2 · 9B", note: "~5,5 GB · mehr Qualität", minRAMGB: 24),
+        .init(id: "mlx-community/gemma-4-12B-it-4bit", name: "Gemma 4 · 12B", note: "~8 GB · sehr gute Aufbereitung", minRAMGB: 32),
+        .init(id: "mlx-community/gemma-4-31b-it-4bit", name: "Gemma 4 · 31B", note: "~18 GB · High-End, beste Qualität", minRAMGB: 48),
     ]
 
     static func recommendedASR(ramGB: Int) -> Option { ramGB >= 16 ? asr[1] : asr[0] }
     static func recommendedFormatting(ramGB: Int) -> Option {
-        if ramGB >= 24 { return formatting[2] }
-        if ramGB >= 16 { return formatting[1] }
-        return formatting[0]
+        if ramGB >= 48 { return formatting[4] }   // 31B High-End
+        if ramGB >= 32 { return formatting[3] }   // 12B
+        if ramGB >= 24 { return formatting[2] }   // 9B
+        if ramGB >= 16 { return formatting[1] }   // E4B
+        return formatting[0]                       // E2B
     }
 
     static func asrName(_ id: String) -> String { asr.first { $0.id == id }?.name ?? id }

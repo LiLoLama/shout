@@ -33,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let formatter = Formatter()
     private let dictionary = PersonalDictionary()
     private var dictionaryWindow: NSWindow?
+    private let correctionWatcher = CorrectionWatcher()
+    private let toast = LearnedToast()
 
     private var micMenu: NSMenu!
     private let micUIDKey = "preferredMicUID"
@@ -82,6 +84,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         installHotkeyMonitors()
         loadModel()
         loadFormatter()
+
+        // Automatisches Lernen: erkannte Korrektur → Wörterbuch + Popup mit Rückgängig.
+        correctionWatcher.onLearn = { [weak self] wrong, right in
+            self?.handleLearnedCorrection(wrong: wrong, right: right)
+        }
+    }
+
+    private func handleLearnedCorrection(wrong: String, right: String) {
+        let termExisted = dictionary.contents.terms.contains {
+            $0.caseInsensitiveCompare(right) == .orderedSame
+        }
+        dictionary.addCorrection(wrong: wrong, right: right)
+        toast.show(wrong: wrong, right: right) { [weak self] in
+            guard let self else { return }
+            self.dictionary.removeCorrection(PersonalDictionary.Correction(wrong: wrong, right: right))
+            if !termExisted { self.dictionary.removeTerm(right) }
+        }
     }
 
     // MARK: - Menu-Bar
@@ -349,6 +368,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }
                 injector.insert(final)
+
+                // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
+                // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.
+                let inserted = final
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    self.correctionWatcher.begin(inserted: inserted)
+                }
             } catch {
                 NSLog("Verarbeitung fehlgeschlagen: \(error)")
             }

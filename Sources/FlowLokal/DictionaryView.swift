@@ -76,8 +76,8 @@ struct DictionaryView: View {
             .font(.system(size: 13))
             .foregroundStyle(Color(white: 0.92))
             .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color(red: 0.09, green: 0.09, blue: 0.105)))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.black.opacity(0.5)))
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.11)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.07)))
             .onSubmit(onSubmit)
     }
 
@@ -105,8 +105,8 @@ private struct FlowChips: View {
                 }
                 .foregroundStyle(Color(white: 0.9))
                 .padding(.horizontal, 11).padding(.vertical, 6)
-                .background(Capsule().fill(Color(red: 0.09, green: 0.09, blue: 0.105)))
-                .overlay(Capsule().strokeBorder(Color.black.opacity(0.5)))
+                .background(Capsule().fill(Color(white: 0.11)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.07)))
             }
         }
     }

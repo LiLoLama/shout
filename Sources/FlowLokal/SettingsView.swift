@@ -33,7 +33,7 @@ struct SettingsView: View {
                     ConsoleDivider()
                     FieldRow(title: "Von selbst aufhören",
                              help: "Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus).") {
-                        Toggle("", isOn: $settings.autoStop).labelsHidden().toggleStyle(ConsoleToggleStyle())
+                        Toggle("", isOn: $settings.autoStop).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                     if settings.autoStop {
                         ConsoleDivider()
@@ -50,7 +50,7 @@ struct SettingsView: View {
                 ConsolePanel(title: "Text") {
                     FieldRow(title: "Text automatisch aufräumen",
                              help: "Füllwörter raus, Satzzeichen und Aufzählungen setzen.") {
-                        Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(ConsoleToggleStyle())
+                        Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                 }
 

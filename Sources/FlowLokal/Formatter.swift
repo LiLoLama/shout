@@ -75,6 +75,27 @@ final class Formatter {
         }
     }
 
+    // MARK: - Sprachprofil („Your Voice")
+
+    /// Lässt Gemma den Sprach-/Diktierstil in 2–3 knappen deutschen Sätzen beschreiben.
+    func describeVoice(from sample: String) async -> String? {
+        guard isReady, let container else { return nil }
+        let system = """
+        Du analysierst den Sprach- und Diktierstil einer Person anhand ihrer Diktate. \
+        Beschreibe den Stil in 2–3 knappen, wohlwollenden deutschen Sätzen und sprich die \
+        Person mit „Du" an (z. B. Wortwahl, Tempo, Struktur, typische Muster). \
+        Keine Aufzählung, kein Vorwort, keine Anführungszeichen — nur die Beschreibung.
+        """
+        do {
+            let session = ChatSession(container, instructions: system,
+                                      generateParameters: GenerateParameters(temperature: 0.6))
+            let out = try await session.respond(to: sample)
+            return stripArtifacts(out)
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Prompt
 
     private func systemPrompt(for bundleID: String?, termHint: String?) -> String {

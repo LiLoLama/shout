@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let formatter = Formatter()
     private let dictionary = PersonalDictionary()
     private let history = DictationHistory()
+    private let stats = StatsStore()
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
     private let recIndicator = RecordingIndicator()
@@ -337,8 +338,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardModel.tab = tab
         if dashboardWindow == nil {
             let view = DashboardView(
-                model: dashboardModel, settings: settings, dictionary: dictionary, history: history,
-                onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() }
+                model: dashboardModel, settings: settings, dictionary: dictionary,
+                history: history, stats: stats,
+                onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() },
+                generateProfile: { [weak self] sample in await self?.formatter.describeVoice(from: sample) ?? nil }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."
@@ -547,6 +550,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 injector.paste(final)
                 lastInsertedText = final
                 history.add(final)
+                let words = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
+                stats.record(words: words, seconds: Double(samples.count) / 16_000.0)
 
                 // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
                 // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.

@@ -28,6 +28,6 @@ xcodebuild \
     -skipMacroValidation \
     build
 
-APP="$DERIVED/Build/Products/$CONFIG/Flow Lokal.app"
+APP="$DERIVED/Build/Products/$CONFIG/shout.app"
 echo "✅ Fertig: $APP"
 echo "   Starten mit:  open \"$APP\""

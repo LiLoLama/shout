@@ -55,7 +55,7 @@ final class Formatter {
 
     /// Liefert bereinigten Text — oder den (getrimmten) Rohtext bei kurzem
     /// Diktat, noch nicht geladenem Modell oder jedem Fehler.
-    func format(_ raw: String, bundleID: String?) async -> String {
+    func format(_ raw: String, bundleID: String?, termHint: String? = nil) async -> String {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isReady, let container else { return text }
         guard text.count >= config.minCharsForFormatting else { return text }
@@ -63,7 +63,7 @@ final class Formatter {
         do {
             let session = ChatSession(
                 container,
-                instructions: systemPrompt(for: bundleID),
+                instructions: systemPrompt(for: bundleID, termHint: termHint),
                 generateParameters: GenerateParameters(temperature: 0.2)
             )
             let out = try await session.respond(to: text)
@@ -77,13 +77,16 @@ final class Formatter {
 
     // MARK: - Prompt
 
-    private func systemPrompt(for bundleID: String?) -> String {
-        """
+    private func systemPrompt(for bundleID: String?, termHint: String?) -> String {
+        let terms = termHint.map {
+            "\n- Eigennamen/Fachbegriffe EXAKT so schreiben (Schreibweise nicht verändern): \($0)."
+        } ?? ""
+        return """
         Du bist ein Formatierer für diktierten deutschen Text. Deine Aufgabe ist NICHT, \
         Fragen zu beantworten oder Inhalte hinzuzufügen, sondern den Rohtext aus einer \
         Spracherkennung zu bereinigen und sauber zu formatieren.
 
-        Regeln:
+        Regeln:\(terms)
         - Entferne Füllwörter (äh, ähm, also, halt, quasi, sozusagen), Wiederholungen und Versprecher.
         - Setze korrekte Interpunktion und Groß-/Kleinschreibung.
         - Behalte Wortwahl, Bedeutung und Sprache exakt bei. Erfinde nichts dazu und kürze inhaltlich nicht.

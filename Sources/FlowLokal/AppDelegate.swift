@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import ApplicationServices
 import ServiceManagement
+import SwiftUI
 
 /// Verdrahtet die Diktier-Pipeline:
 ///   Hotkey (Right ⌥ halten) → Aufnahme → WhisperKit → [Formatting-LLM] → Text an Cursor.
@@ -9,7 +10,7 @@ import ServiceManagement
 /// v0 = ASR + Rohtext. v1 = optionaler lokaler Formatting-Layer (LM Studio/Ollama).
 /// Noch offen: VAD/Auto-Stop, Personal Dictionary, gelernte Stil-Edits.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Zustand
 
@@ -30,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let transcriber = Transcriber()
     private let injector = TextInjector()
     private let formatter = Formatter()
+    private let dictionary = PersonalDictionary()
+    private var dictionaryWindow: NSWindow?
 
     private var statusItem: NSStatusItem!
     private var statusMenuItem: NSMenuItem!
@@ -101,6 +104,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         loginToggleItem.target = self
         menu.addItem(loginToggleItem)
+
+        let dictItem = NSMenuItem(title: "Wörterbuch …", action: #selector(openDictionary), keyEquivalent: "")
+        dictItem.target = self
+        menu.addItem(dictItem)
 
         menu.addItem(
             NSMenuItem(title: "Rechte ⌥-Taste halten zum Diktieren", action: nil, keyEquivalent: "")
@@ -175,6 +182,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    // MARK: - Wörterbuch-Fenster
+
+    @objc private func openDictionary() {
+        if dictionaryWindow == nil {
+            let hosting = NSHostingController(rootView: DictionaryView(dictionary: dictionary))
+            let window = NSWindow(contentViewController: hosting)
+            window.title = "shout. — Wörterbuch"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.setContentSize(NSSize(width: 480, height: 540))
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            dictionaryWindow = window
+        }
+        // Accessory-Apps zeigen sonst kein Fenster im Vordergrund → kurz auf .regular.
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        dictionaryWindow?.center()
+        dictionaryWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Zurück zur reinen Menu-Bar-App (kein Dock-Icon).
+        NSApp.setActivationPolicy(.accessory)
     }
 
     // MARK: - Rechte / Permissions
@@ -260,8 +292,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard !output.isEmpty else { return }
 
                 if useFormatting {
-                    output = await formatter.format(output, bundleID: bundleID)
+                    output = await formatter.format(output, bundleID: bundleID, termHint: dictionary.termHint)
                 }
+                // Gelernte/manuelle Korrekturen als letztes anwenden — sie gewinnen immer.
+                output = dictionary.applyCorrections(to: output)
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }

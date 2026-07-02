@@ -10,7 +10,7 @@ import SwiftUI
 /// v0 = ASR + Rohtext. v1 = optionaler lokaler Formatting-Layer (LM Studio/Ollama).
 /// Noch offen: VAD/Auto-Stop, Personal Dictionary, gelernte Stil-Edits.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
 
     // MARK: - Zustand
 
@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let formatter = Formatter()
     private let dictionary = PersonalDictionary()
     private var dictionaryWindow: NSWindow?
+
+    private var micMenu: NSMenu!
+    private let micUIDKey = "preferredMicUID"
 
     private var statusItem: NSStatusItem!
     private var statusMenuItem: NSMenuItem!
@@ -70,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - App-Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Gespeichertes Mikrofon wiederherstellen (leer/nil = Systemstandard).
+        let savedUID = UserDefaults.standard.string(forKey: micUIDKey)
+        recorder.preferredDeviceUID = (savedUID?.isEmpty == false) ? savedUID : nil
+
         setupStatusItem()
         requestPermissions()
         installHotkeyMonitors()
@@ -109,6 +116,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         dictItem.target = self
         menu.addItem(dictItem)
 
+        micMenu = NSMenu()
+        let micItem = NSMenuItem(title: "Mikrofon", action: nil, keyEquivalent: "")
+        micItem.submenu = micMenu
+        menu.addItem(micItem)
+
         menu.addItem(
             NSMenuItem(title: "Rechte ⌥-Taste halten zum Diktieren", action: nil, keyEquivalent: "")
         )
@@ -118,10 +130,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
 
+        menu.delegate = self
         statusItem.menu = menu
         updateStatusItem()
         updateFormatterMenu()
         updateLoginMenu()
+        rebuildMicMenu()
+    }
+
+    // MARK: - Mikrofon-Auswahl
+
+    /// Wird beim Öffnen des Menüs aufgerufen → Geräteliste ist immer aktuell.
+    func menuWillOpen(_ menu: NSMenu) {
+        if menu === statusItem.menu { rebuildMicMenu() }
+    }
+
+    private func rebuildMicMenu() {
+        guard let micMenu else { return }
+        micMenu.removeAllItems()
+        let selectedUID = UserDefaults.standard.string(forKey: micUIDKey)
+
+        let systemItem = NSMenuItem(title: "Systemstandard", action: #selector(selectMic(_:)), keyEquivalent: "")
+        systemItem.target = self
+        systemItem.representedObject = ""   // "" = Systemstandard
+        systemItem.state = (selectedUID == nil || selectedUID == "") ? .on : .off
+        micMenu.addItem(systemItem)
+        micMenu.addItem(.separator())
+
+        for device in AudioDevices.inputDevices() {
+            let item = NSMenuItem(title: device.name, action: #selector(selectMic(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = device.uid
+            item.state = (device.uid == selectedUID) ? .on : .off
+            micMenu.addItem(item)
+        }
+    }
+
+    @objc private func selectMic(_ sender: NSMenuItem) {
+        let uid = (sender.representedObject as? String) ?? ""
+        UserDefaults.standard.set(uid, forKey: micUIDKey)
+        recorder.preferredDeviceUID = uid.isEmpty ? nil : uid
+        rebuildMicMenu()
     }
 
     // MARK: - Autostart bei Login

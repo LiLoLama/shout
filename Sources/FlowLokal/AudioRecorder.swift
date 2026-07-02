@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 
 /// Nimmt Mikrofon-Audio auf und liefert es als 16-kHz-Mono-Float-Array —
 /// genau das Format, das Whisper erwartet.
@@ -9,7 +10,7 @@ import AVFoundation
 /// deshalb ist der Sample-Puffer per NSLock geschützt.
 final class AudioRecorder {
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var targetFormat: AVAudioFormat!
 
@@ -18,12 +19,30 @@ final class AudioRecorder {
 
     private let targetSampleRate = 16_000.0
 
+    /// Gewünschtes Eingabegerät (stabile Core-Audio-UID). nil = Systemstandard.
+    var preferredDeviceUID: String?
+
     func start() throws {
         lock.lock()
         samples.removeAll(keepingCapacity: true)
         lock.unlock()
 
+        // Frische Engine je Aufnahme, damit ein Gerätewechsel sauber greift.
+        engine = AVAudioEngine()
         let input = engine.inputNode
+
+        // Gewünschtes Eingabegerät setzen — MUSS vor dem Auslesen des Formats passieren.
+        if let uid = preferredDeviceUID,
+           let deviceID = AudioDevices.deviceID(forUID: uid),
+           let audioUnit = input.audioUnit {
+            var device = deviceID
+            AudioUnitSetProperty(
+                audioUnit, kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global, 0, &device,
+                UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+        }
+
         let inputFormat = input.inputFormat(forBus: 0)
 
         targetFormat = AVAudioFormat(

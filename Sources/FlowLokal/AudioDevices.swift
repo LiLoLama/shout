@@ -56,7 +56,10 @@ enum AudioDevices {
         guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &dataSize) == noErr, dataSize > 0 else {
             return false
         }
-        let bufferList = AudioBufferList.allocate(maximumBuffers: Int(dataSize) / MemoryLayout<AudioBuffer>.size)
+        // Reine Ausgabegeräte liefern eine leere Bufferliste → Puffer-Anzahl 0.
+        // allocate(maximumBuffers:) trapt bei 0, deshalb mindestens 1.
+        let bufferCount = max(1, Int(dataSize) / MemoryLayout<AudioBuffer>.size)
+        let bufferList = AudioBufferList.allocate(maximumBuffers: bufferCount)
         defer { free(bufferList.unsafeMutablePointer) }
         guard AudioObjectGetPropertyData(id, &address, 0, nil, &dataSize, bufferList.unsafeMutablePointer) == noErr else {
             return false

@@ -19,12 +19,25 @@ final class Transcriber {
         pipe = try await WhisperKit(WhisperKitConfig(model: modelName))
     }
 
-    func transcribe(_ samples: [Float]) async throws -> String {
+    func transcribe(_ samples: [Float], biasTerms: [String] = []) async throws -> String {
         guard let pipe else { return "" }
-        let results = try await pipe.transcribe(
-            audioArray: samples,
-            decodeOptions: DecodingOptions(language: "de")
-        )
+
+        var options = DecodingOptions(language: "de")
+
+        // Wörterbuch-Begriffe als Konditionierungs-Prompt → Whisper erkennt
+        // Eigennamen/Fachbegriffe schon beim Transkribieren besser.
+        if !biasTerms.isEmpty, let tokenizer = pipe.tokenizer {
+            let promptText = " " + biasTerms.joined(separator: ", ")
+            let specialBegin = tokenizer.specialTokens.specialTokenBegin
+            let tokens = tokenizer.encode(text: promptText).filter { $0 < specialBegin }
+            if !tokens.isEmpty {
+                // Whisper-Prompt-Fenster ist begrenzt (~224 Tokens) — sicherheitshalber kappen.
+                options.promptTokens = Array(tokens.prefix(200))
+                options.usePrefillPrompt = true
+            }
+        }
+
+        let results = try await pipe.transcribe(audioArray: samples, decodeOptions: options)
         return results.map(\.text).joined(separator: " ")
     }
 }

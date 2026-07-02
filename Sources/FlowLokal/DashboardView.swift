@@ -3,7 +3,7 @@ import SwiftUI
 /// Hält die ausgewählte Dashboard-Seite (von Menüpunkten steuerbar).
 @MainActor
 final class DashboardModel: ObservableObject {
-    enum Tab: Hashable { case aufnahme, woerterbuch, verlauf, statistik, sync, konto }
+    enum Tab: Hashable { case aufnahme, woerterbuch, verlauf, statistik, modelle, sync, konto }
     @Published var tab: Tab = .aufnahme
 }
 
@@ -21,6 +21,8 @@ struct DashboardView: View {
     let onExport: () -> String
     let onImport: () -> String
     let onInsertHistory: (String) -> Void
+    let onSelectASR: (String) async -> Void
+    let onSelectFormat: (String) async -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -78,6 +80,7 @@ struct DashboardView: View {
             navRow(.woerterbuch, "Wörterbuch", "text.book.closed.fill")
             navRow(.verlauf, "Verlauf", "clock.arrow.circlepath")
             navRow(.statistik, "Statistiken", "chart.bar.xaxis")
+            navRow(.modelle, "Modelle", "cpu")
             navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath")
             navRow(.konto, "Konto & Lizenz", "person.crop.circle")
 
@@ -122,6 +125,8 @@ struct DashboardView: View {
             HistoryView(history: history, onInsert: onInsertHistory)
         case .statistik:
             StatisticsView(stats: stats, history: history, dictionary: dictionary, generateProfile: generateProfile)
+        case .modelle:
+            ModelsView(onSelectASR: onSelectASR, onSelectFormat: onSelectFormat)
         case .sync:
             SyncView(onExport: onExport, onImport: onImport)
         case .konto:

@@ -9,7 +9,7 @@ struct LicenseView: View {
     @State private var showError = false
 
     // Kaufoptionen (anpassbar):
-    private let price = "29 €"
+    private let price = "150 €"
     private let purchaseURL = "https://inthezone.studio/shout"
 
     private let features = [
@@ -48,7 +48,7 @@ struct LicenseView: View {
                                     Text("shout. kaufen — \(price)").fontWeight(.semibold)
                                 }
                                 .buttonStyle(BuyButtonStyle())
-                                Text("Einmalkauf · kein Abo").font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
+                                Text("Lifetime-Lizenz · kein Abo").font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
                             }
 
                             VStack(alignment: .leading, spacing: 8) {
@@ -92,7 +92,7 @@ struct LicenseView: View {
                     }
                 }
 
-                Text("Einmalkauf für \(price) — kein Abo, keine Folgekosten. Alle Funktionen inklusive, alles läuft lokal auf deinem Mac.")
+                Text("Lifetime-Lizenz für \(price) — einmal zahlen, für immer nutzen. Kein Abo, keine Folgekosten. Cloud-Diktier-Dienste kosten oft mehr pro Jahr. Alle Funktionen inklusive, alles läuft lokal auf deinem Mac.")
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }

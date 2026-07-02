@@ -406,7 +406,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 generateProfile: { [weak self] sample in await self?.formatter.describeVoice(from: sample) ?? nil },
                 onExport: { [weak self] in self?.exportData() ?? "" },
                 onImport: { [weak self] in self?.importData() ?? "" },
-                onInsertHistory: { [weak self] text in self?.insertFromHistory(text) }
+                onInsertHistory: { [weak self] text in self?.insertFromHistory(text) },
+                onSelectASR: { [weak self] id in await self?.switchASRModel(to: id) },
+                onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."
@@ -532,6 +534,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             await formatter.load()
             updateFormatterMenu()
         }
+    }
+
+    /// Modell-Empfehler: wechselt das Transkriptions-Modell zur Laufzeit.
+    private func switchASRModel(to id: String) async {
+        UserDefaults.standard.set(id, forKey: "asrModel")
+        state = .loadingModel
+        await transcriber.reload()
+        state = .idle
+    }
+
+    /// Modell-Empfehler: wechselt das Formatierungs-Modell zur Laufzeit.
+    private func switchFormatModel(to id: String) async {
+        UserDefaults.standard.set(id, forKey: "formatModel")
+        formatterMenuItem?.title = "Formatter: Modell wird geladen …"
+        await formatter.reload()
+        updateFormatterMenu()
     }
 
     // MARK: - Hotkey

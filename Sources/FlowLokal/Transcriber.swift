@@ -6,17 +6,31 @@ import WhisperKit
 /// danach lokal gecached) und transkribiert Float-Samples auf Deutsch.
 final class Transcriber {
 
-    /// macOS-Speed-Variante von large-v3-turbo (läuft auf der Apple Neural Engine).
-    /// Alternativen bei Bedarf: "large-v3-v20240930_626MB" (kompakter) oder
-    /// "large-v3" (volle Qualität, langsamer).
-    private let modelName = "large-v3-v20240930_turbo"
+    /// Gewähltes Modell aus den Einstellungen (Modell-Empfehler). Fällt auf die
+    /// macOS-Speed-Variante von large-v3-turbo zurück (Apple Neural Engine).
+    private var modelName: String {
+        UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
+    }
 
     private var pipe: WhisperKit?
 
     var isReady: Bool { pipe != nil }
+    /// Name des aktuell geladenen Modells (für die UI).
+    private(set) var loadedModel: String?
 
     func load() async throws {
-        pipe = try await WhisperKit(WhisperKitConfig(model: modelName))
+        let name = modelName
+        pipe = try await WhisperKit(WhisperKitConfig(model: name))
+        loadedModel = name
+    }
+
+    /// Wechselt zur Laufzeit auf das aktuell gewählte Modell. Schluckt Fehler
+    /// (die UI zeigt den Ladezustand separat).
+    func reload() async {
+        pipe = nil
+        loadedModel = nil
+        do { try await load() }
+        catch { NSLog("Transkriptions-Modell konnte nicht geladen werden: \(error)") }
     }
 
     func transcribe(_ samples: [Float], biasTerms: [String] = []) async throws -> String {

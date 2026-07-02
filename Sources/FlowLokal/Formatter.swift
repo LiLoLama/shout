@@ -16,8 +16,6 @@ import Tokenizers
 final class Formatter {
 
     struct Config {
-        /// Registriertes, schlankes Text-Gemma-4 (4-bit) — schnell, gut im Deutschen.
-        var modelID = "mlx-community/gemma-4-e4b-it-4bit"
         /// Diktate kürzer als das fügen wir roh ein (spart LLM-Latenz).
         var minCharsForFormatting = 40
     }
@@ -25,9 +23,15 @@ final class Formatter {
     private let config: Config
     private var container: ModelContainer?
 
+    /// Gewähltes Formatierungs-Modell aus den Einstellungen (Modell-Empfehler).
+    private var modelID: String {
+        UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
+    }
+
     private(set) var isReady = false
     private(set) var isLoading = false
-    var activeModelName: String { isReady ? config.modelID : "—" }
+    private(set) var loadedModel: String?
+    var activeModelName: String { isReady ? (loadedModel ?? modelID) : "—" }
 
     init(config: Config = Config()) {
         self.config = config
@@ -35,20 +39,32 @@ final class Formatter {
 
     // MARK: - Modell laden
 
-    /// Lädt (und beim ersten Mal: downloadet) das Modell in den Prozess.
-    /// Idempotent — mehrfaches Aufrufen schadet nicht.
+    /// Lädt (und beim ersten Mal: downloadet) das aktuell gewählte Modell in den
+    /// Prozess. Kann auch zum Wechseln erneut aufgerufen werden.
     func load() async {
-        guard !isReady, !isLoading else { return }
+        guard !isLoading else { return }
+        let id = modelID
+        if isReady, loadedModel == id { return }  // schon geladen
         isLoading = true
+        isReady = false
         defer { isLoading = false }
         do {
-            let cfg = ModelConfiguration(id: config.modelID)
+            let cfg = ModelConfiguration(id: id)
             container = try await #huggingFaceLoadModelContainer(configuration: cfg)
+            loadedModel = id
             isReady = true
         } catch {
             NSLog("Formatter-Modell konnte nicht geladen werden: \(error)")
             isReady = false
         }
+    }
+
+    /// Wechselt zur Laufzeit auf das aktuell gewählte Modell.
+    func reload() async {
+        isReady = false
+        loadedModel = nil
+        container = nil
+        await load()
     }
 
     // MARK: - Formatierung

@@ -1,17 +1,23 @@
 import SwiftUI
+import AppKit
 
-/// Konto & Lizenz — Plan anzeigen, shout. Pro per Lizenzschlüssel freischalten.
+/// Konto & Lizenz — Testphase-Status, Kauf (Einmalkauf) und Schlüssel-Aktivierung.
 struct LicenseView: View {
     @ObservedObject var license: LicenseStore
 
     @State private var keyInput = ""
     @State private var showError = false
 
-    private let benefits = [
-        ("arrow.triangle.2.circlepath", "Sync & Geräte", "Wörterbuch & Einstellungen zwischen deinen Macs abgleichen."),
-        ("globe", "Weitere Sprachen", "Diktieren in zusätzlichen Sprachen."),
-        ("person.2.fill", "Team", "Lizenzen und geteilte Wörterbücher fürs Team."),
-        ("bolt.fill", "Priorität", "Früher Zugriff auf neue Funktionen."),
+    // Kaufoptionen (anpassbar):
+    private let price = "29 €"
+    private let purchaseURL = "https://inthezone.studio/shout"
+
+    private let features = [
+        ("mic.fill", "Diktieren, überall", "Per Hotkey in jede App — komplett on-device."),
+        ("wand.and.stars", "Automatisches Aufräumen", "Füllwörter raus, Interpunktion, Listen."),
+        ("text.book.closed.fill", "Lernendes Wörterbuch", "Eigennamen & Korrekturen, auch automatisch."),
+        ("clock.arrow.circlepath", "Verlauf & Statistiken", "Alles nachlesbar, inkl. Sprachprofil."),
+        ("lock.fill", "Lokal & privat", "Kein Cloud, keine Konten, keine Datenweitergabe."),
     ]
 
     var body: some View {
@@ -22,28 +28,33 @@ struct LicenseView: View {
                 ConsolePanel {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 12) {
-                            Image(systemName: license.isPro ? "checkmark.seal.fill" : "seal")
-                                .font(.system(size: 30))
-                                .foregroundStyle(license.isPro ? Color.shoutLive : Color(white: 0.45))
+                            Image(systemName: statusIcon).font(.system(size: 30)).foregroundStyle(statusColor)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(license.isPro ? "shout. Pro" : "shout. Free")
-                                    .font(.system(size: 19, weight: .semibold)).foregroundStyle(Color(white: 0.95))
-                                Text(license.isPro ? "Lizenziert für \(license.licensedTo)" : "Grundfunktionen aktiv")
-                                    .font(.system(size: 12)).foregroundStyle(Color(white: 0.58))
+                                Text(statusTitle).font(.system(size: 19, weight: .semibold)).foregroundStyle(Color(white: 0.95))
+                                Text(statusSubtitle).font(.system(size: 12)).foregroundStyle(Color(white: 0.58))
                             }
                             Spacer()
-                            if license.isPro {
-                                Button("Lizenz entfernen") { license.deactivate() }
-                                    .buttonStyle(ConsoleButtonStyle())
+                            if license.isLicensed {
+                                Button("Lizenz entfernen") { license.deactivate() }.buttonStyle(ConsoleButtonStyle())
                             }
                         }
 
-                        if !license.isPro {
+                        if !license.isLicensed {
                             ConsoleDivider()
+                            HStack(spacing: 10) {
+                                Button {
+                                    if let url = URL(string: purchaseURL) { NSWorkspace.shared.open(url) }
+                                } label: {
+                                    Text("shout. kaufen — \(price)").fontWeight(.semibold)
+                                }
+                                .buttonStyle(BuyButtonStyle())
+                                Text("Einmalkauf · kein Abo").font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
+                            }
+
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Lizenzschlüssel eingeben").font(.system(size: 12, weight: .medium)).foregroundStyle(Color(white: 0.7))
                                 HStack(spacing: 8) {
-                                    TextField("shout. Pro Schlüssel …", text: $keyInput)
+                                    TextField("Schlüssel aus der Kaufbestätigung …", text: $keyInput)
                                         .textFieldStyle(.plain).font(.system(size: 12.5, design: .monospaced))
                                         .foregroundStyle(Color(white: 0.92))
                                         .padding(.horizontal, 10).padding(.vertical, 7)
@@ -63,32 +74,25 @@ struct LicenseView: View {
                     .padding(16)
                 }
 
-                ConsolePanel(title: license.isPro ? "In deinem Plan" : "shout. Pro schaltet frei") {
+                ConsolePanel(title: "Enthalten") {
                     VStack(spacing: 0) {
-                        ForEach(benefits.indices, id: \.self) { i in
-                            let b = benefits[i]
+                        ForEach(features.indices, id: \.self) { i in
+                            let f = features[i]
                             HStack(spacing: 12) {
-                                Image(systemName: b.0).font(.system(size: 14))
-                                    .foregroundStyle(license.isPro ? Color.shoutLive : Color(white: 0.5))
-                                    .frame(width: 22)
+                                Image(systemName: f.0).font(.system(size: 14)).foregroundStyle(Color.shoutLive).frame(width: 22)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(b.1).font(.system(size: 13.5, weight: .medium)).foregroundStyle(Color(white: 0.9))
-                                    Text(b.2).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
+                                    Text(f.1).font(.system(size: 13.5, weight: .medium)).foregroundStyle(Color(white: 0.9))
+                                    Text(f.2).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                                 }
                                 Spacer()
-                                if license.isPro {
-                                    Text("Bald").font(.system(size: 10, weight: .semibold))
-                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Capsule().fill(Color.white.opacity(0.10))).foregroundStyle(Color(white: 0.5))
-                                }
                             }
                             .padding(.horizontal, 15).padding(.vertical, 12)
-                            if i < benefits.count - 1 { ConsoleDivider() }
+                            if i < features.count - 1 { ConsoleDivider() }
                         }
                     }
                 }
 
-                Text("Alle Kernfunktionen (Diktat, Formatierung, Wörterbuch, Verlauf, Statistiken) sind bereits ohne Pro nutzbar. Pro schaltet künftige Zusatzfunktionen frei.")
+                Text("Einmalkauf für \(price) — kein Abo, keine Folgekosten. Alle Funktionen inklusive, alles läuft lokal auf deinem Mac.")
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -99,8 +103,42 @@ struct LicenseView: View {
         .scrollContentBackground(.hidden)
     }
 
+    // MARK: - Statusdarstellung
+
+    private var statusIcon: String {
+        if license.isLicensed { return "checkmark.seal.fill" }
+        return license.isTrialActive ? "clock.badge.checkmark" : "lock.fill"
+    }
+    private var statusColor: Color {
+        if license.isLicensed || license.isTrialActive { return Color.shoutLive }
+        return Color(white: 0.5)
+    }
+    private var statusTitle: String {
+        if license.isLicensed { return "shout. — Vollversion" }
+        return license.isTrialActive ? "Testphase" : "Testphase abgelaufen"
+    }
+    private var statusSubtitle: String {
+        if license.isLicensed { return "Lizenziert für \(license.licensedTo)" }
+        if license.isTrialActive {
+            let d = license.trialDaysRemaining
+            return "Noch \(d) \(d == 1 ? "Tag" : "Tage") — voller Zugriff."
+        }
+        return "Kaufe shout., um weiter zu diktieren."
+    }
+
     private func activate() {
         showError = !license.activate(keyInput)
         if !showError { keyInput = "" }
+    }
+}
+
+/// Hervorgehobener Kauf-Knopf in der Signalfarbe.
+private struct BuyButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.shoutLive))
+            .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }

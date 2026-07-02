@@ -45,6 +45,13 @@ struct DashboardView: View {
         return "\(settings.hotkeyDescription) \(verb)"
     }
 
+    private var planActive: Bool { license.isLicensed || license.isTrialActive }
+    private var planBadge: String {
+        if license.isLicensed { return "Aktiv" }
+        if license.isTrialActive { return "Test · \(license.trialDaysRemaining)d" }
+        return "Abgelaufen"
+    }
+
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Kopfbereich: Wortmarke + Status
@@ -54,11 +61,11 @@ struct DashboardView: View {
                         Text("shout").font(.system(size: 23, weight: .bold))
                         Text(".").font(.system(size: 23, weight: .bold)).foregroundStyle(Color.shoutLive)
                     }
-                    Text(license.isPro ? "Pro" : "Free")
+                    Text(planBadge)
                         .font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Capsule().fill(license.isPro ? Color.shoutLive.opacity(0.20) : Color.white.opacity(0.10)))
-                        .foregroundStyle(license.isPro ? Color.shoutLive : Color(white: 0.6))
+                        .background(Capsule().fill(planActive ? Color.shoutLive.opacity(0.20) : Color.white.opacity(0.10)))
+                        .foregroundStyle(planActive ? Color.shoutLive : Color(white: 0.6))
                 }
                 HStack(spacing: 6) {
                     Circle().fill(Color.shoutLive).frame(width: 6, height: 6)

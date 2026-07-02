@@ -635,6 +635,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Aufnahme-Steuerung
 
     private func startRecording() {
+        // Testphase abgelaufen und keine Lizenz → Kauf-Seite statt Aufnahme.
+        guard license.isActive else {
+            openDashboard(.konto)
+            return
+        }
         // Ziel-App merken, solange sie noch im Vordergrund ist.
         targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         // Aktuelles Mikrofon aus den Einstellungen (Menü oder Dashboard) übernehmen.

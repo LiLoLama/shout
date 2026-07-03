@@ -1,8 +1,10 @@
 import AVFoundation
 
-/// Dezente, synthetisierte Klang-Signale (à la Wispr Flow): kurz, weich, warm —
-/// keine Asset-Dateien, alles zur Laufzeit gerendert. Reine Sinustöne mit sanfter
-/// Hüllkurve und leiser Oktav-Beimischung wirken wertig statt „System-Beep".
+/// Dezente, synthetisierte Klang-Signale (à la Wispr Flow): eher perkussiv als
+/// tonal — weiche, dumpfe „Tocks" mit schnellem Abfall. Alles zur Laufzeit
+/// gerendert (keine Asset-Dateien, offline). Für den wertigen, gedämpften
+/// Charakter: tiefer Körper + Sub-Oktave, ein kurzer Noise-Transient für die
+/// Anschlag-Textur und ein Tiefpass, der die Höhen wegnimmt.
 @MainActor
 final class SoundCues {
     enum Cue { case start, stop, done }
@@ -20,10 +22,10 @@ final class SoundCues {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
-        // Kurze, sanft ansteigende bzw. abfallende Zwei-/Einton-Motive.
-        buffers[.start] = render([(587.33, 0.00, 0.10), (880.00, 0.05, 0.14)], format: format) // D5 → A5, „hört zu"
-        buffers[.stop]  = render([(783.99, 0.00, 0.09), (523.25, 0.05, 0.13)], format: format) // G5 → C5, „aufgenommen"
-        buffers[.done]  = render([(659.25, 0.00, 0.08), (987.77, 0.05, 0.15)], format: format) // E5 → B5, „fertig"
+        // freq = Körper-Tonhöhe, decay = Abfall (perkussiv), cutoff = Dämpfung (klein = dumpfer).
+        buffers[.start] = renderHit(freq: 250, decay: 0.075, cutoff: 1400, click: 0.30, format: format) // „tuk" – mittig
+        buffers[.stop]  = renderHit(freq: 165, decay: 0.105, cutoff: 900,  click: 0.20, format: format) // „tok" – tiefer, schließend
+        buffers[.done]  = renderHit(freq: 320, decay: 0.060, cutoff: 1600, click: 0.34, format: format) // kurzer, heller Anschlag
     }
 
     func play(_ cue: Cue) {
@@ -37,41 +39,38 @@ final class SoundCues {
         }
     }
 
-    // MARK: - Synthese
+    // MARK: - Perkussions-Synthese
 
-    private func render(_ notes: [(freq: Double, start: Double, dur: Double)],
-                        format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        let total = (notes.map { $0.start + $0.dur }.max() ?? 0.2) + 0.03
+    private func renderHit(freq: Double, decay: Double, cutoff: Double,
+                           click: Double, format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let total = decay * 4 + 0.02
         let frames = AVAudioFrameCount(total * sampleRate)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
               let channels = buffer.floatChannelData else { return nil }
         buffer.frameLength = frames
 
+        // Ein-Pol-Tiefpass (rundet den Anschlag ab → dumpf/wertig).
+        let dt = 1.0 / sampleRate
+        let rc = 1.0 / (2 * .pi * cutoff)
+        let alpha = dt / (rc + dt)
+        var lp = 0.0
+
         let count = Int(frames)
         for i in 0..<count {
             let t = Double(i) / sampleRate
-            var sample = 0.0
-            for note in notes {
-                let local = t - note.start
-                guard local >= 0, local <= note.dur else { continue }
-                let env = envelope(local, dur: note.dur)
-                let fundamental = sin(2 * .pi * note.freq * local)
-                let octave = 0.16 * sin(2 * .pi * note.freq * 2 * local)   // Wärme
-                sample += env * (fundamental + octave)
-            }
-            let value = Float(sample * 0.15)   // leiser Master-Pegel
+            let env = exp(-t / decay)                                   // perkussiver Abfall
+            let body = sin(2 * .pi * freq * t)
+                     + 0.45 * sin(2 * .pi * (freq / 2) * t)             // Sub-Oktave = Gewicht
+            let clickEnv = exp(-t / 0.005)                              // sehr kurzer Anschlag
+            let clk = click * sin(2 * .pi * freq * 4 * t) * clickEnv
+            let noise = (Double.random(in: -1...1)) * exp(-t / 0.010) * 0.12  // „Tap"-Textur
+
+            let raw = env * (body * 0.9 + noise) + clk * 0.5
+            lp += alpha * (raw - lp)                                    // Tiefpass
+            let value = Float(lp * 0.26)                               // leiser Master-Pegel
             channels[0][i] = value
             if format.channelCount > 1 { channels[1][i] = value }
         }
         return buffer
-    }
-
-    /// Sanfte Hüllkurve: kurzer Attack, weicher Release — kein Knacken.
-    private func envelope(_ t: Double, dur: Double) -> Double {
-        let attack = 0.010
-        let release = min(0.07, dur * 0.6)
-        if t < attack { return t / attack }
-        if t > dur - release { return max(0, (dur - t) / release) }
-        return 1
     }
 }

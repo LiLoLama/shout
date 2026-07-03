@@ -822,6 +822,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Pille bleibt sichtbar und wechselt in die „Verarbeiten"-Animation,
         // bis der fertige Text eingefügt ist.
         recIndicator.showProcessing()
+        sounds.play(.stop)
         state = .working
         let bundleID = targetBundleID
         let useFormatting = formattingEnabled
@@ -833,8 +834,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             do {
                 let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)
                 var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                // Aufgenommen, aber nichts erkannt → dezenter „nichts"-Ton statt Stille.
-                guard !output.isEmpty else { sounds.play(.stop); return }
+                guard !output.isEmpty else { return }
 
                 // Gesprochene Befehle („Komma", „neue Zeile" …) vor der Formatierung anwenden.
                 if useCommands { output = SpeechCommands.apply(to: output) }

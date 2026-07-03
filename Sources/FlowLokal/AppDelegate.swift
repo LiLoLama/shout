@@ -46,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private let dashboardModel = DashboardModel()
     private var dashboardWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
 
     // Hotkey-Aufnahme (Recorder in den Einstellungen)
     private var isCapturingHotkey = false
@@ -136,11 +137,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             name: NSWorkspace.didActivateApplicationNotification, object: nil
         )
 
-        // Beim allerersten Start das Hauptfenster zeigen (sichtbare App statt nur Menüleiste).
-        if !UserDefaults.standard.bool(forKey: "didShowDashboard") {
+        // Erststart: Onboarding-Assistent; danach das Hauptfenster.
+        if !UserDefaults.standard.bool(forKey: "didCompleteOnboarding") {
+            openOnboarding()
+        } else if !UserDefaults.standard.bool(forKey: "didShowDashboard") {
             UserDefaults.standard.set(true, forKey: "didShowDashboard")
             openDashboard(.aufnahme)
         }
+    }
+
+    private func openOnboarding() {
+        if onboardingWindow == nil {
+            let view = OnboardingView(
+                dashboard: dashboardModel, settings: settings,
+                onFinish: { [weak self] in self?.finishOnboarding() }
+            )
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+            window.title = "shout."
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.delegate = self
+            window.center()
+            onboardingWindow = window
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func finishOnboarding() {
+        UserDefaults.standard.set(true, forKey: "didCompleteOnboarding")
+        UserDefaults.standard.set(true, forKey: "didShowDashboard")
+        onboardingWindow?.close()
+        onboardingWindow = nil
+        openDashboard(.aufnahme)
     }
 
     private func handleLearnedCorrection(wrong: String, right: String) {
@@ -518,12 +552,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let closing = notification.object as? NSWindow
         if closing === correctionWindow { correctionWindow = nil }   // Retention lösen
+        if closing === onboardingWindow { onboardingWindow = nil }
 
         // Zurück zur reinen Menu-Bar-App (kein Dock-Icon) nur, wenn wirklich kein
         // eigenes Fenster mehr sichtbar ist (das schließende zählt nicht mehr).
         let dashVisible = dashboardWindow?.isVisible == true && dashboardWindow !== closing
         let corrVisible = correctionWindow?.isVisible == true && correctionWindow !== closing
-        if !dashVisible && !corrVisible {
+        let onbVisible = onboardingWindow?.isVisible == true && onboardingWindow !== closing
+        if !dashVisible && !corrVisible && !onbVisible {
             NSApp.setActivationPolicy(.accessory)
         }
     }
@@ -561,6 +597,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             do {
                 try await transcriber.load(onProgress: asrProgressHandler())
                 dashboardModel.activeASR = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
+                dashboardModel.transcriberReady = true
                 state = .idle
             } catch {
                 statusMenuItem?.title = "Modell-Ladefehler: \(error.localizedDescription)"
@@ -780,14 +817,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func stopAndProcess() {
         let samples = recorder.stop()
-        recIndicator.hide()
+        // Pille bleibt sichtbar und wechselt in die „Verarbeiten"-Animation,
+        // bis der fertige Text eingefügt ist.
+        recIndicator.showProcessing()
         state = .working
         let bundleID = targetBundleID
         let useFormatting = formattingEnabled
         let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled")
 
         Task {
-            defer { state = .idle }
+            defer { state = .idle; recIndicator.hide() }
             guard !samples.isEmpty else { return }
             do {
                 let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)

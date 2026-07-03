@@ -15,6 +15,7 @@ final class DashboardModel: ObservableObject {
     @Published var asrProgress: Double?       // Download-/Ladefortschritt 0…1
     @Published var formatProgress: Double?
     @Published var modelNote: String?         // z. B. Hinweis „Wechsel während Aufnahme nicht möglich"
+    @Published var transcriberReady = false   // Transkriptions-Modell geladen (fürs Onboarding)
 
     var isSwitchingModel: Bool { asrLoadingID != nil || formatLoadingID != nil }
 }

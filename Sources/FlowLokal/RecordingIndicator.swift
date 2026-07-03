@@ -7,18 +7,34 @@ import SwiftUI
 @MainActor
 final class RecordingIndicator {
 
-    /// Pegelmodell, an das die schwebende Pille gebunden ist.
+    enum Mode { case recording, processing }
+
+    /// Pegel-/Zustandsmodell, an das die schwebende Pille gebunden ist.
     final class LevelModel: ObservableObject {
         @Published var level: Float = 0
+        @Published var mode: Mode = .recording
     }
 
     private let model = LevelModel()
     private var panel: NSPanel?
     private let size = NSSize(width: 72, height: 26)
 
+    /// Zeigt die Pille im Aufnahme-Modus (pegel-reaktive Wellenform).
     func show() {
-        guard panel == nil else { return }
         model.level = 0
+        model.mode = .recording
+        ensurePanel()
+    }
+
+    /// Wechselt in den Verarbeiten-Modus (animierte, indeterminierte Welle) —
+    /// bleibt sichtbar, bis der fertige Text eingefügt ist.
+    func showProcessing() {
+        model.mode = .processing
+        ensurePanel()
+    }
+
+    private func ensurePanel() {
+        guard panel == nil else { return }
 
         let hosting = NSHostingView(rootView: RecordingPill(model: model))
         hosting.frame = NSRect(origin: .zero, size: size)
@@ -79,12 +95,11 @@ private struct RecordingPill: View {
     private let maxH: CGFloat = 21
 
     var body: some View {
-        HStack(spacing: 2.5) {
-            ForEach(weights.indices, id: \.self) { i in
-                Capsule()
-                    .fill(Color.shoutLive)
-                    .frame(width: 2.8, height: height(i))
-                    .animation(.easeOut(duration: 0.1), value: model.level)
+        Group {
+            if model.mode == .processing {
+                processingBars
+            } else {
+                recordingBars
             }
         }
         .frame(width: 72, height: 26)
@@ -92,7 +107,35 @@ private struct RecordingPill: View {
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
     }
 
-    private func height(_ i: Int) -> CGFloat {
+    /// Aufnahme: Balken reagieren auf den Mikrofon-Pegel.
+    private var recordingBars: some View {
+        HStack(spacing: 2.5) {
+            ForEach(weights.indices, id: \.self) { i in
+                Capsule()
+                    .fill(Color.shoutLive)
+                    .frame(width: 2.8, height: recordingHeight(i))
+                    .animation(.easeOut(duration: 0.1), value: model.level)
+            }
+        }
+    }
+
+    /// Verarbeiten: eine durchlaufende Welle (indeterminiert), selbstlaufend.
+    private var processingBars: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 2.5) {
+                ForEach(weights.indices, id: \.self) { i in
+                    let phase = sin(t * 5.5 - Double(i) * 0.7)       // -1…1, wandert
+                    let norm = CGFloat((phase + 1) / 2)               // 0…1
+                    Capsule()
+                        .fill(Color.shoutLive.opacity(0.35 + 0.65 * norm))
+                        .frame(width: 2.8, height: minH + (maxH * 0.72 - minH) * norm)
+                }
+            }
+        }
+    }
+
+    private func recordingHeight(_ i: Int) -> CGFloat {
         let l = CGFloat(model.level)
         return minH + (maxH - minH) * min(1, l * weights[i])
     }

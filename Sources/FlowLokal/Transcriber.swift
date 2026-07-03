@@ -25,7 +25,10 @@ actor Transcriber {
     /// Name des aktuell geladenen Modells (für die UI).
     private(set) var loadedModel: String?
 
-    func load() async throws {
+    /// Lädt das gewählte Modell (Cache-first, offline-fähig wie gehabt).
+    /// `onProgress` bleibt aus API-Gründen erhalten; WhisperKit lädt seinen
+    /// festen, kleinen Modellsatz ohne separaten Fortschritt.
+    func load(onProgress: (@Sendable (Double) -> Void)? = nil) async throws {
         let name = modelName
         pipe = try await WhisperKit(WhisperKitConfig(model: name))
         loadedModel = name
@@ -34,10 +37,10 @@ actor Transcriber {
     /// Wechselt zur Laufzeit auf das aktuell gewählte Modell. Wirft bei Fehler,
     /// damit der Aufrufer den Status korrekt setzen (und ggf. zurückrollen) kann.
     /// Durch die Actor-Isolation laufen konkurrierende Aufrufe serialisiert.
-    func reload() async throws {
+    func reload(onProgress: (@Sendable (Double) -> Void)? = nil) async throws {
         pipe = nil
         loadedModel = nil
-        try await load()
+        try await load(onProgress: onProgress)
     }
 
     func transcribe(_ samples: [Float], biasTerms: [String] = []) async throws -> String {

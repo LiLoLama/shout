@@ -44,6 +44,7 @@ targets:
         # Menu-Bar-App ohne Dock-Icon
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln."
+        INFOPLIST_KEY_NSContactsUsageDescription: "shout. liest Namen aus deinen Kontakten nur lokal, um sie ins Wörterbuch zu übernehmen. Es werden keine Daten übertragen."
         # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"

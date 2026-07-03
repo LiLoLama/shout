@@ -43,7 +43,7 @@ actor Formatter {
     /// Prozess. Durch die Actor-Isolation serialisieren sich konkurrierende
     /// Aufrufe automatisch — ein Wechsel während eines laufenden Loads wird also
     /// nicht mehr verschluckt, sondern läuft danach mit der aktuellen Modell-ID.
-    func load() async {
+    func load(onProgress: (@Sendable (Double) -> Void)? = nil) async {
         let id = modelID
         if isReady, loadedModel == id { return }  // schon das richtige Modell geladen
         isLoading = true
@@ -53,7 +53,9 @@ actor Formatter {
         defer { isLoading = false }
         do {
             let cfg = ModelConfiguration(id: id)
-            container = try await #huggingFaceLoadModelContainer(configuration: cfg)
+            container = try await #huggingFaceLoadModelContainer(configuration: cfg) { progress in
+                onProgress?(progress.fractionCompleted)
+            }
             loadedModel = id
             isReady = true
         } catch {
@@ -63,11 +65,11 @@ actor Formatter {
     }
 
     /// Wechselt zur Laufzeit auf das aktuell gewählte Modell.
-    func reload() async {
+    func reload(onProgress: (@Sendable (Double) -> Void)? = nil) async {
         isReady = false
         loadedModel = nil
         container = nil
-        await load()
+        await load(onProgress: onProgress)
     }
 
     // MARK: - Formatierung

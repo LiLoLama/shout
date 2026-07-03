@@ -6,6 +6,7 @@ struct SettingsView: View {
     let onRecordHotkey: () -> Void
 
     @AppStorage("formattingEnabled") private var formattingEnabled = true
+    @AppStorage("speechCommandsEnabled") private var speechCommands = false
     @AppStorage("preferredMicUID") private var micUID = ""
     @State private var devices: [AudioDevices.Device] = []
 
@@ -51,6 +52,11 @@ struct SettingsView: View {
                     FieldRow(title: "Text automatisch aufräumen",
                              help: "Füllwörter raus, Satzzeichen und Aufzählungen setzen.") {
                         Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: "Sprachbefehle",
+                             help: "‚Komma', ‚Punkt', ‚Fragezeichen', ‚neue Zeile', ‚neuer Absatz' werden zu echten Satzzeichen/Umbrüchen.") {
+                        Toggle("", isOn: $speechCommands).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                 }
 

@@ -543,25 +543,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     // MARK: - Modelle laden
 
+    /// Erzeugt einen Fortschritts-Callback, der den (Main-Actor-)DashboardModel füttert.
+    private func asrProgressHandler() -> @Sendable (Double) -> Void {
+        let model = dashboardModel
+        return { frac in Task { @MainActor in model.asrProgress = frac } }
+    }
+    private func formatProgressHandler() -> @Sendable (Double) -> Void {
+        let model = dashboardModel
+        return { frac in Task { @MainActor in model.formatProgress = frac } }
+    }
+
     private func loadModel() {
         state = .loadingModel
+        dashboardModel.asrLoadingID = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
+        dashboardModel.asrProgress = 0
         Task {
             do {
-                try await transcriber.load()
+                try await transcriber.load(onProgress: asrProgressHandler())
                 dashboardModel.activeASR = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
                 state = .idle
             } catch {
                 statusMenuItem?.title = "Modell-Ladefehler: \(error.localizedDescription)"
                 NSLog("Modell-Ladefehler: \(error)")
             }
+            dashboardModel.asrLoadingID = nil
+            dashboardModel.asrProgress = nil
         }
     }
 
     private func loadFormatter() {
         // Ladezustand sofort sichtbar machen (load() ist asynchron und kann dauern).
         formatterMenuItem?.title = "Formatter: Modell wird geladen …"
+        dashboardModel.formatLoadingID = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
+        dashboardModel.formatProgress = 0
         Task {
-            await formatter.load()
+            await formatter.load(onProgress: formatProgressHandler())
+            dashboardModel.formatLoadingID = nil
+            dashboardModel.formatProgress = nil
             updateFormatterMenu()
         }
     }
@@ -578,20 +596,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let previous = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
         UserDefaults.standard.set(id, forKey: "asrModel")
         dashboardModel.asrLoadingID = id
+        dashboardModel.asrProgress = 0
         state = .loadingModel
         do {
-            try await transcriber.reload()
+            try await transcriber.reload(onProgress: asrProgressHandler())
             dashboardModel.activeASR = id
         } catch {
             // Laden fehlgeschlagen (z. B. offline) → vorheriges Modell wiederherstellen,
             // damit die App funktionsfähig bleibt und nicht still Diktate verschluckt.
             NSLog("ASR-Modellwechsel fehlgeschlagen: \(error)")
             UserDefaults.standard.set(previous, forKey: "asrModel")
-            try? await transcriber.reload()
+            try? await transcriber.reload(onProgress: asrProgressHandler())
             dashboardModel.activeASR = previous
             dashboardModel.modelNote = "Modell konnte nicht geladen werden (offline?). Vorheriges Modell bleibt aktiv."
         }
         dashboardModel.asrLoadingID = nil
+        dashboardModel.asrProgress = nil
         state = .idle
     }
 
@@ -603,10 +623,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardModel.modelNote = nil
         UserDefaults.standard.set(id, forKey: "formatModel")
         dashboardModel.formatLoadingID = id
+        dashboardModel.formatProgress = 0
         updateFormatterMenu()
-        await formatter.reload()
+        await formatter.reload(onProgress: formatProgressHandler())
         dashboardModel.activeFormat = id
         dashboardModel.formatLoadingID = nil
+        dashboardModel.formatProgress = nil
         updateFormatterMenu()
     }
 
@@ -762,6 +784,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         state = .working
         let bundleID = targetBundleID
         let useFormatting = formattingEnabled
+        let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled")
 
         Task {
             defer { state = .idle }
@@ -770,6 +793,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)
                 var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !output.isEmpty else { return }
+
+                // Gesprochene Befehle („Komma", „neue Zeile" …) vor der Formatierung anwenden.
+                if useCommands { output = SpeechCommands.apply(to: output) }
 
                 if useFormatting {
                     output = await formatter.format(output, bundleID: bundleID, termHint: dictionary.termHint)

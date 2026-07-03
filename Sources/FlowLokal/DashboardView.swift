@@ -12,6 +12,8 @@ final class DashboardModel: ObservableObject {
     @Published var activeFormat = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
     @Published var asrLoadingID: String?      // gerade ladende ASR-Modell-ID
     @Published var formatLoadingID: String?   // gerade ladende Format-Modell-ID
+    @Published var asrProgress: Double?       // Download-/Ladefortschritt 0…1
+    @Published var formatProgress: Double?
     @Published var modelNote: String?         // z. B. Hinweis „Wechsel während Aufnahme nicht möglich"
 
     var isSwitchingModel: Bool { asrLoadingID != nil || formatLoadingID != nil }

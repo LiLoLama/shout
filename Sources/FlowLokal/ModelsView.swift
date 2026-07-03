@@ -47,7 +47,8 @@ struct ModelsView: View {
                         ForEach(ModelCatalog.asr.indices, id: \.self) { i in
                             let o = ModelCatalog.asr[i]
                             modelRow(o, selected: asrID == o.id, recommended: recASR.id == o.id,
-                                     loading: loadingASR == o.id) { selectASR(o.id) }
+                                     loading: loadingASR == o.id,
+                                     progress: loadingASR == o.id ? model.asrProgress : nil) { selectASR(o.id) }
                             if i < ModelCatalog.asr.count - 1 { ConsoleDivider() }
                         }
                     }
@@ -58,7 +59,8 @@ struct ModelsView: View {
                         ForEach(ModelCatalog.formatting.indices, id: \.self) { i in
                             let o = ModelCatalog.formatting[i]
                             modelRow(o, selected: formatID == o.id, recommended: recFormat.id == o.id,
-                                     loading: loadingFormat == o.id) { selectFormat(o.id) }
+                                     loading: loadingFormat == o.id,
+                                     progress: loadingFormat == o.id ? model.formatProgress : nil) { selectFormat(o.id) }
                             if i < ModelCatalog.formatting.count - 1 { ConsoleDivider() }
                         }
                     }
@@ -116,7 +118,8 @@ struct ModelsView: View {
                         let m = remote[i]
                         remoteRow(m, selected: formatID == m.id,
                                   recommended: remoteRecommended?.id == m.id,
-                                  loading: loadingFormat == m.id) { selectFormat(m.id) }
+                                  loading: loadingFormat == m.id,
+                                  progress: loadingFormat == m.id ? model.formatProgress : nil) { selectFormat(m.id) }
                         if i < remote.count - 1 { ConsoleDivider() }
                     }
                 }
@@ -137,7 +140,7 @@ struct ModelsView: View {
 
     @ViewBuilder
     private func remoteRow(_ m: RemoteModel, selected: Bool, recommended: Bool,
-                           loading: Bool, action: @escaping () -> Void) -> some View {
+                           loading: Bool, progress: Double?, action: @escaping () -> Void) -> some View {
         let known = m.minRAMGB != nil
         let tooBig = (m.minRAMGB ?? 0) > ram
         Button(action: action) {
@@ -155,13 +158,13 @@ struct ModelsView: View {
                     Text(remoteSubtitle(m)).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                 }
                 Spacer(minLength: 8)
-                if loading { ProgressView().controlSize(.small).tint(Color.shoutLive) }
+                if loading { loadingIndicator(progress) }
             }
             .padding(.horizontal, 15).padding(.vertical, 11)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(loadingASR != nil || loadingFormat != nil)
+        .disabled(model.isSwitchingModel)
     }
 
     private func remoteSubtitle(_ m: RemoteModel) -> String {
@@ -219,7 +222,7 @@ struct ModelsView: View {
 
     @ViewBuilder
     private func modelRow(_ o: ModelCatalog.Option, selected: Bool, recommended: Bool,
-                          loading: Bool, action: @escaping () -> Void) -> some View {
+                          loading: Bool, progress: Double?, action: @escaping () -> Void) -> some View {
         let tooBig = ram < o.minRAMGB
         Button(action: action) {
             HStack(spacing: 12) {
@@ -234,15 +237,28 @@ struct ModelsView: View {
                     Text(o.note).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                 }
                 Spacer(minLength: 8)
-                if loading {
-                    ProgressView().controlSize(.small).tint(Color.shoutLive)
-                }
+                if loading { loadingIndicator(progress) }
             }
             .padding(.horizontal, 15).padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(loadingASR != nil || loadingFormat != nil)
+        .disabled(model.isSwitchingModel)
+    }
+
+    /// Fortschrittsbalken mit Prozent während des Downloads, sonst unbestimmter Spinner.
+    @ViewBuilder
+    private func loadingIndicator(_ progress: Double?) -> some View {
+        if let p = progress, p > 0.0001, p < 0.999 {
+            HStack(spacing: 6) {
+                ProgressView(value: p).progressViewStyle(.linear).frame(width: 66).tint(Color.shoutLive)
+                Text("\(Int(p * 100)) %")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color(white: 0.6)).monospacedDigit()
+            }
+        } else {
+            ProgressView().controlSize(.small).tint(Color.shoutLive)
+        }
     }
 
     private func tag(_ text: String, color: Color) -> some View {

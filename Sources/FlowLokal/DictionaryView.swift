@@ -1,4 +1,7 @@
 import SwiftUI
+import AppKit
+import Contacts
+import UniformTypeIdentifiers
 
 /// Wörterbuch im Mischpult-Look: Begriffe + Korrekturen selbst verwalten.
 struct DictionaryView: View {
@@ -7,6 +10,7 @@ struct DictionaryView: View {
     @State private var newTerm = ""
     @State private var newWrong = ""
     @State private var newRight = ""
+    @State private var importStatus = ""
 
     var body: some View {
         ScrollView {
@@ -18,6 +22,13 @@ struct DictionaryView: View {
                             Button("Hinzufügen", action: addTerm)
                                 .buttonStyle(ConsoleButtonStyle())
                                 .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                        HStack(spacing: 8) {
+                            Button("Aus Datei (CSV/TXT) …", action: importFromFile).buttonStyle(ConsoleButtonStyle())
+                            Button("Aus Kontakten …", action: importFromContacts).buttonStyle(ConsoleButtonStyle())
+                            if !importStatus.isEmpty {
+                                Text(importStatus).font(.system(size: 11)).foregroundStyle(Color.shoutLive)
+                            }
                         }
                         if dictionary.contents.terms.isEmpty {
                             Text("Noch keine Begriffe.").font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
@@ -86,6 +97,51 @@ struct DictionaryView: View {
     }
     private func addCorrection() {
         dictionary.addCorrection(wrong: newWrong, right: newRight); newWrong = ""; newRight = ""
+    }
+
+    // MARK: - Massen-Import
+
+    /// Importiert Begriffe aus einer CSV/TXT — jeweils das erste Feld pro Zeile.
+    private func importFromFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.commaSeparatedText, .plainText, .text]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url,
+              let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+
+        let before = dictionary.contents.terms.count
+        for line in content.split(whereSeparator: \.isNewline) {
+            let field = line.split(separator: ",", maxSplits: 1).first.map(String.init) ?? String(line)
+            let term = field.trimmingCharacters(in: CharacterSet(charactersIn: " \t\"'"))
+            if !term.isEmpty { dictionary.addTerm(term) }
+        }
+        importStatus = "\(dictionary.contents.terms.count - before) neue Begriffe."
+    }
+
+    /// Importiert Vor-/Nachnamen und Firmen aus den lokalen Kontakten (bleiben on-device).
+    private func importFromContacts() {
+        let store = CNContactStore()
+        store.requestAccess(for: .contacts) { granted, _ in
+            guard granted else {
+                Task { @MainActor in importStatus = "Kein Zugriff auf Kontakte." }
+                return
+            }
+            let keys = [CNContactGivenNameKey, CNContactFamilyNameKey,
+                        CNContactOrganizationNameKey] as [CNKeyDescriptor]
+            let request = CNContactFetchRequest(keysToFetch: keys)
+            var names = Set<String>()
+            try? store.enumerateContacts(with: request) { c, _ in
+                for n in [c.givenName, c.familyName, c.organizationName]
+                where !n.trimmingCharacters(in: .whitespaces).isEmpty {
+                    names.insert(n)
+                }
+            }
+            Task { @MainActor in
+                let before = dictionary.contents.terms.count
+                for n in names { dictionary.addTerm(n) }
+                importStatus = "\(dictionary.contents.terms.count - before) Namen aus Kontakten."
+            }
+        }
     }
 }
 

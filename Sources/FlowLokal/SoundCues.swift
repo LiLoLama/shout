@@ -22,10 +22,10 @@ final class SoundCues {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
-        // freq = Körper-Tonhöhe, decay = Abfall (perkussiv), cutoff = Dämpfung (klein = dumpfer).
-        buffers[.start] = renderHit(freq: 250, decay: 0.075, cutoff: 1400, click: 0.30, format: format) // „tuk" – mittig
-        buffers[.stop]  = renderHit(freq: 165, decay: 0.105, cutoff: 900,  click: 0.20, format: format) // „tok" – tiefer, schließend
-        buffers[.done]  = renderHit(freq: 320, decay: 0.060, cutoff: 1600, click: 0.34, format: format) // kurzer, heller Anschlag
+        // Holz-Knock: freq = Resonanz-Tonhöhe, decay = (kurzer) Abfall, cutoff = Dämpfung.
+        buffers[.start] = renderKnock(freq: 430, decay: 0.050, cutoff: 2400, format: format) // Klopfen, mittig
+        buffers[.stop]  = renderKnock(freq: 300, decay: 0.060, cutoff: 1900, format: format) // tiefer, schließend
+        buffers[.done]  = renderKnock(freq: 540, decay: 0.038, cutoff: 2700, format: format) // kurz & leicht
     }
 
     func play(_ cue: Cue) {
@@ -39,17 +39,21 @@ final class SoundCues {
         }
     }
 
-    // MARK: - Perkussions-Synthese
+    // MARK: - Holz-Knock-Synthese
 
-    private func renderHit(freq: Double, decay: Double, cutoff: Double,
-                           click: Double, format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        let total = decay * 4 + 0.02
+    // Inharmonische Moden (wie ein angeschlagener Holzkörper) — bewusst NICHT
+    // ganzzahlig, damit es hölzern statt tonal klingt.
+    private let modes: [(ratio: Double, gain: Double)] = [(1.0, 1.0), (2.42, 0.5), (4.10, 0.28)]
+
+    private func renderKnock(freq: Double, decay: Double, cutoff: Double,
+                             format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let total = decay * 3 + 0.02
         let frames = AVAudioFrameCount(total * sampleRate)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
               let channels = buffer.floatChannelData else { return nil }
         buffer.frameLength = frames
 
-        // Ein-Pol-Tiefpass (rundet den Anschlag ab → dumpf/wertig).
+        // Ein-Pol-Tiefpass gegen harsche Höhen (hält es weich/hölzern).
         let dt = 1.0 / sampleRate
         let rc = 1.0 / (2 * .pi * cutoff)
         let alpha = dt / (rc + dt)
@@ -58,16 +62,21 @@ final class SoundCues {
         let count = Int(frames)
         for i in 0..<count {
             let t = Double(i) / sampleRate
-            let env = exp(-t / decay)                                   // perkussiver Abfall
-            let body = sin(2 * .pi * freq * t)
-                     + 0.45 * sin(2 * .pi * (freq / 2) * t)             // Sub-Oktave = Gewicht
-            let clickEnv = exp(-t / 0.005)                              // sehr kurzer Anschlag
-            let clk = click * sin(2 * .pi * freq * 4 * t) * clickEnv
-            let noise = (Double.random(in: -1...1)) * exp(-t / 0.010) * 0.12  // „Tap"-Textur
 
-            let raw = env * (body * 0.9 + noise) + clk * 0.5
-            lp += alpha * (raw - lp)                                    // Tiefpass
-            let value = Float(lp * 0.26)                               // leiser Master-Pegel
+            // Kurze, inharmonische Resonanz — höhere Moden klingen schneller ab.
+            var resonance = 0.0
+            for m in modes {
+                let d = decay / (1.0 + (m.ratio - 1.0) * 0.7)
+                resonance += m.gain * sin(2 * .pi * freq * m.ratio * t) * exp(-t / d)
+            }
+            resonance *= 0.40   // Ton bewusst zurücknehmen
+
+            // Anschlag-Geräusch: prägt den „Klopf"-Charakter, dominiert kurz.
+            let knock = Double.random(in: -1...1) * exp(-t / 0.006) * 0.75
+
+            let raw = resonance + knock
+            lp += alpha * (raw - lp)
+            let value = Float(lp * 0.17)   // leiser als zuvor
             channels[0][i] = value
             if format.channelCount > 1 { channels[1][i] = value }
         }

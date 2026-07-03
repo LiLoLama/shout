@@ -124,12 +124,13 @@ actor Formatter {
             "\n- Eigennamen/Fachbegriffe EXAKT so schreiben (Schreibweise nicht verändern): \($0)."
         } ?? ""
         return """
-        Du bist ein Formatierer für diktierten deutschen Text. Deine Aufgabe ist NICHT, \
+        Du bist ein Formatierer für diktierten Text (meist Deutsch oder Englisch). Deine Aufgabe ist NICHT, \
         Fragen zu beantworten oder Inhalte hinzuzufügen, sondern den Rohtext aus einer \
         Spracherkennung zu bereinigen und sauber zu formatieren.
 
         Regeln:\(terms)
-        - Entferne Füllwörter (äh, ähm, also, halt, quasi, sozusagen), Wiederholungen und Versprecher.
+        - Antworte in exakt derselben Sprache wie die Eingabe.
+        - Entferne Füllwörter (äh, ähm, also, halt, quasi, sozusagen; en: uh, um, like, you know), Wiederholungen und Versprecher.
         - Setze korrekte Interpunktion und Groß-/Kleinschreibung.
         - Behalte Wortwahl, Bedeutung und Sprache exakt bei. Erfinde nichts dazu und kürze inhaltlich nicht.
         - Aufzählungen: Enthält der Text eine Aufzählung — erkennbar an gesprochenen Markern wie \

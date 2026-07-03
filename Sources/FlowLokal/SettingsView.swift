@@ -7,6 +7,8 @@ struct SettingsView: View {
 
     @AppStorage("formattingEnabled") private var formattingEnabled = true
     @AppStorage("speechCommandsEnabled") private var speechCommands = false
+    @AppStorage("transcriptionLanguage") private var language = "de"
+    @AppStorage("soundCuesEnabled") private var soundCues = true
     @AppStorage("preferredMicUID") private var micUID = ""
     @State private var devices: [AudioDevices.Device] = []
 
@@ -57,6 +59,23 @@ struct SettingsView: View {
                     FieldRow(title: "Sprachbefehle",
                              help: "‚Komma', ‚Punkt', ‚Fragezeichen', ‚neue Zeile', ‚neuer Absatz' werden zu echten Satzzeichen/Umbrüchen.") {
                         Toggle("", isOn: $speechCommands).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
+                    }
+                }
+
+                ConsolePanel(title: "Sprache & Ton") {
+                    FieldRow(title: "Diktier-Sprache",
+                             help: "Sprache der Transkription. „Automatisch“ erkennt sie pro Aufnahme selbst.") {
+                        Picker("", selection: $language) {
+                            Text("Deutsch").tag("de")
+                            Text("English").tag("en")
+                            Text("Automatisch").tag("auto")
+                        }
+                        .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 160)
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: "Klang-Signale",
+                             help: "Dezente Töne beim Start der Aufnahme und wenn der Text eingefügt ist.") {
+                        Toggle("", isOn: $soundCues).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                 }
 

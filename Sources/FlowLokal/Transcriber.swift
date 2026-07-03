@@ -58,14 +58,18 @@ actor Transcriber {
     private func run(samples: [Float], biasTerms: [String]) async throws -> String {
         guard let pipe else { throw TranscriberError.notLoaded }
 
-        var options = DecodingOptions(language: "de")
+        let lang = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de"
+        let auto = (lang == "auto")
+
+        var options = DecodingOptions(language: auto ? nil : lang, detectLanguage: auto)
         // Kein Prefill-Cache: verhindert, dass Decoder-Zustand über Aufnahmen
         // hinweg „hängen bleibt" (Ursache für leere Folge-Transkriptionen).
         options.usePrefillCache = false
 
         // Wörterbuch-Begriffe als Konditionierungs-Prompt → Whisper erkennt
         // Eigennamen/Fachbegriffe schon beim Transkribieren besser.
-        if !biasTerms.isEmpty, let tokenizer = pipe.tokenizer {
+        // Im Auto-Modus deaktiviert (Prompt-Prefill kollidiert mit der Spracherkennung).
+        if !auto, !biasTerms.isEmpty, let tokenizer = pipe.tokenizer {
             let promptText = " " + biasTerms.joined(separator: ", ")
             let specialBegin = tokenizer.specialTokens.specialTokenBegin
             let tokens = tokenizer.encode(text: promptText).filter { $0 < specialBegin }

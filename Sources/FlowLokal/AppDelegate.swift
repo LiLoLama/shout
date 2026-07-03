@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
     private let recIndicator = RecordingIndicator()
+    private let sounds = SoundCues()
     private var lastInsertedText = ""
     private var correctionWindow: NSWindow?
 
@@ -810,6 +811,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             try recorder.start()
             state = .recording
             recIndicator.show()
+            sounds.play(.start)
         } catch {
             NSLog("Aufnahme-Start fehlgeschlagen: \(error)")
         }
@@ -831,7 +833,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             do {
                 let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)
                 var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !output.isEmpty else { return }
+                // Aufgenommen, aber nichts erkannt → dezenter „nichts"-Ton statt Stille.
+                guard !output.isEmpty else { sounds.play(.stop); return }
 
                 // Gesprochene Befehle („Komma", „neue Zeile" …) vor der Formatierung anwenden.
                 if useCommands { output = SpeechCommands.apply(to: output) }
@@ -845,6 +848,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }
                 injector.paste(final)
+                sounds.play(.done)
                 lastInsertedText = final
                 history.add(final)
                 let words = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count

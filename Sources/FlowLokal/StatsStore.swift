@@ -18,12 +18,8 @@ final class StatsStore: ObservableObject {
     private let fileURL: URL
 
     init() {
-        let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("shout", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("stats.json")
-        load()
+        fileURL = StoreIO.directory().appendingPathComponent("stats.json")
+        if let decoded = StoreIO.load(Data.self, from: fileURL) { data = decoded }
     }
 
     func record(words: Int, seconds: Double, date: Date = Date()) {
@@ -86,15 +82,8 @@ final class StatsStore: ObservableObject {
 
     // MARK: - Persistenz
 
-    private func load() {
-        guard let raw = try? Foundation.Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode(Data.self, from: raw) else { return }
-        data = decoded
-    }
-
     private func save() {
-        guard let raw = try? JSONEncoder().encode(data) else { return }
-        try? raw.write(to: fileURL, options: .atomic)
+        StoreIO.save(data, to: fileURL)
     }
 
     // MARK: - Helfer

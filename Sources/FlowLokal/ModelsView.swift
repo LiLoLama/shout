@@ -4,14 +4,16 @@ import SwiftUI
 /// Transkription und Aufbereitung und lässt frei umschalten. Beim Umschalten
 /// wird das Modell (falls nötig heruntergeladen und) neu in den Prozess geladen.
 struct ModelsView: View {
+    @ObservedObject var model: DashboardModel
     /// Wechselt das Transkriptions- bzw. Formatierungs-Modell und lädt neu.
     let onSelectASR: (String) async -> Void
     let onSelectFormat: (String) async -> Void
 
-    @State private var asrID = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
-    @State private var formatID = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
-    @State private var loadingASR: String?      // gerade ladende Modell-ID (ASR)
-    @State private var loadingFormat: String?   // gerade ladende Modell-ID (Format)
+    // Auswahl + Ladezustand kommen aus dem DashboardModel (überlebt Tab-Wechsel).
+    private var asrID: String { model.activeASR }
+    private var formatID: String { model.activeFormat }
+    private var loadingASR: String? { model.asrLoadingID }
+    private var loadingFormat: String? { model.formatLoadingID }
 
     // Live von Hugging Face entdeckte Modelle.
     @State private var remote: [RemoteModel] = []
@@ -27,6 +29,16 @@ struct ModelsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Modelle").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
+
+                if let note = model.modelNote {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(Color.shoutLive)
+                        Text(note).font(.system(size: 12)).foregroundStyle(Color(white: 0.8))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.shoutLive.opacity(0.12)))
+                }
 
                 hardwarePanel
 
@@ -68,9 +80,10 @@ struct ModelsView: View {
 
     // MARK: - Live-Modelle von Hugging Face
 
-    /// Beliebtestes live entdecktes Modell, das auf diesen Mac passt.
+    /// Beliebtestes live entdecktes Modell mit BEKANNTER Größe, das auf diesen Mac passt.
+    /// Modelle ohne erkennbare Parameterzahl werden nicht empfohlen (könnten zu groß sein).
     private var remoteRecommended: RemoteModel? {
-        remote.first { ($0.minRAMGB ?? 0) <= ram }
+        remote.first { if let r = $0.minRAMGB { return r <= ram } else { return false } }
     }
 
     private var remotePanel: some View {
@@ -125,6 +138,7 @@ struct ModelsView: View {
     @ViewBuilder
     private func remoteRow(_ m: RemoteModel, selected: Bool, recommended: Bool,
                            loading: Bool, action: @escaping () -> Void) -> some View {
+        let known = m.minRAMGB != nil
         let tooBig = (m.minRAMGB ?? 0) > ram
         Button(action: action) {
             HStack(spacing: 12) {
@@ -136,6 +150,7 @@ struct ModelsView: View {
                             .lineLimit(1).truncationMode(.middle)
                         if recommended { tag("Aktuell beliebt", color: .shoutLive) }
                         if tooBig { tag("Viel RAM nötig", color: Color(white: 0.55)) }
+                        else if !known { tag("Größe unbekannt", color: Color(white: 0.55)) }
                     }
                     Text(remoteSubtitle(m)).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                 }
@@ -240,16 +255,12 @@ struct ModelsView: View {
     // MARK: - Auswahl
 
     private func selectASR(_ id: String) {
-        guard id != asrID, loadingASR == nil, loadingFormat == nil else { return }
-        asrID = id
-        loadingASR = id
-        Task { await onSelectASR(id); loadingASR = nil }
+        guard id != asrID, !model.isSwitchingModel else { return }
+        Task { await onSelectASR(id) }
     }
 
     private func selectFormat(_ id: String) {
-        guard id != formatID, loadingASR == nil, loadingFormat == nil else { return }
-        formatID = id
-        loadingFormat = id
-        Task { await onSelectFormat(id); loadingFormat = nil }
+        guard id != formatID, !model.isSwitchingModel else { return }
+        Task { await onSelectFormat(id) }
     }
 }

@@ -13,7 +13,7 @@ import Tokenizers
 ///
 /// Grundprinzip wie bisher: **niemals blockieren.** Ist das Modell noch nicht
 /// geladen, das Diktat zu kurz oder tritt ein Fehler auf, kommt der Rohtext zurück.
-final class Formatter {
+actor Formatter {
 
     struct Config {
         /// Diktate kürzer als das fügen wir roh ein (spart LLM-Latenz).
@@ -40,13 +40,16 @@ final class Formatter {
     // MARK: - Modell laden
 
     /// Lädt (und beim ersten Mal: downloadet) das aktuell gewählte Modell in den
-    /// Prozess. Kann auch zum Wechseln erneut aufgerufen werden.
+    /// Prozess. Durch die Actor-Isolation serialisieren sich konkurrierende
+    /// Aufrufe automatisch — ein Wechsel während eines laufenden Loads wird also
+    /// nicht mehr verschluckt, sondern läuft danach mit der aktuellen Modell-ID.
     func load() async {
-        guard !isLoading else { return }
         let id = modelID
-        if isReady, loadedModel == id { return }  // schon geladen
+        if isReady, loadedModel == id { return }  // schon das richtige Modell geladen
         isLoading = true
         isReady = false
+        loadedModel = nil
+        container = nil
         defer { isLoading = false }
         do {
             let cfg = ModelConfiguration(id: id)

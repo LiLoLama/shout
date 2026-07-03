@@ -3,7 +3,8 @@ import Foundation
 /// Alles, was shout. lokal speichert — als eine Datei zum manuellen Übertragen
 /// auf ein anderes Gerät. Kein Server, keine Cloud.
 struct BackupBundle: Codable {
-    var version = 1
+    static let currentVersion = 1
+    var version = currentVersion
     var exportedAt = Date()
     var dictionary: PersonalDictionary.Contents
     var history: [DictationHistory.Entry]

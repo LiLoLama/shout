@@ -19,42 +19,65 @@ final class LicenseStore: ObservableObject {
     private let storageKey = "licenseKey"
     private let trialFileURL: URL
 
+    // Keychain-Konten (Zweitanker gegen einfaches Löschen der Klartext-Datei).
+    private static let kcTrialStart = "trialStart"
+    private static let kcLastSeen = "trialLastSeen"
+    private static let kcLicense = "licenseKey"
+
+    /// Zuletzt gesehene Zeit (Monotonie-Anker gegen Zurückstellen der Systemuhr).
+    private let lastSeen: Date
+
     init() {
-        let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("shout", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        trialFileURL = dir.appendingPathComponent("trial.json")
+        let url = StoreIO.directory().appendingPathComponent("trial.json")
+        trialFileURL = url
 
-        // Trial-Start laden oder beim ersten Mal setzen.
-        if let raw = try? Data(contentsOf: trialFileURL),
-           let stored = try? JSONDecoder().decode([String: Date].self, from: raw),
-           let start = stored["start"] {
-            trialStart = start
-        } else {
-            let now = Date()
-            trialStart = now
-            if let data = try? JSONEncoder().encode(["start": now]) {
-                try? data.write(to: trialFileURL, options: .atomic)
-            }
-        }
+        // Trial-Start aus beiden Ankern lesen und den FRÜHESTEN nehmen — so setzt
+        // das Löschen einer einzelnen Quelle die Testphase nicht mehr zurück.
+        let fromFile: Date? = {
+            guard let raw = try? Data(contentsOf: url),
+                  let stored = try? JSONDecoder().decode([String: Date].self, from: raw) else { return nil }
+            return stored["start"]
+        }()
+        let fromKeychain = Keychain.get(Self.kcTrialStart).flatMap(Double.init)
+            .map { Date(timeIntervalSinceReferenceDate: $0) }
 
-        if let stored = UserDefaults.standard.string(forKey: storageKey),
+        let resolvedStart = [fromFile, fromKeychain].compactMap { $0 }.min() ?? Date()
+        trialStart = resolvedStart
+
+        // Monotonie: gespeicherte "zuletzt gesehen"-Zeit; künftig nie kleiner als jetzt.
+        let storedLastSeen = Keychain.get(Self.kcLastSeen).flatMap(Double.init)
+            .map { Date(timeIntervalSinceReferenceDate: $0) }
+        lastSeen = max(Date(), storedLastSeen ?? Date())
+
+        // Beide Anker (heilend) zurückschreiben.
+        Self.writeTrialFile(resolvedStart, to: trialFileURL)
+        Keychain.set(String(resolvedStart.timeIntervalSinceReferenceDate), for: Self.kcTrialStart)
+        Keychain.set(String(lastSeen.timeIntervalSinceReferenceDate), for: Self.kcLastSeen)
+
+        // Lizenzschlüssel: bevorzugt aus der Keychain; Altbestand aus UserDefaults migrieren.
+        if let stored = Keychain.get(Self.kcLicense) ?? UserDefaults.standard.string(forKey: storageKey),
            let licensee = verify(stored) {
             isLicensed = true
             licensedTo = licensee
+            Keychain.set(stored, for: Self.kcLicense)
+            UserDefaults.standard.removeObject(forKey: storageKey)   // Klartext entfernen
         }
     }
 
     // MARK: - Status
 
     var trialDaysRemaining: Int {
-        let elapsed = Calendar.current.dateComponents([.day], from: trialStart, to: Date()).day ?? 0
-        return max(0, trialDays - elapsed)
+        // Uhr-Rückstellung abfangen: nie „jünger" als der Monotonie-Anker rechnen.
+        let now = max(Date(), lastSeen)
+        let elapsed = Calendar.current.dateComponents([.day], from: trialStart, to: now).day ?? 0
+        return max(0, trialDays - max(0, elapsed))
     }
     var isTrialActive: Bool { trialDaysRemaining > 0 }
     /// Darf die App genutzt werden (Diktieren)? Lizenz oder laufende Testphase.
     var isActive: Bool { isLicensed || isTrialActive }
+
+    /// Schlüssel für den (nutzereigenen) Backup-Export.
+    var exportKey: String? { Keychain.get(Self.kcLicense) }
 
     // MARK: - Lizenz
 
@@ -62,16 +85,24 @@ final class LicenseStore: ObservableObject {
     func activate(_ key: String) -> Bool {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let licensee = verify(trimmed) else { return false }
-        UserDefaults.standard.set(trimmed, forKey: storageKey)
+        Keychain.set(trimmed, for: Self.kcLicense)
+        UserDefaults.standard.removeObject(forKey: storageKey)
         isLicensed = true
         licensedTo = licensee
         return true
     }
 
     func deactivate() {
+        Keychain.delete(Self.kcLicense)
         UserDefaults.standard.removeObject(forKey: storageKey)
         isLicensed = false
         licensedTo = ""
+    }
+
+    private static func writeTrialFile(_ start: Date, to url: URL) {
+        if let data = try? JSONEncoder().encode(["start": start]) {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     private func verify(_ key: String) -> String? {

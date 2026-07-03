@@ -1,10 +1,17 @@
 import Foundation
 import WhisperKit
 
+enum TranscriberError: Error { case notLoaded }
+
 /// Dünne Hülle um WhisperKit. Lädt beim ersten Start das Modell
 /// (wird von WhisperKit automatisch von Hugging Face heruntergeladen und
 /// danach lokal gecached) und transkribiert Float-Samples auf Deutsch.
-final class Transcriber {
+///
+/// `actor`, damit Laden (load/reload) und Transkribieren serialisiert werden:
+/// Ein Modellwechsel kann so nicht parallel zu einer laufenden Transkription
+/// den Zustand zerreißen, und es sind nie zwei WhisperKit-Modelle gleichzeitig
+/// in der Initialisierung.
+actor Transcriber {
 
     /// Gewähltes Modell aus den Einstellungen (Modell-Empfehler). Fällt auf die
     /// macOS-Speed-Variante von large-v3-turbo zurück (Apple Neural Engine).
@@ -24,17 +31,17 @@ final class Transcriber {
         loadedModel = name
     }
 
-    /// Wechselt zur Laufzeit auf das aktuell gewählte Modell. Schluckt Fehler
-    /// (die UI zeigt den Ladezustand separat).
-    func reload() async {
+    /// Wechselt zur Laufzeit auf das aktuell gewählte Modell. Wirft bei Fehler,
+    /// damit der Aufrufer den Status korrekt setzen (und ggf. zurückrollen) kann.
+    /// Durch die Actor-Isolation laufen konkurrierende Aufrufe serialisiert.
+    func reload() async throws {
         pipe = nil
         loadedModel = nil
-        do { try await load() }
-        catch { NSLog("Transkriptions-Modell konnte nicht geladen werden: \(error)") }
+        try await load()
     }
 
     func transcribe(_ samples: [Float], biasTerms: [String] = []) async throws -> String {
-        guard pipe != nil else { return "" }
+        guard pipe != nil else { throw TranscriberError.notLoaded }
 
         let text = try await run(samples: samples, biasTerms: biasTerms)
         // Prompt-Biasing kann bei Folge-Aufnahmen leeren Text verursachen →
@@ -46,7 +53,7 @@ final class Transcriber {
     }
 
     private func run(samples: [Float], biasTerms: [String]) async throws -> String {
-        guard let pipe else { return "" }
+        guard let pipe else { throw TranscriberError.notLoaded }
 
         var options = DecodingOptions(language: "de")
         // Kein Prefill-Cache: verhindert, dass Decoder-Zustand über Aufnahmen

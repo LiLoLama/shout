@@ -60,8 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var formatterMenuItem: NSMenuItem!
     private var formattingToggleItem: NSMenuItem!
     private var loginToggleItem: NSMenuItem!
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
+    private var eventMonitors: [Any] = []
 
     /// Ziel-App zum Zeitpunkt des Aufnahmestarts (fürs app-abhängige Register).
     private var targetBundleID: String?
@@ -152,12 +151,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let termExisted = dictionary.contents.terms.contains {
             $0.caseInsensitiveCompare(right) == .orderedSame
         }
+        // Eine ggf. verdrängte Korrektur zum selben Falsch-Wort merken, um sie beim
+        // Rückgängig-Machen wiederherstellen zu können.
+        let displaced = dictionary.contents.corrections.first {
+            $0.wrong.caseInsensitiveCompare(wrong) == .orderedSame && $0.right != right
+        }
         dictionary.addCorrection(wrong: wrong, right: right)
         guard showUndo else { return }
         toast.show(wrong: wrong, right: right) { [weak self] in
             guard let self else { return }
             self.dictionary.removeCorrection(PersonalDictionary.Correction(wrong: wrong, right: right))
             if !termExisted { self.dictionary.removeTerm(right) }
+            if let displaced {
+                self.dictionary.addCorrection(wrong: displaced.wrong, right: displaced.right)
+            }
         }
     }
 
@@ -206,14 +213,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         lastInsertedText = trimmed
-        if let app = lastExternalApp {
+        if let app = lastExternalApp, !app.isTerminated {
             app.activate()
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 self.injector.paste(trimmed)
             }
         } else {
-            // Kein Ziel bekannt → wenigstens in die Zwischenablage.
+            // Kein (lebendes) Ziel bekannt → wenigstens in die Zwischenablage.
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(trimmed, forType: .string)
         }
@@ -369,21 +376,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func updateFormatterMenu() {
         formattingToggleItem?.state = formattingEnabled ? .on : .off
-        if formatter.isReady {
-            formatterMenuItem?.title = "Formatter: \(formatter.activeModelName)"
-        } else if formatter.isLoading {
-            formatterMenuItem?.title = "Formatter: Modell wird geladen …"
-        } else {
-            formatterMenuItem?.title = "Formatter: nicht geladen (Rohtext)"
+        // Formatter ist ein actor → Zustand asynchron lesen und dann das Menü setzen.
+        Task {
+            let ready = await formatter.isReady
+            let loading = await formatter.isLoading
+            let name = await formatter.activeModelName
+            if ready {
+                formatterMenuItem?.title = "Formatter: \(name)"
+            } else if loading {
+                formatterMenuItem?.title = "Formatter: Modell wird geladen …"
+            } else {
+                formatterMenuItem?.title = "Formatter: nicht geladen (Rohtext)"
+            }
         }
     }
 
     @objc private func toggleFormatting() {
         formattingEnabled.toggle()
-        // Falls gerade erst eingeschaltet und Modell noch nicht geladen: laden.
-        if formattingEnabled, !formatter.isReady {
-            loadFormatter()
-        }
+        // Falls gerade erst eingeschaltet: laden (load() ist idempotent).
+        if formattingEnabled { loadFormatter() }
     }
 
     @objc private func quit() {
@@ -441,7 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             formattingEnabled: UserDefaults.standard.object(forKey: "formattingEnabled") as? Bool,
             preferredMicUID: UserDefaults.standard.string(forKey: "preferredMicUID"),
             voiceProfile: UserDefaults.standard.string(forKey: "voiceProfile"),
-            licenseKey: UserDefaults.standard.string(forKey: "licenseKey")
+            licenseKey: license.exportKey
         )
         let bundle = BackupBundle(dictionary: dictionary.contents, history: history.entries,
                                   stats: stats.data, settings: snapshot)
@@ -470,6 +481,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard let bundle = try? decoder.decode(BackupBundle.self, from: data) else {
             return "Ungültige Backup-Datei."
         }
+        guard bundle.version <= BackupBundle.currentVersion else {
+            return "Dieses Backup stammt aus einer neueren Version von shout. Bitte zuerst die App aktualisieren."
+        }
 
         dictionary.replaceContents(bundle.dictionary)
         history.replaceEntries(bundle.history)
@@ -479,8 +493,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let m = s.mode, let mode = RecordingSettings.Mode(rawValue: m) { settings.mode = mode }
         if let a = s.autoStop { settings.autoStop = a }
         if let sec = s.silenceSeconds { settings.silenceSeconds = sec }
-        if let kc = s.keyCode { settings.keyCode = UInt16(kc) }
-        if let md = s.modifiers { settings.modifiers = UInt(md) }
+        // Failable-Konvertierung: eine defekte/hand-editierte Datei darf nicht crashen.
+        if let kc = s.keyCode, let v = UInt16(exactly: kc) { settings.keyCode = v }
+        if let md = s.modifiers, let v = UInt(exactly: md) { settings.modifiers = v }
         if let mo = s.isModifierOnly { settings.isModifierOnly = mo }
         if let f = s.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let mic = s.preferredMicUID { UserDefaults.standard.set(mic, forKey: "preferredMicUID") }
@@ -500,8 +515,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func windowWillClose(_ notification: Notification) {
         // Falls die Hotkey-Aufnahme noch lief, abbrechen.
         if isCapturingHotkey { endHotkeyCapture() }
-        // Zurück zur reinen Menu-Bar-App (kein Dock-Icon), sobald kein Fenster mehr offen ist.
-        NSApp.setActivationPolicy(.accessory)
+
+        let closing = notification.object as? NSWindow
+        if closing === correctionWindow { correctionWindow = nil }   // Retention lösen
+
+        // Zurück zur reinen Menu-Bar-App (kein Dock-Icon) nur, wenn wirklich kein
+        // eigenes Fenster mehr sichtbar ist (das schließende zählt nicht mehr).
+        let dashVisible = dashboardWindow?.isVisible == true && dashboardWindow !== closing
+        let corrVisible = correctionWindow?.isVisible == true && correctionWindow !== closing
+        if !dashVisible && !corrVisible {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        for m in eventMonitors { NSEvent.removeMonitor(m) }
+        eventMonitors.removeAll()
     }
 
     // MARK: - Rechte / Permissions
@@ -519,6 +548,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         Task {
             do {
                 try await transcriber.load()
+                dashboardModel.activeASR = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
                 state = .idle
             } catch {
                 statusMenuItem?.title = "Modell-Ladefehler: \(error.localizedDescription)"
@@ -537,18 +567,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     /// Modell-Empfehler: wechselt das Transkriptions-Modell zur Laufzeit.
+    /// Nur im Ruhezustand erlaubt (nicht während Aufnahme/Verarbeitung/Laden),
+    /// damit der State und die laufende Pipeline nicht zerrissen werden.
     private func switchASRModel(to id: String) async {
+        guard state == .idle else {
+            dashboardModel.modelNote = "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird."
+            return
+        }
+        dashboardModel.modelNote = nil
+        let previous = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
         UserDefaults.standard.set(id, forKey: "asrModel")
+        dashboardModel.asrLoadingID = id
         state = .loadingModel
-        await transcriber.reload()
+        do {
+            try await transcriber.reload()
+            dashboardModel.activeASR = id
+        } catch {
+            // Laden fehlgeschlagen (z. B. offline) → vorheriges Modell wiederherstellen,
+            // damit die App funktionsfähig bleibt und nicht still Diktate verschluckt.
+            NSLog("ASR-Modellwechsel fehlgeschlagen: \(error)")
+            UserDefaults.standard.set(previous, forKey: "asrModel")
+            try? await transcriber.reload()
+            dashboardModel.activeASR = previous
+            dashboardModel.modelNote = "Modell konnte nicht geladen werden (offline?). Vorheriges Modell bleibt aktiv."
+        }
+        dashboardModel.asrLoadingID = nil
         state = .idle
     }
 
     /// Modell-Empfehler: wechselt das Formatierungs-Modell zur Laufzeit.
+    /// Der Formatter-actor serialisiert Loads, daher genügt der Schutz gegen
+    /// parallele Wechsel; die App-Aufnahme bleibt davon unberührt.
     private func switchFormatModel(to id: String) async {
+        guard dashboardModel.formatLoadingID == nil else { return }
+        dashboardModel.modelNote = nil
         UserDefaults.standard.set(id, forKey: "formatModel")
-        formatterMenuItem?.title = "Formatter: Modell wird geladen …"
+        dashboardModel.formatLoadingID = id
+        updateFormatterMenu()
         await formatter.reload()
+        dashboardModel.activeFormat = id
+        dashboardModel.formatLoadingID = nil
         updateFormatterMenu()
     }
 
@@ -556,17 +614,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func installHotkeyMonitors() {
         for matching in [NSEvent.EventTypeMask.flagsChanged, .keyDown, .keyUp] {
-            NSEvent.addGlobalMonitorForEvents(matching: matching) { [weak self] event in
+            if let m = NSEvent.addGlobalMonitorForEvents(matching: matching, handler: { [weak self] event in
                 self?.route(event)
-            }
-            NSEvent.addLocalMonitorForEvents(matching: matching) { [weak self] event in
+            }) { eventMonitors.append(m) }
+            if let m = NSEvent.addLocalMonitorForEvents(matching: matching, handler: { [weak self] event in
                 self?.route(event)
                 return event
-            }
+            }) { eventMonitors.append(m) }
         }
     }
 
     private func route(_ event: NSEvent) {
+        // Selbst erzeugte ⌘V-Events (TextInjector) ignorieren — sonst kann das
+        // Einfügen eines Diktats den eigenen Hotkey erneut auslösen.
+        if let cg = event.cgEvent,
+           cg.getIntegerValueField(.eventSourceUserData) == TextInjector.syntheticEventTag {
+            return
+        }
         switch event.type {
         case .flagsChanged: handleFlagsChanged(event)
         case .keyDown: handleKeyDown(event)
@@ -576,14 +640,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func handleKeyDown(_ event: NSEvent) {
+        // Auto-Repeat der gehaltenen Taste ignorieren (sonst togglet der Toggle-Modus
+        // im Sekundentakt und feste Shortcuts feuern mehrfach).
+        guard !event.isARepeat else { return }
+
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
         if isCapturingHotkey {
+            // Reservierte Kombinationen nicht als Diktier-Hotkey zulassen —
+            // sie würden nie auslösen (feste Shortcuts fangen sie vorher ab).
+            guard !isReservedCombo(keyCode: event.keyCode, mods: mods) else { return }
             captureKeyDownSeen = true
             settings.setRegular(keyCode: event.keyCode, modifiers: event.modifierFlags)
             endHotkeyCapture()
             return
         }
         // Fester Hotkey ⌥⌘C → letztes Diktat korrigieren (keyCode 8 = "c").
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if mods == [.command, .option], event.keyCode == 8 {   // ⌥⌘C
             openCorrectionWindow()
             return
@@ -593,6 +665,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
         if settings.matchesKeyDown(event) { handleTrigger(down: true) }
+    }
+
+    /// Kombinationen, die für feste Funktionen bzw. das synthetische Einfügen
+    /// belegt sind und daher nicht als Diktier-Hotkey aufgenommen werden dürfen.
+    private func isReservedCombo(keyCode: UInt16, mods: NSEvent.ModifierFlags) -> Bool {
+        if mods == [.command, .option], keyCode == 8 { return true }    // ⌥⌘C
+        if mods == [.command, .control], keyCode == 9 { return true }   // ⌃⌘V
+        if mods == [.command], keyCode == 9 { return true }             // ⌘V (synthetisches Paste)
+        return false
     }
 
     private func handleKeyUp(_ event: NSEvent) {

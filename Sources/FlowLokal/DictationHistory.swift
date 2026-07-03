@@ -17,12 +17,10 @@ final class DictationHistory: ObservableObject {
     private let maxEntries = 300
 
     init() {
-        let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("shout", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("history.json")
-        load()
+        fileURL = StoreIO.directory().appendingPathComponent("history.json")
+        if let decoded = StoreIO.load([Entry].self, from: fileURL) {
+            entries = Array(decoded.prefix(maxEntries))
+        }
     }
 
     func add(_ text: String) {
@@ -43,22 +41,15 @@ final class DictationHistory: ObservableObject {
         save()
     }
 
-    /// Ersetzt alle Einträge (für Import).
+    /// Ersetzt alle Einträge (für Import) — ebenfalls auf das Limit gekappt.
     func replaceEntries(_ newEntries: [Entry]) {
-        entries = newEntries
+        entries = Array(newEntries.prefix(maxEntries))
         save()
     }
 
     // MARK: - Persistenz
 
-    private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([Entry].self, from: data) else { return }
-        entries = decoded
-    }
-
     private func save() {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        StoreIO.save(entries, to: fileURL)
     }
 }

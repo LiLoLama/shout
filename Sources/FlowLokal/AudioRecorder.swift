@@ -11,11 +11,12 @@ import AudioToolbox
 final class AudioRecorder {
 
     private var engine = AVAudioEngine()
-    private var converter: AVAudioConverter?
-    private var targetFormat: AVAudioFormat!
 
     private let lock = NSLock()
     private var samples: [Float] = []
+    /// Zählt jede Aufnahme hoch; verspätete Tap-Callbacks einer alten Engine
+    /// tragen eine ältere Generation und werden ignoriert. Unter `lock` zugegriffen.
+    private var generation = 0
 
     private let targetSampleRate = 16_000.0
 
@@ -37,8 +38,11 @@ final class AudioRecorder {
     private var silenceFired = false
 
     func start() throws {
+        let gen: Int
         lock.lock()
         samples.removeAll(keepingCapacity: true)
+        generation &+= 1
+        gen = generation
         lock.unlock()
 
         heardSpeech = false
@@ -63,16 +67,20 @@ final class AudioRecorder {
 
         let inputFormat = input.inputFormat(forBus: 0)
 
-        targetFormat = AVAudioFormat(
+        // Converter + Zielformat als lokale, unveränderliche Konstanten je Aufnahme —
+        // so liest der Audio-Thread nie eine Instanz-Property, die start() gerade ersetzt.
+        guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: targetSampleRate,
             channels: 1,
             interleaved: false
-        )
-        converter = AVAudioConverter(from: inputFormat, to: targetFormat)
+        ), let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            throw NSError(domain: "shout.AudioRecorder", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Audio-Converter konnte nicht erstellt werden."])
+        }
 
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            self?.append(buffer)
+            self?.append(buffer, converter: converter, targetFormat: targetFormat, generation: gen)
         }
 
         engine.prepare()
@@ -94,9 +102,8 @@ final class AudioRecorder {
 
     // MARK: - Intern
 
-    private func append(_ buffer: AVAudioPCMBuffer) {
-        guard let converter, let targetFormat else { return }
-
+    private func append(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter,
+                        targetFormat: AVAudioFormat, generation gen: Int) {
         let ratio = targetSampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
         guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else {
@@ -123,14 +130,15 @@ final class AudioRecorder {
         let chunk = Array(UnsafeBufferPointer(start: channel, count: frameCount))
 
         lock.lock()
+        guard gen == generation else { lock.unlock(); return }   // Callback einer alten Engine
         samples.append(contentsOf: chunk)
         lock.unlock()
 
-        analyze(chunk)
+        analyze(chunk, generation: gen)
     }
 
     /// Berechnet einmal den RMS-Pegel und nutzt ihn für Live-Pegel + Stille-Erkennung.
-    private func analyze(_ chunk: [Float]) {
+    private func analyze(_ chunk: [Float], generation gen: Int) {
         guard !chunk.isEmpty else { return }
 
         var sumSquares: Float = 0
@@ -143,7 +151,9 @@ final class AudioRecorder {
         let levelCallback = onLevel
         DispatchQueue.main.async { levelCallback?(level) }
 
-        guard autoStopEnabled, !silenceFired else { return }
+        // Stille-Zustand nur für die aktuelle Aufnahme fortschreiben.
+        lock.lock(); let current = generation; lock.unlock()
+        guard gen == current, autoStopEnabled, !silenceFired else { return }
         let duration = Double(chunk.count) / 16_000.0
         if rms > speechRMSThreshold {
             heardSpeech = true

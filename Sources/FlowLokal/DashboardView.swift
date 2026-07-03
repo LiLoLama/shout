@@ -5,6 +5,16 @@ import SwiftUI
 final class DashboardModel: ObservableObject {
     enum Tab: Hashable { case aufnahme, woerterbuch, verlauf, statistik, modelle, sync, konto }
     @Published var tab: Tab = .aufnahme
+
+    // Modell-Zustand zentral (überlebt Tab-Wechsel, damit Spinner/Auswahl
+    // konsistent bleiben und Modellwechsel sich nicht überlappen können).
+    @Published var activeASR = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
+    @Published var activeFormat = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
+    @Published var asrLoadingID: String?      // gerade ladende ASR-Modell-ID
+    @Published var formatLoadingID: String?   // gerade ladende Format-Modell-ID
+    @Published var modelNote: String?         // z. B. Hinweis „Wechsel während Aufnahme nicht möglich"
+
+    var isSwitchingModel: Bool { asrLoadingID != nil || formatLoadingID != nil }
 }
 
 /// Hauptfenster im Mischpult-Look: eigene Graphit-Seitenleiste mit Wortmarke,
@@ -126,7 +136,7 @@ struct DashboardView: View {
         case .statistik:
             StatisticsView(stats: stats, history: history, dictionary: dictionary, generateProfile: generateProfile)
         case .modelle:
-            ModelsView(onSelectASR: onSelectASR, onSelectFormat: onSelectFormat)
+            ModelsView(model: model, onSelectASR: onSelectASR, onSelectFormat: onSelectFormat)
         case .sync:
             SyncView(onExport: onExport, onImport: onImport)
         case .konto:

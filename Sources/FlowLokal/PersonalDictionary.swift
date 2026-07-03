@@ -29,25 +29,14 @@ final class PersonalDictionary: ObservableObject {
     private let fileURL: URL
 
     init() {
-        let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("shout", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("dictionary.json")
-        load()
+        fileURL = StoreIO.directory().appendingPathComponent("dictionary.json")
+        if let decoded = StoreIO.load(Contents.self, from: fileURL) { contents = decoded }
     }
 
     // MARK: - Persistenz
 
-    private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode(Contents.self, from: data) else { return }
-        contents = decoded
-    }
-
     private func save() {
-        guard let data = try? JSONEncoder().encode(contents) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        StoreIO.save(contents, to: fileURL)
     }
 
     // MARK: - Begriffe
@@ -96,7 +85,16 @@ final class PersonalDictionary: ObservableObject {
     func applyCorrections(to text: String) -> String {
         var result = text
         for c in contents.corrections {
-            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: c.wrong))\\b"
+            // \b nur dort ansetzen, wo der Begriff mit einem Wortzeichen beginnt/endet.
+            // Sonst (z. B. „C#", „.NET", „§14") würde \b nie matchen und die Korrektur
+            // liefe stillschweigend ins Leere.
+            func isWordChar(_ ch: Character?) -> Bool {
+                guard let ch else { return false }
+                return ch.isLetter || ch.isNumber || ch == "_"
+            }
+            let lead = isWordChar(c.wrong.first) ? "\\b" : ""
+            let trail = isWordChar(c.wrong.last) ? "\\b" : ""
+            let pattern = "\(lead)\(NSRegularExpression.escapedPattern(for: c.wrong))\(trail)"
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
             let range = NSRange(result.startIndex..., in: result)
             result = regex.stringByReplacingMatches(

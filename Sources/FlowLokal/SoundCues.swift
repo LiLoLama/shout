@@ -22,10 +22,10 @@ final class SoundCues {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
-        // Holz-Knock: freq = Resonanz-Tonhöhe, decay = (kurzer) Abfall, cutoff = Dämpfung.
-        buffers[.start] = renderKnock(freq: 430, decay: 0.050, cutoff: 2400, format: format) // Klopfen, mittig
-        buffers[.stop]  = renderKnock(freq: 300, decay: 0.060, cutoff: 1900, format: format) // tiefer, schließend
-        buffers[.done]  = renderKnock(freq: 540, decay: 0.038, cutoff: 2700, format: format) // kurz & leicht
+        // Holz-Knock: freq = Resonanz-Tonhöhe (tief = warm), decay = Abfall, cutoff = Dämpfung.
+        buffers[.start] = renderKnock(freq: 240, decay: 0.070, cutoff: 1300, format: format) // warmes Klopfen
+        buffers[.stop]  = renderKnock(freq: 185, decay: 0.085, cutoff: 1100, format: format) // tiefer, schließend
+        buffers[.done]  = renderKnock(freq: 300, decay: 0.055, cutoff: 1500, format: format) // kurz & leicht
     }
 
     func play(_ cue: Cue) {
@@ -41,9 +41,9 @@ final class SoundCues {
 
     // MARK: - Holz-Knock-Synthese
 
-    // Inharmonische Moden (wie ein angeschlagener Holzkörper) — bewusst NICHT
-    // ganzzahlig, damit es hölzern statt tonal klingt.
-    private let modes: [(ratio: Double, gain: Double)] = [(1.0, 1.0), (2.42, 0.5), (4.10, 0.28)]
+    // Nur tiefe Moden für einen warmen Holz-Charakter — die hohe (metallische)
+    // Mode ist bewusst weg, sonst klingt es nach „leerer Dose".
+    private let modes: [(ratio: Double, gain: Double)] = [(1.0, 1.0), (1.87, 0.20)]
 
     private func renderKnock(freq: Double, decay: Double, cutoff: Double,
                              format: AVAudioFormat) -> AVAudioPCMBuffer? {
@@ -53,30 +53,34 @@ final class SoundCues {
               let channels = buffer.floatChannelData else { return nil }
         buffer.frameLength = frames
 
-        // Ein-Pol-Tiefpass gegen harsche Höhen (hält es weich/hölzern).
         let dt = 1.0 / sampleRate
-        let rc = 1.0 / (2 * .pi * cutoff)
-        let alpha = dt / (rc + dt)
-        var lp = 0.0
+        // Haupt-Tiefpass (warm, hält Höhen fern).
+        let alpha = dt / (1.0 / (2 * .pi * cutoff) + dt)
+        // Separater, dunklerer Tiefpass NUR für den Anschlag-Noise → warmes „Tock"
+        // statt hellem „Tss" (das war das Metallische/Blecherne).
+        let noiseAlpha = dt / (1.0 / (2 * .pi * 700) + dt)
+        var lp = 0.0, nlp = 0.0
 
         let count = Int(frames)
         for i in 0..<count {
             let t = Double(i) / sampleRate
 
-            // Kurze, inharmonische Resonanz — höhere Moden klingen schneller ab.
+            // Kurze, warme Resonanz; die (schwache) Ober-Mode klingt schneller ab.
             var resonance = 0.0
             for m in modes {
-                let d = decay / (1.0 + (m.ratio - 1.0) * 0.7)
+                let d = decay / (1.0 + (m.ratio - 1.0) * 1.4)
                 resonance += m.gain * sin(2 * .pi * freq * m.ratio * t) * exp(-t / d)
             }
-            resonance *= 0.40   // Ton bewusst zurücknehmen
+            resonance *= 0.55
 
-            // Anschlag-Geräusch: prägt den „Klopf"-Charakter, dominiert kurz.
-            let knock = Double.random(in: -1...1) * exp(-t / 0.006) * 0.75
+            // Anschlag-Geräusch, dunkel gefiltert (kein helles Zischen mehr).
+            let rawNoise = Double.random(in: -1...1) * exp(-t / 0.006)
+            nlp += noiseAlpha * (rawNoise - nlp)
+            let knock = nlp * 0.5
 
             let raw = resonance + knock
             lp += alpha * (raw - lp)
-            let value = Float(lp * 0.17)   // leiser als zuvor
+            let value = Float(lp * 0.16)
             channels[0][i] = value
             if format.channelCount > 1 { channels[1][i] = value }
         }

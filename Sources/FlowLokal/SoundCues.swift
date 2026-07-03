@@ -22,11 +22,11 @@ final class SoundCues {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
-        // Holz-Knock: freq = Körper-Tonhöhe (tief = warm), decay = SEHR kurz (trocken,
-        // perkussiv statt nachschwingend), cutoff = Dämpfung.
-        buffers[.start] = renderKnock(freq: 260, decay: 0.032, cutoff: 1500, format: format) // warmes Klopfen
-        buffers[.stop]  = renderKnock(freq: 200, decay: 0.040, cutoff: 1300, format: format) // tiefer, schließend
-        buffers[.done]  = renderKnock(freq: 320, decay: 0.026, cutoff: 1700, format: format) // kurz & leicht
+        // Weicher, hoher „Pop": freq = Tonhöhe, glide = organischer Pitch-Settle,
+        // decay = Länge (kurz), cutoff = Dämpfung der Höhen.
+        buffers[.start] = renderBlip(freq: 659, glide: 0.05, decay: 0.055, cutoff: 4200, format: format) // E5 – sanfter Pop
+        buffers[.stop]  = renderBlip(freq: 523, glide: 0.05, decay: 0.060, cutoff: 3600, format: format) // C5 – tiefer, schließend
+        buffers[.done]  = renderBlip(freq: 880, glide: -0.04, decay: 0.050, cutoff: 4800, format: format) // A5 – heller, steigend
     }
 
     func play(_ cue: Cue) {
@@ -40,48 +40,45 @@ final class SoundCues {
         }
     }
 
-    // MARK: - Holz-Knock-Synthese
+    // MARK: - Weicher „Pop" (wertig, organisch, warm)
 
-    // Nur der tiefe Körper + eine sehr schwache Ober-Mode. Kurz gehalten, damit
-    // keine Tonhöhe nachschwingt (das wäre der „Bongo"-Effekt).
-    private let modes: [(ratio: Double, gain: Double)] = [(1.0, 1.0), (1.87, 0.10)]
-
-    private func renderKnock(freq: Double, decay: Double, cutoff: Double,
-                             format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        let total = decay * 3 + 0.02
+    /// Ein kurzer, runder Ton mit weicher Hüllkurve und leichtem Pitch-Settle
+    /// (organisch, „tröpfchenhaft"). Grundton + warme Sub-Oktave + dezenter
+    /// Oktav-Schimmer, sanft tiefpassgefiltert. `glide` > 0 = fällt leicht ein,
+    /// `glide` < 0 = steigt leicht (positiver Abschluss).
+    private func renderBlip(freq: Double, glide: Double, decay: Double, cutoff: Double,
+                            format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let total = decay * 4 + 0.03
         let frames = AVAudioFrameCount(total * sampleRate)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
               let channels = buffer.floatChannelData else { return nil }
         buffer.frameLength = frames
 
         let dt = 1.0 / sampleRate
-        // Haupt-Tiefpass (warm, hält Höhen fern).
         let alpha = dt / (1.0 / (2 * .pi * cutoff) + dt)
-        // Separater, dunklerer Tiefpass NUR für den Anschlag-Noise → warmes „Tock"
-        // statt hellem „Tss" (das war das Metallische/Blecherne).
-        let noiseAlpha = dt / (1.0 / (2 * .pi * 850) + dt)
-        var lp = 0.0, nlp = 0.0
+        let attack = 0.008
+        var lp = 0.0
+        var phase = 0.0   // integrierte Phase (nötig wegen Pitch-Glide)
 
         let count = Int(frames)
         for i in 0..<count {
             let t = Double(i) / sampleRate
 
-            // Sehr kurze, warme Körper-Resonanz — nur „Anfassen", kein Nachklingen.
-            var resonance = 0.0
-            for m in modes {
-                let d = decay / (1.0 + (m.ratio - 1.0) * 1.4)
-                resonance += m.gain * sin(2 * .pi * freq * m.ratio * t) * exp(-t / d)
-            }
-            resonance *= 0.32   // Ton stark zurück → weniger Trommel
+            // Tonhöhe pendelt in ~35 ms organisch auf den Zielton ein.
+            let f = freq * (1 + glide * exp(-t / 0.035))
+            phase += 2 * .pi * f * dt
 
-            // Anschlag-Geräusch dominiert (der eigentliche „Klopf"), dunkel gefiltert.
-            let rawNoise = Double.random(in: -1...1) * exp(-t / 0.009)
-            nlp += noiseAlpha * (rawNoise - nlp)
-            let knock = nlp * 0.68
+            // Weiche Hüllkurve: sanfter (Cosinus-)Attack, exponentieller Abfall,
+            // kurzer End-Fade gegen Knacken.
+            let a = t < attack ? 0.5 - 0.5 * cos(.pi * t / attack) : 1.0
+            let endFade = min(1.0, max(0.0, (total - t) / 0.012))
+            let env = a * exp(-t / decay) * endFade
 
-            let raw = resonance + knock
-            lp += alpha * (raw - lp)
-            let value = Float(lp * 0.15)
+            // Warm & rund: Grundton + Sub-Oktave (Wärme) + leiser Oktav-Schimmer.
+            let s = sin(phase) + 0.25 * sin(0.5 * phase) + 0.12 * sin(2 * phase)
+
+            lp += alpha * (env * s - lp)
+            let value = Float(lp * 0.16)
             channels[0][i] = value
             if format.channelCount > 1 { channels[1][i] = value }
         }

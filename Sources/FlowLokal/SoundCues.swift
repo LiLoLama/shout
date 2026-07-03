@@ -22,10 +22,11 @@ final class SoundCues {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
-        // bodyFreq = Färbung des „Thock" (tief = dumpfer), peak = Lautheit.
-        buffers[.start] = renderKey(bodyFreq: 520, bodyDecay: 0.030, clickFreq: 2200, clickGain: 0.5, peak: 0.50, format: format)
-        buffers[.stop]  = renderKey(bodyFreq: 380, bodyDecay: 0.040, clickFreq: 1700, clickGain: 0.4, peak: 0.50, format: format)
-        buffers[.done]  = renderKey(bodyFreq: 640, bodyDecay: 0.026, clickFreq: 2600, clickGain: 0.55, peak: 0.44, format: format)
+        // bodyFreq = Färbung (tief = dumpfer), clickGain = Anteil des Kontakt-Klicks
+        // (klein = sanfter), peak = Lautheit (klein = leiser).
+        buffers[.start] = renderKey(bodyFreq: 460, bodyDecay: 0.028, clickFreq: 1600, clickGain: 0.14, peak: 0.15, format: format)
+        buffers[.stop]  = renderKey(bodyFreq: 340, bodyDecay: 0.034, clickFreq: 1300, clickGain: 0.12, peak: 0.15, format: format)
+        buffers[.done]  = renderKey(bodyFreq: 560, bodyDecay: 0.024, clickFreq: 1900, clickGain: 0.17, peak: 0.13, format: format)
     }
 
     func play(_ cue: Cue) {
@@ -50,21 +51,21 @@ final class SoundCues {
               let channels = buffer.floatChannelData else { return nil }
         buffer.frameLength = frames
 
-        var body = Biquad(bandpass: bodyFreq, q: 1.3, sampleRate: sampleRate)   // warmer Körper
-        var click = Biquad(bandpass: clickFreq, q: 0.7, sampleRate: sampleRate) // heller Kontakt-Klick
-        // Sanfte End-Dämpfung gegen harsche Höhen.
-        let warmAlpha = 1.0 / sampleRate / (1.0 / (2 * .pi * 3200) + 1.0 / sampleRate)
+        var body = Biquad(bandpass: bodyFreq, q: 1.0, sampleRate: sampleRate)   // weicher Körper (wenig Resonanz)
+        var click = Biquad(bandpass: clickFreq, q: 0.7, sampleRate: sampleRate) // dezenter Kontakt-Klick
+        // Warme End-Dämpfung (dunkler als zuvor) gegen harsche Höhen.
+        let warmAlpha = 1.0 / sampleRate / (1.0 / (2 * .pi * 2200) + 1.0 / sampleRate)
+        let attack = 0.004   // sanfter Anschlag statt hartem Einsatz
         var lp = 0.0
 
         let count = Int(frames)
         var samples = [Float](repeating: 0, count: count)
         for i in 0..<count {
             let t = Double(i) / sampleRate
-            let bodyEnv = exp(-t / bodyDecay)
-            let clickEnv = exp(-t / clickDecay)
-            let b = body.process(Double.random(in: -1...1)) * bodyEnv
-            let c = click.process(Double.random(in: -1...1)) * clickEnv * clickGain
-            lp += warmAlpha * ((b * 1.0 + c) - lp)
+            let atk = t < attack ? 0.5 - 0.5 * cos(.pi * t / attack) : 1.0
+            let b = body.process(Double.random(in: -1...1)) * exp(-t / bodyDecay)
+            let c = click.process(Double.random(in: -1...1)) * exp(-t / clickDecay) * clickGain
+            lp += warmAlpha * ((b + c) * atk - lp)
             samples[i] = Float(lp)
         }
 

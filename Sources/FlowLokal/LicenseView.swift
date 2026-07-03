@@ -10,7 +10,9 @@ struct LicenseView: View {
 
     // Kaufoptionen (anpassbar):
     private let price = "150 €"
-    private let purchaseURL = "https://inthezone.studio/shout"
+    // Stripe Payment Link (im Stripe-Dashboard erstellen, siehe server/README.md).
+    // Nach dem Kauf stellt der Webhook-Worker den Lizenzschlüssel per E-Mail zu.
+    private let purchaseURL = "https://buy.stripe.com/DEIN_PAYMENT_LINK"
 
     private let features = [
         ("mic.fill", "Diktieren, überall", "Per Hotkey in jede App — komplett on-device."),

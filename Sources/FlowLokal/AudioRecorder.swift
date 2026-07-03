@@ -32,7 +32,13 @@ final class AudioRecorder {
     /// Laufender Eingangspegel 0…1 (für den Aufnahme-Hinweis). Läuft über den Main-Thread.
     var onLevel: ((Float) -> Void)?
 
-    private let speechRMSThreshold: Float = 0.015
+    // Adaptiver VAD: statt fester Schwelle läuft ein Rausch-Boden mit, der sich
+    // an die Umgebung anpasst. Sprache = RMS deutlich über dem Boden.
+    private var noiseFloor: Float = 0.02
+    private let speechFactor: Float = 3.5      // wie weit über dem Rauschen = Sprache
+    private let absoluteFloor: Float = 0.010   // unter diesem RMS ist es immer „still"
+    private var speechThreshold: Float { max(absoluteFloor, noiseFloor * speechFactor) }
+
     private var heardSpeech = false
     private var silenceAccumulated = 0.0
     private var silenceFired = false
@@ -48,6 +54,7 @@ final class AudioRecorder {
         heardSpeech = false
         silenceAccumulated = 0
         silenceFired = false
+        noiseFloor = 0.02   // Rausch-Boden je Aufnahme neu einpendeln lassen
 
         // Frische Engine je Aufnahme, damit ein Gerätewechsel sauber greift.
         engine = AVAudioEngine()
@@ -97,7 +104,37 @@ final class AudioRecorder {
         let result = samples
         samples.removeAll(keepingCapacity: true)
         lock.unlock()
-        return result
+        return trimSilence(result)
+    }
+
+    /// Schneidet führende/abschließende Stille weg, bevor die Samples an Whisper
+    /// gehen (weniger Halluzinationen in Stille, geringere Latenz). Konservativ:
+    /// großzügiges Padding und ein niedriger, gedeckelter Schwellwert, damit auch
+    /// leise Sprache nicht verloren geht.
+    private func trimSilence(_ input: [Float]) -> [Float] {
+        guard input.count > 3_200 else { return input }   // < 0,2 s: unverändert lassen
+        let window = 480                                   // 30 ms bei 16 kHz
+        let threshold = min(speechThreshold, 0.03)         // gedeckelt → nicht zu aggressiv
+
+        var firstSpeech = -1, lastSpeech = -1
+        var i = 0
+        while i < input.count {
+            let end = min(i + window, input.count)
+            var sum: Float = 0
+            for j in i..<end { sum += input[j] * input[j] }
+            let rms = (sum / Float(end - i)).squareRoot()
+            if rms > threshold {
+                if firstSpeech < 0 { firstSpeech = i }
+                lastSpeech = end
+            }
+            i += window
+        }
+
+        guard firstSpeech >= 0 else { return [] }          // durchgehend still → nichts gesprochen
+        let pad = 2_400                                    // 150 ms Sicherheitsrand
+        let start = max(0, firstSpeech - pad)
+        let stop = min(input.count, lastSpeech + pad)
+        return Array(input[start..<stop])
     }
 
     // MARK: - Intern
@@ -151,11 +188,18 @@ final class AudioRecorder {
         let levelCallback = onLevel
         DispatchQueue.main.async { levelCallback?(level) }
 
+        // Rausch-Boden nachführen: fällt schnell (Stille), steigt langsam.
+        if rms < noiseFloor {
+            noiseFloor = noiseFloor * 0.9 + rms * 0.1
+        } else {
+            noiseFloor = noiseFloor * 0.995 + rms * 0.005
+        }
+
         // Stille-Zustand nur für die aktuelle Aufnahme fortschreiben.
         lock.lock(); let current = generation; lock.unlock()
         guard gen == current, autoStopEnabled, !silenceFired else { return }
         let duration = Double(chunk.count) / 16_000.0
-        if rms > speechRMSThreshold {
+        if rms > speechThreshold {
             heardSpeech = true
             silenceAccumulated = 0
         } else if heardSpeech {

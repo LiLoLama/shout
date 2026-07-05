@@ -10,9 +10,8 @@ interface Env {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   LICENSE_PRIVATE_KEY: string; // base64 des 32-Byte Ed25519-Seeds
-  MAILGUN_API_KEY: string;
-  MAILGUN_DOMAIN: string;
-  FROM_EMAIL: string;
+  RESEND_API_KEY: string;
+  FROM_EMAIL: string;          // z. B. "shout. <lizenz@deine-domain.de>"
 }
 
 // PKCS#8-Präfix für einen rohen Ed25519-Seed (fix), damit Web Crypto ihn importiert.
@@ -51,28 +50,28 @@ async function signLicense(licensee: string, privateKeyB64: string): Promise<str
 }
 
 async function sendLicenseEmail(env: Env, to: string, licenseKey: string): Promise<void> {
-  const body = new URLSearchParams();
-  body.set('from', env.FROM_EMAIL);
-  body.set('to', to);
-  body.set('subject', 'Deine shout.-Lizenz');
-  body.set('text',
+  const text =
     `Danke für deinen Kauf von shout.!\n\n` +
     `Dein Lizenzschlüssel:\n\n${licenseKey}\n\n` +
     `So aktivierst du ihn:\n` +
     `shout. öffnen → „Konto & Lizenz" → Schlüssel einfügen → „Aktivieren".\n\n` +
-    `Der Schlüssel schaltet die Vollversion dauerhaft frei. Bei Fragen einfach antworten.\n`,
-  );
+    `Der Schlüssel schaltet die Vollversion dauerhaft frei. Bei Fragen einfach antworten.\n`;
 
-  const resp = await fetch(`https://api.mailgun.net/v3/${env.MAILGUN_DOMAIN}/messages`, {
+  const resp = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${btoa(`api:${env.MAILGUN_API_KEY}`)}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
     },
-    body,
+    body: JSON.stringify({
+      from: env.FROM_EMAIL,
+      to: [to],
+      subject: 'Deine shout.-Lizenz',
+      text,
+    }),
   });
   if (!resp.ok) {
-    throw new Error(`Mailgun ${resp.status}: ${await resp.text()}`);
+    throw new Error(`Resend ${resp.status}: ${await resp.text()}`);
   }
 }
 

@@ -13,7 +13,7 @@ App „Kaufen"-Button ──▶ Stripe Payment Link (150 €, hosted by Stripe)
                                      │
                                      ▼
         Worker  ──▶  signiert Schlüssel (privater Key = Worker-Secret)
-                ──▶  mailt ihn an die Käufer-Adresse (Mailgun)
+                ──▶  mailt ihn an die Käufer-Adresse (Resend)
                                      │
                                      ▼
         Kunde fügt Schlüssel in shout. ein → App verifiziert OFFLINE
@@ -45,17 +45,21 @@ npm run typecheck   # optional
 - Event: `checkout.session.completed`
 - Das **Signing Secret** (`whsec_…`) für Schritt 4 kopieren.
 
-### 4. Secrets setzen
+### 4. E-Mail: Resend
+- Kostenloses Konto auf resend.com (Free-Tier: 3.000 Mails/Monat, 100/Tag).
+- **API-Key** erstellen (`re_…`).
+- Für den Echtbetrieb eine **eigene Domain verifizieren** (Resend zeigt die DNS-Einträge SPF/DKIM). Zum Testen kann als Absender `onboarding@resend.dev` genutzt werden — dann aber nur an die eigene Konto-Adresse zustellbar.
+
+### 5. Secrets setzen
 ```bash
 npx wrangler secret put STRIPE_SECRET_KEY       # sk_live_… (oder sk_test_… zum Testen)
 npx wrangler secret put STRIPE_WEBHOOK_SECRET    # whsec_…
 npx wrangler secret put LICENSE_PRIVATE_KEY      # Inhalt aus ../.license-signing/PRIVATE_KEY.txt (32-Byte base64-Seed)
-npx wrangler secret put MAILGUN_API_KEY
-npx wrangler secret put MAILGUN_DOMAIN           # z. B. mg.inthezone.studio
-npx wrangler secret put FROM_EMAIL               # z. B. "shout. <lizenz@inthezone.studio>"
+npx wrangler secret put RESEND_API_KEY           # re_…
+npx wrangler secret put FROM_EMAIL               # z. B. "shout. <lizenz@deine-domain.de>"
 ```
 
-### 5. Deployen
+### 6. Deployen
 ```bash
 npm run deploy
 ```

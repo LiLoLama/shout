@@ -42,8 +42,11 @@ npm run typecheck   # optional
 
 ### 3. Webhook in Stripe
 - Endpoint: `https://<dein-worker>.workers.dev/webhook`
-- Event: `checkout.session.completed`
-- Das **Signing Secret** (`whsec_…`) für Schritt 4 kopieren.
+- Events (BEIDE abonnieren!):
+  - `checkout.session.completed` (Sofortzahlung, z. B. Karte)
+  - `checkout.session.async_payment_succeeded` (SEPA-Lastschrift/Klarna, Geld geht erst später ein)
+  - ⚠️ Ohne das zweite Event bekommen SEPA-/Klarna-Käufer **nie** eine Lizenz (Zahlung ok, aber kein Schlüssel, kein Fehler). Wer nur Karte anbietet, kann es weglassen — dann im Payment Link SEPA/Klarna deaktivieren.
+- Das **Signing Secret** (`whsec_…`) für Schritt 5 kopieren.
 
 ### 4. E-Mail: Resend
 - Kostenloses Konto auf resend.com (Free-Tier: 3.000 Mails/Monat, 100/Tag).
@@ -86,3 +89,11 @@ Der Payload enthält aktuell nur die E-Mail — keine Geräte-Bindung/kein Ablau
 Ein geleakter Schlüssel funktioniert also auf beliebig vielen Geräten (bewusste
 Einfachheit für v1). Härtung (Hardware-UUID/Ablaufdatum im Payload) ist in
 `OFFEN.md` als offener Punkt notiert.
+
+## Rückerstattung / Widerruf
+Der Lizenzschlüssel ist offline verifiziert, ohne Ablauf oder Widerrufsliste —
+nach einer Stripe-Rückerstattung oder einem Dispute bleibt er technisch gültig
+(keine Remote-Sperre möglich). Empfehlung: im Checkout einen ausdrücklichen
+Verzicht auf das EU-Widerrufsrecht für digitale Inhalte einholen (schließt das
+14-Tage-Widerrufsfenster). Eine echte Sperr-/Widerrufsliste bräuchte einen
+Online-Check und wäre ein Bruch mit dem Offline-Prinzip — bewusst nicht v1.

@@ -131,7 +131,9 @@ export default {
 
       // Bei asynchronen Zahlarten feuert `completed` auch mit `unpaid` — dann
       // NICHT ausstellen (sonst gäbe es einen Lifetime-Key vor Zahlungseingang).
-      if (session.payment_status !== 'paid') {
+      // `no_payment_required` = 0-€-Checkout (z. B. 100%-Promo-Code) → gilt als bezahlt.
+      const PAID = new Set(['paid', 'no_payment_required']);
+      if (!PAID.has(session.payment_status ?? '')) {
         console.log(JSON.stringify({ msg: 'session not paid yet', status: session.payment_status, session: session.id }));
         return ok();
       }

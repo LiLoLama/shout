@@ -10,9 +10,16 @@ Stand: 2026-07-03. Erledigtes steht unten zur Orientierung.
 - [ ] **Verkaufsseite/Landing** unter der Kauf-URL (aktuell Platzhalter).
 
 ## 🟠 Verteilung / Auslieferung
-- [ ] **Developer-ID-Signierung + Notarisierung** (ersetzt das selbstsignierte Zertifikat; nötig für Verteilung ohne Gatekeeper-Warnung).
+- [x] **Signierung + Notarisierung + DMG** — Pipeline steht (`release.sh` + `Release/shout.entitlements` + `RELEASE.md`); Build ist arm64-only (Intel startet nicht). **Offen: Apple Developer Program + Developer-ID-Zertifikat besorgen**, dann `release.sh` mit den Zugangsdaten ausführen.
+- [ ] **Auf einem fremden Mac testen** (sauberer Rechner, Modelle nicht gecacht, andere macOS-Version).
 - [ ] **Sparkle-Auto-Update** (EdDSA-signierter Appcast) — sonst ist jeder Bugfix nach Verkauf ein Support-Fall.
-- [ ] **DMG-Packaging** für die Auslieferung.
+
+## 🟠 Vor dem Verkauf (rechtlich/kommerziell)
+- [ ] **Stripe live** vollständig: beide Webhook-Events, Live-Secrets, Live-Payment-Link in der App, echter Live-Testkauf.
+- [ ] **Rechtstexte (DE):** Impressum, Datenschutzerklärung, AGB + Widerrufsverzicht für digitale Inhalte im Checkout.
+- [ ] **Umsatzsteuer:** Stripe = kein Merchant of Record → EU-USt (OSS) + Rechnungen selbst. (Alternative MoR bewusst verworfen.)
+- [ ] **Verkaufsseite** mit Pitch, Screenshots, Systemvoraussetzungen (macOS 14+, Apple Silicon, Speicher fürs Modell).
+- [ ] **Support-Postfach** (FROM_EMAIL überwachen) + manueller Reissue-Pfad (`make-license.swift`).
 
 ## 🟡 Audio / Sound
 - [ ] **Sound-Cues final abstimmen** (aktuell bei Codex): kurzes, sanftes, warmes „Klopf"-Geräusch — kein Ton, kein Metall. Datei: `SoundCues.swift`.

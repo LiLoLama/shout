@@ -11,6 +11,18 @@ final class StatsStore: ObservableObject {
         var totalDictations = 0
         var totalSeconds = 0.0
         var activeDays: [String] = []   // "yyyy-MM-dd"
+
+        init() {}
+
+        // Tolerantes Decoding: fehlende Felder (ältere/künftige Schema-Version) fallen
+        // auf Default zurück, statt den ganzen Store als „defekt" zu verwerfen.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            totalWords = try c.decodeIfPresent(Int.self, forKey: .totalWords) ?? 0
+            totalDictations = try c.decodeIfPresent(Int.self, forKey: .totalDictations) ?? 0
+            totalSeconds = try c.decodeIfPresent(Double.self, forKey: .totalSeconds) ?? 0
+            activeDays = try c.decodeIfPresent([String].self, forKey: .activeDays) ?? []
+        }
     }
 
     @Published private(set) var data = Data()

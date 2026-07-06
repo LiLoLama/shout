@@ -76,12 +76,14 @@ enum HuggingFaceModels {
             if scalars[i].isNumber {
                 var j = i
                 while j < scalars.count, scalars[j].isNumber || scalars[j] == "." { j += 1 }
-                // „…b" gefolgt von einem Buchstaben ist keine Größe, sondern ein
-                // Suffix wie „4bit" → nur echte Parameterzahlen zählen.
-                if j < scalars.count, scalars[j] == "b",
-                   j + 1 >= scalars.count || !scalars[j + 1].isLetter {
-                    if let v = Double(String(scalars[i..<j])), v >= 0.5, v <= 500 {
-                        best = max(best ?? 0, v)
+                // „…b"/„…m" gefolgt von einem Buchstaben ist keine Größe, sondern ein
+                // Suffix wie „4bit"/„16mb" → nur echte Parameterzahlen zählen.
+                let suffixOK = j < scalars.count && (j + 1 >= scalars.count || !scalars[j + 1].isLetter)
+                if suffixOK, let v = Double(String(scalars[i..<j])) {
+                    if scalars[j] == "b", v >= 0.5, v <= 500 {
+                        best = max(best ?? 0, v)                 // Milliarden
+                    } else if scalars[j] == "m", v >= 50, v <= 999 {
+                        best = max(best ?? 0, v / 1000)          // Millionen → Mrd. (270m → 0,27)
                     }
                 }
                 i = j

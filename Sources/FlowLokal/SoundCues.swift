@@ -13,6 +13,7 @@ final class SoundCues {
     private let player = AVAudioPlayerNode()
     private let sampleRate = 44_100.0
     private var buffers: [Cue: AVAudioPCMBuffer] = [:]
+    private var playToken = 0   // erkennt, ob seit dem Scheduling ein neuer Cue kam
 
     private var enabled: Bool { UserDefaults.standard.object(forKey: "soundCuesEnabled") as? Bool ?? true }
 
@@ -138,7 +139,18 @@ final class SoundCues {
             // engine.isRunning statt eines Einmal-Flags: nach einem Audio-Config-Wechsel
             // (Kopfhörer an/ab) stoppt die Engine — dann hier sauber neu starten.
             if !engine.isRunning { try engine.start() }
-            player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
+            playToken &+= 1
+            let token = playToken
+            // Nach dem Abspielen Engine pausieren (rendert sonst dauerhaft Stille).
+            // Kommt zwischenzeitlich ein neuer Cue (Token geändert), NICHT pausieren.
+            player.scheduleBuffer(buffer, at: nil, options: .interrupts,
+                                  completionCallbackType: .dataPlayedBack) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, self.playToken == token else { return }
+                    self.player.pause()
+                    self.engine.pause()
+                }
+            }
             if !player.isPlaying { player.play() }
         } catch {
             NSLog("SoundCues: Wiedergabe fehlgeschlagen: \(error)")

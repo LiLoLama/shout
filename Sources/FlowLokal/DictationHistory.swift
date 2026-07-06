@@ -9,6 +9,19 @@ final class DictationHistory: ObservableObject {
         var id = UUID()
         var text: String
         var date: Date
+
+        init(text: String, date: Date) {
+            self.text = text
+            self.date = date
+        }
+
+        // Tolerantes Decoding: fehlende Felder → Default statt „Datei defekt".
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+            text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+            date = try c.decodeIfPresent(Date.self, forKey: .date) ?? Date()
+        }
     }
 
     @Published private(set) var entries: [Entry] = []

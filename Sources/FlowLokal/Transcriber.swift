@@ -48,8 +48,11 @@ actor Transcriber {
 
         let text = try await run(samples: samples, biasTerms: biasTerms)
         // Prompt-Biasing kann bei Folge-Aufnahmen leeren Text verursachen →
-        // dann einmal ohne Biasing nachziehen (rettet die Transkription).
-        if text.isEmpty, !biasTerms.isEmpty {
+        // dann einmal ohne Biasing nachziehen. Nur sinnvoll, wenn Bias auch
+        // angewandt wurde — im Auto-Sprachmodus ist es deaktiviert (run()), ein
+        // Retry wäre dort nur eine nutzlose zweite Transkription.
+        let auto = (UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de") == "auto"
+        if text.isEmpty, !biasTerms.isEmpty, !auto {
             return try await run(samples: samples, biasTerms: [])
         }
         return text

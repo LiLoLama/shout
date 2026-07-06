@@ -95,7 +95,11 @@ final class LicenseStore: ObservableObject {
     func activate(_ key: String) -> Bool {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let licensee = verify(trimmed) else { return false }
-        Keychain.set(trimmed, for: Self.kcLicense)
+        if !Keychain.set(trimmed, for: Self.kcLicense) {
+            // Schlüssel ist gültig → Session freischalten, aber Persistenz scheiterte
+            // (gesperrte Keychain o. Ä.): nach Neustart ggf. erneut nötig.
+            NSLog("shout: Lizenz aktiviert, aber Keychain-Persistenz fehlgeschlagen — nach Neustart evtl. erneut aktivieren.")
+        }
         UserDefaults.standard.removeObject(forKey: storageKey)
         isLicensed = true
         licensedTo = licensee

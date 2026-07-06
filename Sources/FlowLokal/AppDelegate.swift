@@ -261,9 +261,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.injector.paste(trimmed)
             }
         } else {
-            // Kein (lebendes) Ziel bekannt → wenigstens in die Zwischenablage.
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(trimmed, forType: .string)
+            // Kein (lebendes) Ziel bekannt → wenigstens in die Zwischenablage, aber
+            // als vertraulich markiert (kein Leak in Clipboard-Historien).
+            injector.copyConcealed(trimmed)
         }
     }
 
@@ -515,7 +515,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.nameFieldStringValue = "shout-backup.json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return "Export abgebrochen." }
-        do { try data.write(to: url); return "Exportiert nach \(url.lastPathComponent)." }
+        do { try data.write(to: url, options: .atomic); return "Exportiert nach \(url.lastPathComponent)." }
         catch { return "Export fehlgeschlagen: \(error.localizedDescription)" }
     }
 
@@ -557,10 +557,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let f = s.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let mic = s.preferredMicUID { UserDefaults.standard.set(mic, forKey: "preferredMicUID") }
         if let vp = s.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
-        if let lk = s.licenseKey, !lk.isEmpty { license.activate(lk) }
+        var licenseNote = ""
+        if let lk = s.licenseKey, !lk.isEmpty {
+            licenseNote = license.activate(lk) ? " Lizenz übernommen." : " Achtung: Lizenzschlüssel im Backup ungültig — Lizenz nicht übernommen."
+        }
         updateStatusItem()
 
-        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate."
+        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate.\(licenseNote)"
     }
 
     /// Klick aufs Dock-/Launchpad-Icon öffnet das Hauptfenster wieder.
@@ -615,7 +618,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func retryLoadModel() {
-        guard state == .failed || state == .loadingModel else { return }
+        // Nur aus dem Fehlerzustand — während .loadingModel läuft bereits ein Load,
+        // ein zweiter Aufruf würde eine parallele WhisperKit-Initialisierung starten.
+        guard state == .failed else { return }
         loadModel()
     }
 
@@ -633,10 +638,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             } catch {
                 // Nicht mehr im Endlos-Spinner hängen bleiben: klarer Fehlerzustand
                 // mit „erneut laden" im Menü und im Onboarding.
-                statusMenuItem?.title = "Modell-Ladefehler: \(error.localizedDescription)"
                 NSLog("Modell-Ladefehler: \(error)")
                 dashboardModel.asrLoadFailed = true
                 state = .failed
+                // NACH state=.failed: das didSet ruft updateStatusItem() und würde
+                // einen zuvor gesetzten Titel sofort überschreiben.
+                statusMenuItem?.title = "Modell-Ladefehler: \(error.localizedDescription)"
             }
             dashboardModel.asrLoadingID = nil
             dashboardModel.asrProgress = nil
@@ -644,6 +651,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func loadFormatter() {
+        // Läuft bereits ein Load/Wechsel (Startup, Toggle, Modellwechsel)? Dann nicht
+        // erneut anstoßen — sonst doppelter UI-Zustand (der Formatter selbst
+        // serialisiert zwar, aber wir sparen die redundante Runde).
+        guard dashboardModel.formatLoadingID == nil else { return }
         // Ladezustand sofort sichtbar machen (load() ist asynchron und kann dauern).
         formatterMenuItem?.title = "Formatter: Modell wird geladen …"
         dashboardModel.formatLoadingID = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
@@ -699,6 +710,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// parallele Wechsel; die App-Aufnahme bleibt davon unberührt.
     private func switchFormatModel(to id: String) async {
         guard dashboardModel.formatLoadingID == nil else { return }
+        // Wie beim ASR-Wechsel: nicht während Aufnahme/Verarbeitung — sonst hält die
+        // laufende Formatierung das alte LLM, während das neue lädt → zwei Multi-GB-
+        // Modelle gleichzeitig im Unified Memory (Memory-Pressure auf kleinen Macs).
+        guard state == .idle || state == .failed else {
+            dashboardModel.modelNote = "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird."
+            return
+        }
         dashboardModel.modelNote = nil
         let previous = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
         UserDefaults.standard.set(id, forKey: "formatModel")

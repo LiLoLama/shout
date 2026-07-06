@@ -11,15 +11,23 @@ enum SpeechCommands {
     private struct Rule { let pattern: String; let replacement: String }
 
     // Reihenfolge: mehrteilige/spezifische Marker zuerst. Groß-/Kleinschreibung egal.
+    // Grenzen über Lookarounds statt \b: schließt angrenzende Buchstaben, Ziffern
+    // UND Bindestriche aus — sonst würde „Punkt-zu-Punkt" zu „.-zu-." zerfallen.
+    private static let L = "(?<![\\p{L}\\p{N}-])"   // links: kein Wortzeichen/Bindestrich
+    private static let R = "(?![\\p{L}\\p{N}-])"    // rechts: dito
+    // „Punkt eins/zwei/…" ist ein Aufzählungs-Marker, auf den der Formatter baut —
+    // dann NICHT durch „." ersetzen.
+    private static let notEnumeration = "(?!\\s+(?:eins|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|\\d))"
+
     private static let rules: [Rule] = [
-        .init(pattern: "\\s*\\bneuer\\s+absatz\\b\\s*", replacement: "\n\n"),
-        .init(pattern: "\\s*\\bneue\\s+zeile\\b\\s*", replacement: "\n"),
-        .init(pattern: "\\s*\\bfragezeichen\\b", replacement: "?"),
-        .init(pattern: "\\s*\\bausrufezeichen\\b", replacement: "!"),
-        .init(pattern: "\\s*\\bdoppelpunkt\\b", replacement: ":"),
-        .init(pattern: "\\s*\\b(?:semikolon|strichpunkt)\\b", replacement: ";"),
-        .init(pattern: "\\s*\\bkomma\\b", replacement: ","),
-        .init(pattern: "\\s*\\bpunkt\\b", replacement: "."),
+        .init(pattern: "\\s*\(L)neuer\\s+absatz\(R)\\s*", replacement: "\n\n"),
+        .init(pattern: "\\s*\(L)neue\\s+zeile\(R)\\s*", replacement: "\n"),
+        .init(pattern: "\\s*\(L)fragezeichen\(R)", replacement: "?"),
+        .init(pattern: "\\s*\(L)ausrufezeichen\(R)", replacement: "!"),
+        .init(pattern: "\\s*\(L)doppelpunkt\(R)", replacement: ":"),
+        .init(pattern: "\\s*\(L)(?:semikolon|strichpunkt)\(R)", replacement: ";"),
+        .init(pattern: "\\s*\(L)komma\(R)", replacement: ","),
+        .init(pattern: "\\s*\(L)punkt\(R)\(notEnumeration)", replacement: "."),
     ]
 
     private static let compiled: [(NSRegularExpression, String)] = rules.compactMap {

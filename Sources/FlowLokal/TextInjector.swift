@@ -57,21 +57,35 @@ final class TextInjector {
         // Kurze Pause, damit die Zwischenablage sicher übernommen ist, bevor ⌘V kommt
         // (behebt das gelegentliche „Einfügen kommt nicht an").
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
-            guard let self else { return }
-            self.postCommandV()
-            // Nach dem Einfügen den kompletten Original-Inhalt zurückschreiben.
-            let restore = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                let pb = NSPasteboard.general
-                pb.clearContents()
-                if let items = self.savedItems, !items.isEmpty { pb.writeObjects(items) }
-                self.savedItems = nil
-                self.restorePending = false
-                self.restoreWorkItem = nil
-            }
-            self.restoreWorkItem = restore
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: restore)
+            self?.postCommandV()
         }
+
+        // Restore-WorkItem SOFORT erzeugen und referenzieren (nicht erst im 0,06-s-Block)
+        // — sonst kann ein Folge-paste() im Fenster davor es nicht canceln, beide Restores
+        // laufen, und der zweite schreibt eine bereits geleerte Zwischenablage zurück.
+        let restore = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            if let items = self.savedItems, !items.isEmpty { pb.writeObjects(items) }
+            self.savedItems = nil
+            self.restorePending = false
+            self.restoreWorkItem = nil
+        }
+        restoreWorkItem = restore
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.41, execute: restore)
+    }
+
+    /// Schreibt Text als vertraulich/transient in die Zwischenablage (mit den
+    /// Concealed/Transient-Markern), OHNE ⌘V — für den Fall, dass kein Ziel-Fenster
+    /// bekannt ist. So landet Diktattext nicht in Clipboard-Historien.
+    func copyConcealed(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.declareTypes([.string, concealedType, transientType], owner: nil)
+        pb.setString(text, forType: .string)
+        pb.setData(Data("1".utf8), forType: concealedType)
+        pb.setData(Data("1".utf8), forType: transientType)
     }
 
     private func postCommandV() {

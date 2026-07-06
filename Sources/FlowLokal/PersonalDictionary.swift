@@ -22,6 +22,15 @@ final class PersonalDictionary: ObservableObject {
     struct Contents: Codable {
         var terms: [String] = []
         var corrections: [Correction] = []
+
+        init() {}
+
+        // Tolerantes Decoding: fehlende Felder → Default statt „Datei defekt".
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            terms = try c.decodeIfPresent([String].self, forKey: .terms) ?? []
+            corrections = try c.decodeIfPresent([Correction].self, forKey: .corrections) ?? []
+        }
     }
 
     @Published private(set) var contents = Contents()
@@ -61,7 +70,9 @@ final class PersonalDictionary: ObservableObject {
     func addCorrection(wrong: String, right: String) {
         let w = wrong.trimmingCharacters(in: .whitespacesAndNewlines)
         let r = right.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !w.isEmpty, !r.isEmpty, w.caseInsensitiveCompare(r) != .orderedSame else { return }
+        // Nur exakt-gleiche Paare ablehnen — reine Casing-Fixes („imessage" → „iMessage",
+        // „github" → „GitHub") sind ein Kern-Anwendungsfall und müssen erlaubt sein.
+        guard !w.isEmpty, !r.isEmpty, w != r else { return }
         contents.corrections.removeAll { $0.wrong.caseInsensitiveCompare(w) == .orderedSame }
         contents.corrections.append(Correction(wrong: w, right: r))
         addTerm(r)   // legt den richtigen Begriff an (und speichert, falls neu)

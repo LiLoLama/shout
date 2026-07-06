@@ -33,6 +33,11 @@ actor Formatter {
     private(set) var loadedModel: String?
     var activeModelName: String { isReady ? (loadedModel ?? modelID) : "—" }
 
+    /// Verkettung aller Lade-Operationen. Actors sind am `await` reentrant — ein
+    /// zweiter load()/reload() würde sonst PARALLEL denselben Multi-GB-Download
+    /// starten. Jede Operation wartet daher zuerst auf die vorherige.
+    private var loadChain: Task<Void, Never>?
+
     init(config: Config = Config()) {
         self.config = config
     }
@@ -40,12 +45,29 @@ actor Formatter {
     // MARK: - Modell laden
 
     /// Lädt (und beim ersten Mal: downloadet) das aktuell gewählte Modell in den
-    /// Prozess. Durch die Actor-Isolation serialisieren sich konkurrierende
-    /// Aufrufe automatisch — ein Wechsel während eines laufenden Loads wird also
-    /// nicht mehr verschluckt, sondern läuft danach mit der aktuellen Modell-ID.
+    /// Prozess. Serialisiert über `loadChain` — kein paralleler Doppel-Load.
     func load(onProgress: (@Sendable (Double) -> Void)? = nil) async {
+        await enqueue(reset: false, onProgress: onProgress)
+    }
+
+    /// Wechselt zur Laufzeit auf das aktuell gewählte Modell (erzwingt Neuladen).
+    func reload(onProgress: (@Sendable (Double) -> Void)? = nil) async {
+        await enqueue(reset: true, onProgress: onProgress)
+    }
+
+    private func enqueue(reset: Bool, onProgress: (@Sendable (Double) -> Void)?) async {
+        let previous = loadChain
+        let task = Task { [self] in
+            await previous?.value            // strikt nach der vorherigen Operation
+            await performLoad(reset: reset, onProgress: onProgress)
+        }
+        loadChain = task
+        await task.value
+    }
+
+    private func performLoad(reset: Bool, onProgress: (@Sendable (Double) -> Void)?) async {
         let id = modelID
-        if isReady, loadedModel == id { return }  // schon das richtige Modell geladen
+        if !reset, isReady, loadedModel == id { return }  // schon das richtige Modell geladen
         isLoading = true
         isReady = false
         loadedModel = nil
@@ -62,14 +84,6 @@ actor Formatter {
             NSLog("Formatter-Modell konnte nicht geladen werden: \(error)")
             isReady = false
         }
-    }
-
-    /// Wechselt zur Laufzeit auf das aktuell gewählte Modell.
-    func reload(onProgress: (@Sendable (Double) -> Void)? = nil) async {
-        isReady = false
-        loadedModel = nil
-        container = nil
-        await load(onProgress: onProgress)
     }
 
     // MARK: - Formatierung

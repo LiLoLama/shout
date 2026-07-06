@@ -7,17 +7,24 @@ import Security
 enum Keychain {
     private static let service = "com.inthezone.flowlokal"
 
-    static func set(_ value: String, for account: String) {
+    @discardableResult
+    static func set(_ value: String, for account: String) -> Bool {
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(base as CFDictionary)
+        SecItemDelete(base as CFDictionary)   // evtl. vorhandenen Eintrag entfernen (Fehler egal)
         var add = base
         add[kSecValueData as String] = Data(value.utf8)
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(add as CFDictionary, nil)
+        let status = SecItemAdd(add as CFDictionary, nil)
+        if status != errSecSuccess {
+            // z. B. gesperrte Keychain, MDM-Restriktion → nicht still verschlucken.
+            NSLog("shout: Keychain.set(\(account)) fehlgeschlagen (OSStatus \(status))")
+            return false
+        }
+        return true
     }
 
     static func get(_ account: String) -> String? {
@@ -35,12 +42,18 @@ enum Keychain {
         return value
     }
 
-    static func delete(_ account: String) {
+    @discardableResult
+    static func delete(_ account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            NSLog("shout: Keychain.delete(\(account)) fehlgeschlagen (OSStatus \(status))")
+            return false
+        }
+        return true
     }
 }

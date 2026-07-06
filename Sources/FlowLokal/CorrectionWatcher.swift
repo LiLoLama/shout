@@ -118,8 +118,9 @@ final class CorrectionWatcher {
 
         let wrong = changed[0].0.trimmingCharacters(in: .punctuationCharacters)
         let right = changed[0].1.trimmingCharacters(in: .punctuationCharacters)
-        guard wrong.count >= 2, right.count >= 2,
-              wrong.lowercased() != right.lowercased() else { return nil }
+        // Exakter Vergleich (nach Punktuations-Trim): reine Casing-Fixes sind gewollt,
+        // nur reine Punktuations-Unterschiede sollen kein „Lernen" auslösen.
+        guard wrong.count >= 2, right.count >= 2, wrong != right else { return nil }
         return (wrong, right)
     }
 
@@ -135,7 +136,7 @@ final class CorrectionWatcher {
         for (a, b) in zip(oldWords, newWords) where a != b {
             let wrong = a.trimmingCharacters(in: .punctuationCharacters)
             let right = b.trimmingCharacters(in: .punctuationCharacters)
-            if wrong.count >= 2, right.count >= 2, wrong.lowercased() != right.lowercased() {
+            if wrong.count >= 2, right.count >= 2, wrong != right {
                 subs.append((wrong, right))
             }
         }

@@ -23,6 +23,8 @@ final class RecordingSettings: ObservableObject {
 
     /// UI-Zustand: gerade wird eine neue Taste aufgenommen (nicht persistiert).
     @Published var isCapturing = false
+    /// Kurzer Hinweis während der Aufnahme (z. B. „bitte mit Modifier kombinieren").
+    @Published var captureHint: String?
 
     private let d = UserDefaults.standard
     private enum K {

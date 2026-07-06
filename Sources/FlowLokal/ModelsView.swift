@@ -114,8 +114,7 @@ struct ModelsView: View {
                 } else if remote.isEmpty {
                     infoLine("Keine Modelle gefunden.")
                 } else {
-                    ForEach(remote.indices, id: \.self) { i in
-                        let m = remote[i]
+                    ForEach(Array(remote.enumerated()), id: \.element.id) { i, m in
                         remoteRow(m, selected: formatID == m.id,
                                   recommended: remoteRecommended?.id == m.id,
                                   loading: loadingFormat == m.id,

@@ -25,7 +25,7 @@ final class LicenseStore: ObservableObject {
     private static let kcLicense = "licenseKey"
 
     /// Zuletzt gesehene Zeit (Monotonie-Anker gegen Zurückstellen der Systemuhr).
-    private let lastSeen: Date
+    private var lastSeen: Date
 
     init() {
         let url = StoreIO.directory().appendingPathComponent("trial.json")
@@ -76,6 +76,16 @@ final class LicenseStore: ObservableObject {
     /// Darf die App genutzt werden (Diktieren)? Lizenz oder laufende Testphase.
     var isActive: Bool { isLicensed || isTrialActive }
 
+    /// Aktualisiert den Monotonie-Anker auf „jetzt". Bei länger laufender App
+    /// regelmäßig aufrufen (z. B. nach jedem Diktat, beim Beenden), sonst hinkt
+    /// der Anker hinterher und der Uhr-Zurückstell-Schutz greift schlechter.
+    func touch() {
+        let now = Date()
+        guard now > lastSeen else { return }
+        lastSeen = now
+        Keychain.set(String(now.timeIntervalSinceReferenceDate), for: Self.kcLastSeen)
+    }
+
     /// Schlüssel für den (nutzereigenen) Backup-Export.
     var exportKey: String? { Keychain.get(Self.kcLicense) }
 
@@ -105,6 +115,15 @@ final class LicenseStore: ObservableObject {
         }
     }
 
+    /// Signiertes Payload-Format v1: JSON `{"v":1,"email":"…"}`. Zusätzliche Felder
+    /// (Ablauf, Gerätebindung) lassen sich später ergänzen, ohne die Signatur alter
+    /// Schlüssel zu brechen — die Signatur deckt die übertragenen Bytes ab, das
+    /// Format ist ihr egal.
+    private struct LicensePayload: Decodable {
+        let v: Int?
+        let email: String?
+    }
+
     private func verify(_ key: String) -> String? {
         let parts = key.split(separator: ".", maxSplits: 1).map(String.init)
         guard parts.count == 2,
@@ -113,8 +132,17 @@ final class LicenseStore: ObservableObject {
               let pubData = Data(base64Encoded: publicKeyBase64),
               let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: pubData),
               publicKey.isValidSignature(signature, for: payload),
-              let licensee = String(data: payload, encoding: .utf8)
+              let text = String(data: payload, encoding: .utf8)
         else { return nil }
-        return licensee
+
+        // v1: JSON mit E-Mail. Ältere Schlüssel tragen die E-Mail als rohen Text —
+        // beide werden akzeptiert (abwärtskompatibel).
+        if let decoded = try? JSONDecoder().decode(LicensePayload.self, from: payload),
+           let email = decoded.email?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !email.isEmpty {
+            return email
+        }
+        let legacy = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return legacy.isEmpty ? nil : legacy
     }
 }

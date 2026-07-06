@@ -19,9 +19,33 @@ final class TextInjector {
     private let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
     private let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
+    /// Gesicherter Original-Inhalt der Zwischenablage (ALLE Typen, nicht nur Text)
+    /// und die geplante Wiederherstellung. Nur auf dem Main-Thread benutzt.
+    private var savedItems: [NSPasteboardItem]?
+    private var restoreWorkItem: DispatchWorkItem?
+    private var restorePending = false
+
     func paste(_ text: String) {
         let pasteboard = NSPasteboard.general
-        let previous = pasteboard.string(forType: .string)
+
+        if !restorePending {
+            // Erstes Einfügen einer Serie → den ECHTEN Nutzer-Inhalt vollständig sichern
+            // (Text, Bild, RTF …). Tiefe Kopie, da Pasteboard-Items flüchtig sind.
+            savedItems = pasteboard.pasteboardItems?.map { item in
+                let copy = NSPasteboardItem()
+                for type in item.types {
+                    if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+                }
+                return copy
+            }
+        } else {
+            // Serie läuft (schnell hintereinander diktiert): geplante Wiederherstellung
+            // abbrechen und den ursprünglichen Snapshot behalten — sonst würde das
+            // zweite Diktat den Text des ersten als „Original" sichern und wiederherstellen.
+            restoreWorkItem?.cancel()
+            restoreWorkItem = nil
+        }
+        restorePending = true
 
         pasteboard.clearContents()
         pasteboard.declareTypes([.string, concealedType, transientType], owner: nil)
@@ -33,13 +57,20 @@ final class TextInjector {
         // Kurze Pause, damit die Zwischenablage sicher übernommen ist, bevor ⌘V kommt
         // (behebt das gelegentliche „Einfügen kommt nicht an").
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
-            self?.postCommandV()
-            // Nach dem Einfügen die vorherige Zwischenablage zurückschreiben.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            guard let self else { return }
+            self.postCommandV()
+            // Nach dem Einfügen den kompletten Original-Inhalt zurückschreiben.
+            let restore = DispatchWorkItem { [weak self] in
+                guard let self else { return }
                 let pb = NSPasteboard.general
                 pb.clearContents()
-                if let previous { pb.setString(previous, forType: .string) }
+                if let items = self.savedItems, !items.isEmpty { pb.writeObjects(items) }
+                self.savedItems = nil
+                self.restorePending = false
+                self.restoreWorkItem = nil
             }
+            self.restoreWorkItem = restore
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: restore)
         }
     }
 

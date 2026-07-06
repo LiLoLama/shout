@@ -75,8 +75,11 @@ stripe trigger checkout.session.completed
 
 ## Schlüsselformat
 Identisch zu `.license-signing/make-license.swift`:
-`base64(payloadUTF8) + "." + base64(ed25519Signatur)`, wobei `payload` die
-Käufer-E-Mail ist. Verifikation in `LicenseStore.verify(_:)`.
+`base64(payloadUTF8) + "." + base64(ed25519Signatur)`, wobei `payload` seit v1
+das JSON `{"v":1,"email":"…"}` ist (versioniert, damit später Felder wie Ablauf
+oder Gerätebindung ergänzt werden können, ohne alte Signaturen zu brechen).
+Verifikation in `LicenseStore.verify(_:)` — Roh-E-Mail-Payloads aus der Frühphase
+werden dort weiterhin akzeptiert (abwärtskompatibel).
 
 ## Sicherheits-Hinweis
 Der Payload enthält aktuell nur die E-Mail — keine Geräte-Bindung/kein Ablauf.

@@ -64,7 +64,10 @@ final class PersonalDictionary: ObservableObject {
         guard !w.isEmpty, !r.isEmpty, w.caseInsensitiveCompare(r) != .orderedSame else { return }
         contents.corrections.removeAll { $0.wrong.caseInsensitiveCompare(w) == .orderedSame }
         contents.corrections.append(Correction(wrong: w, right: r))
-        addTerm(r)   // ruft save()
+        addTerm(r)   // legt den richtigen Begriff an (und speichert, falls neu)
+        // Explizit speichern: existiert `r` bereits als Begriff, bricht addTerm im
+        // Guard ab OHNE save() — die neue Korrektur wäre sonst nach Neustart weg.
+        save()
     }
 
     func removeCorrection(_ correction: Correction) {

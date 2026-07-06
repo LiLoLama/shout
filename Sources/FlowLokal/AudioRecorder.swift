@@ -37,7 +37,6 @@ final class AudioRecorder {
     private var noiseFloor: Float = 0.02
     private let speechFactor: Float = 3.5      // wie weit über dem Rauschen = Sprache
     private let absoluteFloor: Float = 0.010   // unter diesem RMS ist es immer „still"
-    private var speechThreshold: Float { max(absoluteFloor, noiseFloor * speechFactor) }
 
     private var heardSpeech = false
     private var silenceAccumulated = 0.0
@@ -49,12 +48,13 @@ final class AudioRecorder {
         samples.removeAll(keepingCapacity: true)
         generation &+= 1
         gen = generation
-        lock.unlock()
-
+        // VAD-Zustand unter demselben Lock zurücksetzen wie der Audio-Thread ihn
+        // liest/schreibt — sonst racet ein noch laufender Alt-Callback mit dem Reset.
         heardSpeech = false
         silenceAccumulated = 0
         silenceFired = false
         noiseFloor = 0.02   // Rausch-Boden je Aufnahme neu einpendeln lassen
+        lock.unlock()
 
         // Frische Engine je Aufnahme, damit ein Gerätewechsel sauber greift.
         engine = AVAudioEngine()
@@ -103,15 +103,16 @@ final class AudioRecorder {
         lock.lock()
         let result = samples
         samples.removeAll(keepingCapacity: true)
+        let threshold = max(absoluteFloor, noiseFloor * speechFactor)   // unter Lock gelesen
         lock.unlock()
-        return trimSilence(result)
+        return trimSilence(result, speechThreshold: threshold)
     }
 
     /// Schneidet führende/abschließende Stille weg, bevor die Samples an Whisper
     /// gehen (weniger Halluzinationen in Stille, geringere Latenz). Konservativ:
     /// großzügiges Padding und ein niedriger, gedeckelter Schwellwert, damit auch
     /// leise Sprache nicht verloren geht.
-    private func trimSilence(_ input: [Float]) -> [Float] {
+    private func trimSilence(_ input: [Float], speechThreshold: Float) -> [Float] {
         guard input.count > 3_200 else { return input }   // < 0,2 s: unverändert lassen
         let window = 480                                   // 30 ms bei 16 kHz
         let threshold = min(speechThreshold, 0.03)         // gedeckelt → nicht zu aggressiv
@@ -183,32 +184,43 @@ final class AudioRecorder {
         let rms = (sumSquares / Float(chunk.count)).squareRoot()
 
         // Live-Pegel 0…1: sqrt-Kurve für kräftigeren Ausschlag, mit kleinem
-        // Rauschabzug, damit Stille wirklich klein bleibt.
+        // Rauschabzug, damit Stille wirklich klein bleibt. Kein geteilter Zustand.
         let level = min(1, max(0, rms.squareRoot() - 0.04) * 5.5)
         let levelCallback = onLevel
         DispatchQueue.main.async { levelCallback?(level) }
 
+        let duration = Double(chunk.count) / 16_000.0
+        var fireSilence = false
+
+        // Gesamter VAD-Zustand (noiseFloor + Stille-Tracking) unter EINEM Lock, mit
+        // Generation-Check am Anfang: ein verspäteter Callback einer alten Engine
+        // fasst den frisch zurückgesetzten Zustand der neuen Aufnahme nicht mehr an.
+        lock.lock()
+        guard gen == generation else { lock.unlock(); return }
         // Rausch-Boden nachführen: fällt schnell (Stille), steigt langsam.
         if rms < noiseFloor {
             noiseFloor = noiseFloor * 0.9 + rms * 0.1
         } else {
             noiseFloor = noiseFloor * 0.995 + rms * 0.005
         }
-
-        // Stille-Zustand nur für die aktuelle Aufnahme fortschreiben.
-        lock.lock(); let current = generation; lock.unlock()
-        guard gen == current, autoStopEnabled, !silenceFired else { return }
-        let duration = Double(chunk.count) / 16_000.0
-        if rms > speechThreshold {
-            heardSpeech = true
-            silenceAccumulated = 0
-        } else if heardSpeech {
-            silenceAccumulated += duration
-            if silenceAccumulated >= silenceSeconds {
-                silenceFired = true
-                let callback = onSilence
-                DispatchQueue.main.async { callback?() }
+        let threshold = max(absoluteFloor, noiseFloor * speechFactor)
+        if autoStopEnabled, !silenceFired {
+            if rms > threshold {
+                heardSpeech = true
+                silenceAccumulated = 0
+            } else if heardSpeech {
+                silenceAccumulated += duration
+                if silenceAccumulated >= silenceSeconds {
+                    silenceFired = true
+                    fireSilence = true
+                }
             }
+        }
+        lock.unlock()
+
+        if fireSilence {
+            let callback = onSilence
+            DispatchQueue.main.async { callback?() }
         }
     }
 }

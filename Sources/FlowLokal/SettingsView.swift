@@ -27,7 +27,7 @@ struct SettingsView: View {
                     FieldRow(title: "So startest du",
                              help: "Drück die Taste, mit der du diktieren willst.") {
                         HStack(spacing: 10) {
-                            Keycap(text: settings.isCapturing ? "Taste drücken …" : settings.hotkeyDescription)
+                            Keycap(text: settings.isCapturing ? (settings.captureHint ?? "Taste drücken …") : settings.hotkeyDescription)
                             Button("Ändern", action: onRecordHotkey)
                                 .buttonStyle(ConsoleButtonStyle())
                                 .disabled(settings.isCapturing)

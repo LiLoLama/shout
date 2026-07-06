@@ -54,8 +54,9 @@ struct SyncView: View {
                     }
                 }
 
-                Text("Beim Import werden die aktuellen Daten auf diesem Gerät ersetzt.")
+                Text("Beim Import werden die aktuellen Daten auf diesem Gerät ersetzt. Die Datei enthält deinen Verlauf und den Lizenzschlüssel im Klartext — behandle sie vertraulich und teile sie nicht.")
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: 640).frame(maxWidth: .infinity)
             .padding(.horizontal, 28).padding(.top, 42).padding(.bottom, 28)

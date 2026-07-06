@@ -4,7 +4,9 @@ import Stripe from 'stripe';
 // shout.-Lizenzschlüssel. Der private Schlüssel liegt ausschließlich als
 // Worker-Secret vor; die App verifiziert offline mit dem öffentlichen Key.
 // Schlüsselformat (identisch zu .license-signing/make-license.swift):
-//   base64(payloadUTF8) + "." + base64(ed25519Signature)   // payload = Käufer-E-Mail
+//   base64(payloadUTF8) + "." + base64(ed25519Signature)
+//   payload = JSON {"v":1,"email":"…"} — versioniert, damit später Felder wie
+//   Ablauf/Gerätebindung ergänzt werden können, ohne alte Signaturen zu brechen.
 
 interface Env {
   STRIPE_SECRET_KEY: string;
@@ -44,9 +46,17 @@ async function signLicense(licensee: string, privateKeyB64: string): Promise<str
   pkcs8.set(seed, PKCS8_PREFIX.length);
 
   const key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
-  const payload = new TextEncoder().encode(licensee);
+  // Versioniertes JSON-Payload (v1) statt roher E-Mail — zukunftssicher erweiterbar.
+  const payload = new TextEncoder().encode(JSON.stringify({ v: 1, email: licensee }));
   const signature = await crypto.subtle.sign('Ed25519', key, payload);
   return `${bytesToBase64(payload)}.${bytesToBase64(signature)}`;
+}
+
+/// Maskiert eine E-Mail fürs Logging (DSGVO): "max@example.com" → "m***@example.com".
+function maskEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at <= 0) return '***';
+  return `${email[0]}***${email.slice(at)}`;
 }
 
 async function sendLicenseEmail(env: Env, to: string, licenseKey: string): Promise<void> {
@@ -75,8 +85,14 @@ async function sendLicenseEmail(env: Env, to: string, licenseKey: string): Promi
   }
 }
 
+function ok(): Response {
+  return new Response(JSON.stringify({ received: true }), {
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'GET' && url.pathname === '/') {
@@ -102,28 +118,44 @@ export default {
       return new Response(`Signaturprüfung fehlgeschlagen: ${(err as Error).message}`, { status: 400 });
     }
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const email = session.customer_details?.email ?? session.customer_email ?? null;
+    // Beide Events, die eine erfolgreiche Zahlung signalisieren: `completed`
+    // (Sofortzahlung, z. B. Karte) und `async_payment_succeeded` (SEPA/Klarna,
+    // wo das Geld erst später eingeht).
+    const RELEVANT = new Set([
+      'checkout.session.completed',
+      'checkout.session.async_payment_succeeded',
+    ]);
 
-      if (email) {
-        // Ausstellung + Versand aus dem kritischen Pfad nehmen → schnelles 200.
-        ctx.waitUntil((async () => {
-          try {
-            const key = await signLicense(email, env.LICENSE_PRIVATE_KEY);
-            await sendLicenseEmail(env, email, key);
-            console.log(JSON.stringify({ msg: 'license issued', email, session: session.id }));
-          } catch (e) {
-            console.error(JSON.stringify({ msg: 'fulfillment failed', email, error: String(e) }));
-          }
-        })());
-      } else {
+    if (RELEVANT.has(event.type)) {
+      const session = event.data.object as Stripe.Checkout.Session;
+
+      // Bei asynchronen Zahlarten feuert `completed` auch mit `unpaid` — dann
+      // NICHT ausstellen (sonst gäbe es einen Lifetime-Key vor Zahlungseingang).
+      if (session.payment_status !== 'paid') {
+        console.log(JSON.stringify({ msg: 'session not paid yet', status: session.payment_status, session: session.id }));
+        return ok();
+      }
+
+      const email = session.customer_details?.email ?? session.customer_email ?? null;
+      if (!email) {
+        // Ohne E-Mail ist kein Versand möglich; ein Retry würde daran nichts ändern → 200.
         console.error(JSON.stringify({ msg: 'no email on session', session: session.id }));
+        return ok();
+      }
+
+      try {
+        const key = await signLicense(email, env.LICENSE_PRIVATE_KEY);
+        await sendLicenseEmail(env, email, key);
+        console.log(JSON.stringify({ msg: 'license issued', email: maskEmail(email), session: session.id }));
+      } catch (e) {
+        // Fehler NICHT verschlucken: 500 → Stripe wiederholt das Event (bis zu 3 Tage),
+        // sonst zahlt ein Kunde und bekommt nie einen Schlüssel. Eine ggf. doppelte
+        // Mail bei Retry ist der akzeptable Preis (echte Idempotenz via KV = später).
+        console.error(JSON.stringify({ msg: 'fulfillment failed', email: maskEmail(email), session: session.id, error: String(e) }));
+        return new Response('fulfillment failed', { status: 500 });
       }
     }
 
-    return new Response(JSON.stringify({ received: true }), {
-      headers: { 'content-type': 'application/json' },
-    });
+    return ok();
   },
 } satisfies ExportedHandler<Env>;

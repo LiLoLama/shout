@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case idle
         case recording
         case working   // transkribieren + formatieren
+        case failed    // Modell-Laden fehlgeschlagen (z. B. Erststart offline)
     }
 
     private var state: State = .loadingModel {
@@ -59,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private var statusItem: NSStatusItem!
     private var statusMenuItem: NSMenuItem!
+    private var retryModelItem: NSMenuItem!
     private var formatterMenuItem: NSMenuItem!
     private var formattingToggleItem: NSMenuItem!
     private var loginToggleItem: NSMenuItem!
@@ -151,7 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if onboardingWindow == nil {
             let view = OnboardingView(
                 dashboard: dashboardModel, settings: settings,
-                onFinish: { [weak self] in self?.finishOnboarding() }
+                onFinish: { [weak self] in self?.finishOnboarding() },
+                onRetryModel: { [weak self] in self?.retryLoadModel() }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."
@@ -207,6 +210,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func openCorrectionWindow() {
         guard !lastInsertedText.isEmpty else { return }
+        // Ein bereits offenes Korrektur-Fenster zuerst schließen, sonst bleibt bei
+        // mehrfachem ⌥⌘C das vorige Fenster unverwaltet zurück (Leck).
+        correctionWindow?.close()
         let original = lastInsertedText
 
         let view = CorrectionView(
@@ -278,6 +284,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         statusMenuItem = NSMenuItem(title: "Modell wird geladen …", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
+
+        retryModelItem = NSMenuItem(title: "Modell erneut laden", action: #selector(retryLoadModel), keyEquivalent: "")
+        retryModelItem.target = self
+        retryModelItem.isHidden = true
+        menu.addItem(retryModelItem)
 
         formatterMenuItem = NSMenuItem(title: "Formatter: suche …", action: nil, keyEquivalent: "")
         formatterMenuItem.isEnabled = false
@@ -406,7 +417,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .working:
             button.title = "✍️"
             statusMenuItem?.title = "Verarbeite …"
+        case .failed:
+            button.title = "⚠️"
+            statusMenuItem?.title = "Modell nicht geladen — „Modell erneut laden“"
         }
+        retryModelItem?.isHidden = (state != .failed)
     }
 
     private func updateFormatterMenu() {
@@ -532,6 +547,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let kc = s.keyCode, let v = UInt16(exactly: kc) { settings.keyCode = v }
         if let md = s.modifiers, let v = UInt(exactly: md) { settings.modifiers = v }
         if let mo = s.isModifierOnly { settings.isModifierOnly = mo }
+        // Ein hand-editiertes Backup könnte einen reservierten Hotkey enthalten
+        // (würde nie auslösen bzw. mit dem synthetischen Einfügen kollidieren)
+        // → auf den Standard (rechte ⌥) zurücksetzen.
+        if !settings.isModifierOnly,
+           isReservedCombo(keyCode: settings.keyCode, mods: NSEvent.ModifierFlags(rawValue: settings.modifiers)) {
+            settings.setModifierOnly(keyCode: 61)
+        }
         if let f = s.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let mic = s.preferredMicUID { UserDefaults.standard.set(mic, forKey: "preferredMicUID") }
         if let vp = s.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
@@ -566,6 +588,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        license.touch()             // letzten Monotonie-Anker sichern
+        correctionWatcher.stop()    // AXObserver + Timer sauber abbauen
         for m in eventMonitors { NSEvent.removeMonitor(m) }
         eventMonitors.removeAll()
     }
@@ -590,8 +614,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return { frac in Task { @MainActor in model.formatProgress = frac } }
     }
 
+    @objc private func retryLoadModel() {
+        guard state == .failed || state == .loadingModel else { return }
+        loadModel()
+    }
+
     private func loadModel() {
         state = .loadingModel
+        dashboardModel.asrLoadFailed = false
         dashboardModel.asrLoadingID = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
         dashboardModel.asrProgress = 0
         Task {
@@ -601,8 +631,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 dashboardModel.transcriberReady = true
                 state = .idle
             } catch {
+                // Nicht mehr im Endlos-Spinner hängen bleiben: klarer Fehlerzustand
+                // mit „erneut laden" im Menü und im Onboarding.
                 statusMenuItem?.title = "Modell-Ladefehler: \(error.localizedDescription)"
                 NSLog("Modell-Ladefehler: \(error)")
+                dashboardModel.asrLoadFailed = true
+                state = .failed
             }
             dashboardModel.asrLoadingID = nil
             dashboardModel.asrProgress = nil
@@ -626,7 +660,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Nur im Ruhezustand erlaubt (nicht während Aufnahme/Verarbeitung/Laden),
     /// damit der State und die laufende Pipeline nicht zerrissen werden.
     private func switchASRModel(to id: String) async {
-        guard state == .idle else {
+        // Auch aus dem Fehlerzustand heraus erlaubt — so kann der Nutzer sich mit
+        // einem kleineren Modell aus einem fehlgeschlagenen Erst-Download befreien.
+        guard state == .idle || state == .failed else {
             dashboardModel.modelNote = "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird."
             return
         }
@@ -650,7 +686,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         dashboardModel.asrLoadingID = nil
         dashboardModel.asrProgress = nil
-        state = .idle
+        // State an der tatsächlichen Modell-Verfügbarkeit ausrichten (nicht blind .idle):
+        // sonst behauptet die App „bereit", obwohl gar kein Modell geladen ist.
+        let ready = await transcriber.isReady
+        dashboardModel.transcriberReady = ready
+        dashboardModel.asrLoadFailed = !ready
+        state = ready ? .idle : .failed
     }
 
     /// Modell-Empfehler: wechselt das Formatierungs-Modell zur Laufzeit.
@@ -659,12 +700,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func switchFormatModel(to id: String) async {
         guard dashboardModel.formatLoadingID == nil else { return }
         dashboardModel.modelNote = nil
+        let previous = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
         UserDefaults.standard.set(id, forKey: "formatModel")
         dashboardModel.formatLoadingID = id
         dashboardModel.formatProgress = 0
         updateFormatterMenu()
         await formatter.reload(onProgress: formatProgressHandler())
-        dashboardModel.activeFormat = id
+        // Formatter.load() wirft nicht (Fehler = Rohtext-Fallback). Erfolg deshalb
+        // an isReady ablesen und bei Fehlschlag zurückrollen — sonst markiert die UI
+        // ein Modell als aktiv, das gar nicht geladen ist.
+        if await formatter.isReady {
+            dashboardModel.activeFormat = id
+        } else {
+            NSLog("Format-Modellwechsel fehlgeschlagen — zurück auf \(previous)")
+            UserDefaults.standard.set(previous, forKey: "formatModel")
+            await formatter.reload(onProgress: formatProgressHandler())
+            dashboardModel.activeFormat = previous
+            dashboardModel.modelNote = "Aufbereitungs-Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv."
+        }
         dashboardModel.formatLoadingID = nil
         dashboardModel.formatProgress = nil
         updateFormatterMenu()
@@ -707,9 +760,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
         if isCapturingHotkey {
+            let realMods = mods.intersection([.command, .option, .control, .shift])
+            // Escape bricht die Aufnahme ab, statt sich selbst als Hotkey zu setzen.
+            if event.keyCode == 53, realMods.isEmpty { endHotkeyCapture(); return }
             // Reservierte Kombinationen nicht als Diktier-Hotkey zulassen —
             // sie würden nie auslösen (feste Shortcuts fangen sie vorher ab).
             guard !isReservedCombo(keyCode: event.keyCode, mods: mods) else { return }
+            // Normale Tasten brauchen mindestens einen Modifier — sonst würde die
+            // Taste danach in JEDER App das Diktat auslösen (jedes getippte „a“).
+            // Funktionstasten (F1–F12) sind als eigenständiger Hotkey ok.
+            guard !realMods.isEmpty || Self.isFunctionKey(event.keyCode) else {
+                settings.captureHint = "Mit ⌘/⌥/⌃/⇧ kombinieren (oder F-Taste)"
+                return
+            }
             captureKeyDownSeen = true
             settings.setRegular(keyCode: event.keyCode, modifiers: event.modifierFlags)
             endHotkeyCapture()
@@ -735,6 +798,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if mods == [.command], keyCode == 9 { return true }             // ⌘V (synthetisches Paste)
         return false
     }
+
+    /// Funktionstasten F1–F12 (dürfen als eigenständiger Hotkey ohne Modifier dienen).
+    private static let functionKeyCodes: Set<UInt16> = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111]
+    private static func isFunctionKey(_ keyCode: UInt16) -> Bool { functionKeyCodes.contains(keyCode) }
 
     private func handleKeyUp(_ event: NSEvent) {
         guard !isCapturingHotkey else { return }
@@ -771,11 +838,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         captureKeyDownSeen = false
         captureModifierKeyCode = nil
         settings.isCapturing = true
+        settings.captureHint = nil
     }
 
     private func endHotkeyCapture() {
         isCapturingHotkey = false
         settings.isCapturing = false
+        settings.captureHint = nil
     }
 
     /// Reine Modifier-Taste (z. B. rechte ⌥): beim Loslassen erfassen, sofern
@@ -813,6 +882,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             recIndicator.show()
             sounds.play(.start)
         } catch {
+            sounds.play(.error)
             NSLog("Aufnahme-Start fehlgeschlagen: \(error)")
         }
     }
@@ -853,6 +923,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 history.add(final)
                 let words = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
                 stats.record(words: words, seconds: Double(samples.count) / 16_000.0)
+                license.touch()   // Monotonie-Anker der Testphase frisch halten
 
                 // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
                 // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.
@@ -862,6 +933,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.correctionWatcher.begin(inserted: inserted)
                 }
             } catch {
+                sounds.play(.error)
                 NSLog("Verarbeitung fehlgeschlagen: \(error)")
             }
         }

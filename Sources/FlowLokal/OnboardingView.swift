@@ -9,6 +9,7 @@ struct OnboardingView: View {
     @ObservedObject var dashboard: DashboardModel
     @ObservedObject var settings: RecordingSettings
     let onFinish: () -> Void
+    let onRetryModel: () -> Void
 
     @State private var step = 0
     @State private var micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -120,13 +121,20 @@ struct OnboardingView: View {
 
     private var modelStep: some View {
         let ready = dashboard.transcriberReady
-        return stepBody(icon: ready ? "checkmark.circle.fill" : "arrow.down.circle.fill",
+        let failed = dashboard.asrLoadFailed
+        let icon = ready ? "checkmark.circle.fill" : (failed ? "exclamationmark.triangle.fill" : "arrow.down.circle.fill")
+        let text: String = {
+            if ready { return "Das Sprachmodell ist geladen und liegt lokal auf deinem Mac." }
+            if failed { return "Das Sprachmodell konnte nicht geladen werden — meist fehlt beim ersten Start die Internet-Verbindung. Prüfe die Verbindung und versuch es erneut." }
+            return "Beim ersten Start lädt shout. das Sprachmodell einmalig herunter (danach läuft alles offline). Das kann je nach Verbindung ein paar Minuten dauern."
+        }()
+        return stepBody(icon: icon,
                         iconColor: ready ? .green : Color.shoutLive,
                         title: "Sprachmodell",
-                        text: ready
-                            ? "Das Sprachmodell ist geladen und liegt lokal auf deinem Mac."
-                            : "Beim ersten Start lädt shout. das Sprachmodell einmalig herunter (danach läuft alles offline). Das kann je nach Verbindung ein paar Minuten dauern.") {
-            if !ready {
+                        text: text) {
+            if failed {
+                Button("Erneut versuchen") { onRetryModel() }.buttonStyle(PrimaryOnboardButton())
+            } else if !ready {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small).tint(Color.shoutLive)
                     Text("Modell wird geladen …").font(.system(size: 12)).foregroundStyle(Color(white: 0.6))

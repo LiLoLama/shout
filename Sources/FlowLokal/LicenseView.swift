@@ -12,7 +12,7 @@ struct LicenseView: View {
     private let price = "150 €"
     // Stripe Payment Link (im Stripe-Dashboard erstellen, siehe server/README.md).
     // Nach dem Kauf stellt der Webhook-Worker den Lizenzschlüssel per E-Mail zu.
-    private let purchaseURL = "https://buy.stripe.com/DEIN_PAYMENT_LINK"
+    private let purchaseURL = "https://buy.stripe.com/9B6aEY7HU8B62S8bAAg7e00"
 
     private let features = [
         ("mic.fill", "Diktieren, überall", "Per Hotkey in jede App — komplett on-device."),

@@ -54,6 +54,9 @@ targets:
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"
         CODE_SIGN_STYLE: Manual
+        # Nur am App-Target (NICHT global an xcodebuild übergeben — sonst suchen die
+        # SwiftPM-Abhängigkeiten die Datei relativ zu ihrem eigenen Checkout-Ordner).
+        CODE_SIGN_ENTITLEMENTS: Release/shout.entitlements
         SWIFT_VERSION: "5.10"
     dependencies:
       - package: argmax

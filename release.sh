@@ -22,7 +22,8 @@ cd "$(dirname "$0")"
 
 CONFIG="Release"
 DERIVED="build"
-ENTITLEMENTS="Release/shout.entitlements"
+# Entitlements hängen target-spezifisch am App-Target (project.yml), NICHT hier —
+# global übergeben würden sie sonst fälschlich auch für die SwiftPM-Pakete gelten.
 
 echo "▶ Generiere Xcode-Projekt …"
 xcodegen generate
@@ -38,8 +39,8 @@ xcodebuild \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$DEV_ID_APP" \
     DEVELOPMENT_TEAM="$TEAM_ID" \
-    CODE_SIGN_ENTITLEMENTS="$ENTITLEMENTS" \
     ENABLE_HARDENED_RUNTIME=YES \
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
     OTHER_CODE_SIGN_FLAGS="--timestamp" \
     build
 

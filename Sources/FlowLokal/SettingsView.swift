@@ -4,11 +4,13 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var settings: RecordingSettings
     let onRecordHotkey: () -> Void
+    var onPersistentPillChanged: (Bool) -> Void = { _ in }
 
     @AppStorage("formattingEnabled") private var formattingEnabled = true
     @AppStorage("speechCommandsEnabled") private var speechCommands = false
     @AppStorage("transcriptionLanguage") private var language = "de"
     @AppStorage("soundCuesEnabled") private var soundCues = true
+    @AppStorage("persistentPill") private var persistentPill = false
     @AppStorage("preferredMicUID") private var micUID = ""
     @State private var devices: [AudioDevices.Device] = []
 
@@ -47,6 +49,11 @@ struct SettingsView: View {
                                 Keycap(text: String(format: "%.1f s", settings.silenceSeconds))
                             }
                         }
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: "Pille immer anzeigen",
+                             help: "Zeigt die Aufnahme-Pille dauerhaft am Bildschirmrand — per Klick starten, mit ✕/✓ abbrechen oder einfügen.") {
+                        Toggle("", isOn: $persistentPill).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                 }
 
@@ -96,5 +103,6 @@ struct SettingsView: View {
         .background(Color.shoutWindow)
         .scrollContentBackground(.hidden)
         .onAppear { devices = AudioDevices.inputDevices() }
+        .onChange(of: persistentPill) { _, newValue in onPersistentPillChanged(newValue) }
     }
 }

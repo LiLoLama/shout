@@ -37,6 +37,7 @@ struct DashboardView: View {
     let onInsertHistory: (String) -> Void
     let onSelectASR: (String) async -> Void
     let onSelectFormat: (String) async -> Void
+    var onPersistentPillChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -132,7 +133,8 @@ struct DashboardView: View {
     @ViewBuilder private var detail: some View {
         switch model.tab {
         case .aufnahme:
-            SettingsView(settings: settings, onRecordHotkey: onRecordHotkey)
+            SettingsView(settings: settings, onRecordHotkey: onRecordHotkey,
+                         onPersistentPillChanged: onPersistentPillChanged)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:

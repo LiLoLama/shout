@@ -134,6 +134,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.recIndicator.updateLevel(level)
         }
 
+        // Klickbare Pille: Start (nur idle), Abbrechen/Absenden (nur während Aufnahme).
+        recIndicator.setActions(
+            start:  { [weak self] in guard let self, self.state == .idle else { return }; self.startRecording() },
+            cancel: { [weak self] in guard let self, self.state == .recording else { return }; self.cancelRecording() },
+            submit: { [weak self] in guard let self, self.state == .recording else { return }; self.stopAndProcess() }
+        )
+        // Dauer-Modus („Pille immer anzeigen") aus den Einstellungen übernehmen.
+        recIndicator.setPersistent(UserDefaults.standard.bool(forKey: "persistentPill"))
+
         // Zuletzt aktive Fremd-App verfolgen (Ziel fürs Einfügen aus dem Verlauf).
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(externalAppActivated(_:)),
@@ -469,7 +478,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onImport: { [weak self] in self?.importData() ?? "" },
                 onInsertHistory: { [weak self] text in self?.insertFromHistory(text) },
                 onSelectASR: { [weak self] id in await self?.switchASRModel(to: id) },
-                onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) }
+                onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) },
+                onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."
@@ -905,6 +915,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    /// Bricht eine laufende Aufnahme ab: Samples verwerfen, nichts transkribieren.
+    private func cancelRecording() {
+        _ = recorder.stop()      // Aufnahme beenden, Samples verwerfen
+        state = .idle
+        recIndicator.finish()    // zurück zur Idle-Pille bzw. ausblenden
+        sounds.play(.error)      // dezenter „verworfen"-Ton
+    }
+
     private func stopAndProcess() {
         let samples = recorder.stop()
         // Pille bleibt sichtbar und wechselt in die „Verarbeiten"-Animation,
@@ -917,7 +935,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled")
 
         Task {
-            defer { state = .idle; recIndicator.hide() }
+            defer { state = .idle; recIndicator.finish() }
             guard !samples.isEmpty else { return }
             do {
                 let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)

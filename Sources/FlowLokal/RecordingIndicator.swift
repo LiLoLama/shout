@@ -1,70 +1,59 @@
 import AppKit
 import SwiftUI
 
-/// Minimaler, textloser Aufnahme-Hinweis: eine kleine, halbtransparente
-/// Wellenform unten am Bildschirm, die auf den Mikrofon-Pegel reagiert —
-/// nur sichtbar, während aufgenommen wird.
+/// Schwebende Pille unten am Bildschirm. Drei Modi:
+///  - `.idle`      — nur sichtbar, wenn „Pille immer anzeigen" aktiv ist; klickbar zum Starten.
+///  - `.recording` — pegel-reaktive Wellenform, flankiert von X (abbrechen) und ✓ (absenden).
+///  - `.processing`— animierte Welle, bis der fertige Text eingefügt ist.
+///
+/// Das Panel ist `nonactivating` + akzeptiert den ersten Mausklick, damit Klicks
+/// den Tastaturfokus NICHT vom Zielfenster wegnehmen (sonst würde der Text falsch
+/// eingefügt).
 @MainActor
 final class RecordingIndicator {
+    enum Mode { case idle, recording, processing }
 
-    enum Mode { case recording, processing }
-
-    /// Pegel-/Zustandsmodell, an das die schwebende Pille gebunden ist.
-    final class LevelModel: ObservableObject {
+    final class PillModel: ObservableObject {
         @Published var level: Float = 0
-        @Published var mode: Mode = .recording
+        @Published var mode: Mode = .idle
+        var onStart: () -> Void = {}
+        var onCancel: () -> Void = {}
+        var onSubmit: () -> Void = {}
     }
 
-    private let model = LevelModel()
+    private let model = PillModel()
     private var panel: NSPanel?
-    private let size = NSSize(width: 72, height: 26)
+    private var persistent = false
 
-    /// Zeigt die Pille im Aufnahme-Modus (pegel-reaktive Wellenform).
-    func show() {
-        model.level = 0
-        model.mode = .recording
-        ensurePanel()
+    /// Aktionen der klickbaren Elemente (vom AppDelegate gesetzt).
+    func setActions(start: @escaping () -> Void, cancel: @escaping () -> Void, submit: @escaping () -> Void) {
+        model.onStart = start
+        model.onCancel = cancel
+        model.onSubmit = submit
     }
 
-    /// Wechselt in den Verarbeiten-Modus (animierte, indeterminierte Welle) —
-    /// bleibt sichtbar, bis der fertige Text eingefügt ist.
-    func showProcessing() {
-        model.mode = .processing
-        ensurePanel()
-    }
+    // MARK: - Modus-Steuerung
 
-    private func ensurePanel() {
-        guard panel == nil else { return }
+    /// Aufnahme läuft: Wellenform + X/✓.
+    func show() { model.level = 0; ensurePanel(); setMode(.recording) }
 
-        let hosting = NSHostingView(rootView: RecordingPill(model: model))
-        hosting.frame = NSRect(origin: .zero, size: size)
+    /// Verarbeiten: animierte Welle, bis eingefügt.
+    func showProcessing() { ensurePanel(); setMode(.processing) }
 
-        let panel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false
-        )
-        panel.isFloatingPanel = true
-        panel.level = .statusBar
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = false
-        panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        panel.contentView = hosting
+    /// Ruhezustand: nur bei „immer anzeigen" sichtbar (klickbarer Mic-Button).
+    func showIdle() { ensurePanel(); setMode(.idle) }
 
-        if let screen = NSScreen.main {
-            let vf = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: vf.midX - size.width / 2, y: vf.minY + 12))
+    /// Nach Abschluss/Abbruch: idle-Pille zeigen (wenn dauerhaft) oder ausblenden.
+    func finish() { persistent ? showIdle() : hide() }
+
+    /// Schaltet den Dauer-Modus um.
+    func setPersistent(_ on: Bool) {
+        persistent = on
+        if on {
+            if panel == nil { showIdle() }          // aus dem Nichts einblenden
+        } else if model.mode == .idle {
+            hide()                                    // nur die reine Idle-Pille ausblenden
         }
-
-        panel.alphaValue = 0
-        panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.22
-            panel.animator().alphaValue = 0.9   // etwas durchsichtig
-        }
-        self.panel = panel
     }
 
     /// Neuen Pegel (0…1) einspeisen — geglättet.
@@ -76,66 +65,165 @@ final class RecordingIndicator {
         guard let panel else { return }
         self.panel = nil
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.22
+            ctx.duration = 0.2
             panel.animator().alphaValue = 0
-        }, completionHandler: {
-            panel.orderOut(nil)
-        })
+        }, completionHandler: { panel.orderOut(nil) })
+    }
+
+    // MARK: - Panel
+
+    private func setMode(_ mode: Mode) {
+        model.mode = mode
+        applyLayout(for: mode)
+    }
+
+    private func size(for mode: Mode) -> NSSize {
+        switch mode {
+        case .idle:       return NSSize(width: 46, height: 30)
+        case .recording:  return NSSize(width: 150, height: 34)
+        case .processing: return NSSize(width: 84, height: 28)
+        }
+    }
+
+    private func applyLayout(for mode: Mode) {
+        guard let panel else { return }
+        let s = size(for: mode)
+        panel.setContentSize(s)
+        panel.contentView?.frame = NSRect(origin: .zero, size: s)
+        if let screen = NSScreen.main {
+            let vf = screen.visibleFrame
+            panel.setFrameOrigin(NSPoint(x: vf.midX - s.width / 2, y: vf.minY + 12))
+        }
+        // Im Verarbeiten-Modus keine Buttons → Klicks durchreichen.
+        panel.ignoresMouseEvents = (mode == .processing)
+    }
+
+    private func ensurePanel() {
+        guard panel == nil else { return }
+        let s = size(for: model.mode)
+
+        let hosting = FirstMouseHostingView(rootView: RecordingPill(model: model))
+        hosting.frame = NSRect(origin: .zero, size: s)
+        hosting.autoresizingMask = [.width, .height]
+
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: s),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.level = .statusBar
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        panel.contentView = hosting
+
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            panel.animator().alphaValue = 0.95
+        }
+        self.panel = panel
+        applyLayout(for: model.mode)
     }
 }
 
-/// Die schwebende Pille: Wellenform, deren Balken auf den Pegel reagieren.
-/// Kein Text. Bei Stille schrumpfen die Balken auf ein kleines Minimum.
-private struct RecordingPill: View {
-    @ObservedObject var model: RecordingIndicator.LevelModel
+/// NSHostingView, das den ersten Mausklick akzeptiert — nötig, damit Buttons in
+/// einem nicht-aktivierenden Panel schon beim ersten Klick reagieren.
+private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
 
-    // Gewichtung je Balken (Mitte höher) für die Wellenform-Form.
+/// Die schwebende Pille (drei Layouts, textlos).
+private struct RecordingPill: View {
+    @ObservedObject var model: RecordingIndicator.PillModel
+
     private let weights: [CGFloat] = [0.55, 0.78, 0.93, 1.0, 0.93, 0.78, 0.55]
     private let minH: CGFloat = 2
-    private let maxH: CGFloat = 21
+    private let maxH: CGFloat = 20
 
     var body: some View {
         Group {
-            if model.mode == .processing {
-                processingBars
-            } else {
-                recordingBars
+            switch model.mode {
+            case .idle:       idlePill
+            case .recording:  recordingPill
+            case .processing: processingPill
             }
         }
-        .frame(width: 72, height: 26)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // Ruhezustand: klickbarer Mic-Knopf.
+    private var idlePill: some View {
+        Button(action: model.onStart) {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.shoutLive)
+                .frame(width: 40, height: 26)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
+        }
+        .buttonStyle(.plain)
+        .help("Aufnahme starten")
+    }
+
+    // Aufnahme: X · Wellenform · ✓.
+    private var recordingPill: some View {
+        HStack(spacing: 8) {
+            circleButton(system: "xmark", tint: Color(white: 0.75), action: model.onCancel)
+                .help("Abbrechen")
+            HStack(spacing: 2.5) {
+                ForEach(weights.indices, id: \.self) { i in
+                    Capsule().fill(Color.shoutLive)
+                        .frame(width: 2.8, height: barHeight(i))
+                        .animation(.easeOut(duration: 0.1), value: model.level)
+                }
+            }
+            circleButton(system: "checkmark", tint: Color.shoutLive, filled: true, action: model.onSubmit)
+                .help("Einfügen")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 34)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
     }
 
-    /// Aufnahme: Balken reagieren auf den Mikrofon-Pegel.
-    private var recordingBars: some View {
-        HStack(spacing: 2.5) {
-            ForEach(weights.indices, id: \.self) { i in
-                Capsule()
-                    .fill(Color.shoutLive)
-                    .frame(width: 2.8, height: recordingHeight(i))
-                    .animation(.easeOut(duration: 0.1), value: model.level)
-            }
-        }
-    }
-
-    /// Verarbeiten: eine durchlaufende Welle (indeterminiert), selbstlaufend.
-    private var processingBars: some View {
+    // Verarbeiten: durchlaufende Welle.
+    private var processingPill: some View {
         TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: 2.5) {
                 ForEach(weights.indices, id: \.self) { i in
-                    let phase = sin(t * 5.5 - Double(i) * 0.7)       // -1…1, wandert
-                    let norm = CGFloat((phase + 1) / 2)               // 0…1
-                    Capsule()
-                        .fill(Color.shoutLive.opacity(0.35 + 0.65 * norm))
+                    let phase = sin(t * 5.5 - Double(i) * 0.7)
+                    let norm = CGFloat((phase + 1) / 2)
+                    Capsule().fill(Color.shoutLive.opacity(0.35 + 0.65 * norm))
                         .frame(width: 2.8, height: minH + (maxH * 0.72 - minH) * norm)
                 }
             }
         }
+        .frame(width: 84, height: 28)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
     }
 
-    private func recordingHeight(_ i: Int) -> CGFloat {
+    private func circleButton(system: String, tint: Color, filled: Bool = false,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: system)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(filled ? Color.white : tint)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(filled ? tint : Color.white.opacity(0.14)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func barHeight(_ i: Int) -> CGFloat {
         let l = CGFloat(model.level)
         return minH + (maxH - minH) * min(1, l * weights[i])
     }

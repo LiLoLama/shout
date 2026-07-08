@@ -19,17 +19,18 @@ final class RecordingIndicator {
         var onStart: () -> Void = {}
         var onCancel: () -> Void = {}
         var onSubmit: () -> Void = {}
-        var onDragChanged: (CGSize) -> Void = { _ in }
+        var onDragChanged: () -> Void = {}
         var onDragEnded: () -> Void = {}
     }
 
     private let model = PillModel()
     private var panel: NSPanel?
     private var persistent = false
-    private var dragStart: NSPoint?   // Panel-Ursprung beim Start eines Zieh-Vorgangs
+    private var dragStartOrigin: NSPoint?   // Panel-Ursprung beim Start des Ziehens
+    private var dragStartMouse: NSPoint?    // absolute Maus-Position beim Start
 
     init() {
-        model.onDragChanged = { [weak self] t in self?.dragMove(t) }
+        model.onDragChanged = { [weak self] in self?.dragMove() }
         model.onDragEnded = { [weak self] in self?.dragEnd() }
     }
 
@@ -136,13 +137,18 @@ final class RecordingIndicator {
         return NSPoint(x: x, y: y)
     }
 
-    private func dragMove(_ translation: CGSize) {
+    private func dragMove() {
         guard let panel else { return }
-        if dragStart == nil { dragStart = panel.frame.origin }
-        guard let start = dragStart else { return }
-        // SwiftUI-Koordinaten sind y-nach-unten, AppKit y-nach-oben → y invertieren.
-        var x = start.x + translation.width
-        var y = start.y - translation.height
+        // Absolute Maus-Position (bildschirmweit, y-nach-oben wie AppKit) — unabhängig
+        // von der Fensterbewegung, daher kein Feedback und flüssiges Echtzeit-Tracking.
+        let mouse = NSEvent.mouseLocation
+        if dragStartMouse == nil {
+            dragStartMouse = mouse
+            dragStartOrigin = panel.frame.origin
+        }
+        guard let startMouse = dragStartMouse, let startOrigin = dragStartOrigin else { return }
+        var x = startOrigin.x + (mouse.x - startMouse.x)
+        var y = startOrigin.y + (mouse.y - startMouse.y)
         let w = panel.frame.width, h = panel.frame.height
         let center = NSPoint(x: x + w / 2, y: y + h / 2)
         let vf = (NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main)?.visibleFrame ?? .zero
@@ -152,7 +158,8 @@ final class RecordingIndicator {
     }
 
     private func dragEnd() {
-        dragStart = nil
+        dragStartMouse = nil
+        dragStartOrigin = nil
         guard let panel else { return }
         let d = UserDefaults.standard
         d.set(true, forKey: "pillCustom")
@@ -221,8 +228,8 @@ private struct RecordingPill: View {
         // Ziehen (ab 8 pt) verschiebt die Pille; ein Tippen (<8 pt) bleibt den
         // Buttons vorbehalten (Start/Abbrechen/Absenden).
         .gesture(
-            DragGesture(minimumDistance: 8)
-                .onChanged { model.onDragChanged($0.translation) }
+            DragGesture(minimumDistance: 6)
+                .onChanged { _ in model.onDragChanged() }
                 .onEnded { _ in model.onDragEnded() }
         )
     }

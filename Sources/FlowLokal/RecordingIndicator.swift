@@ -19,20 +19,11 @@ final class RecordingIndicator {
         var onStart: () -> Void = {}
         var onCancel: () -> Void = {}
         var onSubmit: () -> Void = {}
-        var onDragChanged: () -> Void = {}
-        var onDragEnded: () -> Void = {}
     }
 
     private let model = PillModel()
     private var panel: NSPanel?
     private var persistent = false
-    private var dragStartOrigin: NSPoint?   // Panel-Ursprung beim Start des Ziehens
-    private var dragStartMouse: NSPoint?    // absolute Maus-Position beim Start
-
-    init() {
-        model.onDragChanged = { [weak self] in self?.dragMove() }
-        model.onDragEnded = { [weak self] in self?.dragEnd() }
-    }
 
     /// Aktionen der klickbaren Elemente (vom AppDelegate gesetzt).
     func setActions(start: @escaping () -> Void, cancel: @escaping () -> Void, submit: @escaping () -> Void) {
@@ -137,34 +128,14 @@ final class RecordingIndicator {
         return NSPoint(x: x, y: y)
     }
 
-    private func dragMove() {
-        guard let panel else { return }
-        // Absolute Maus-Position (bildschirmweit, y-nach-oben wie AppKit) — unabhängig
-        // von der Fensterbewegung, daher kein Feedback und flüssiges Echtzeit-Tracking.
-        let mouse = NSEvent.mouseLocation
-        if dragStartMouse == nil {
-            dragStartMouse = mouse
-            dragStartOrigin = panel.frame.origin
-        }
-        guard let startMouse = dragStartMouse, let startOrigin = dragStartOrigin else { return }
-        var x = startOrigin.x + (mouse.x - startMouse.x)
-        var y = startOrigin.y + (mouse.y - startMouse.y)
-        let w = panel.frame.width, h = panel.frame.height
-        let center = NSPoint(x: x + w / 2, y: y + h / 2)
-        let vf = (NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main)?.visibleFrame ?? .zero
-        x = min(max(x, vf.minX), vf.maxX - w)
-        y = min(max(y, vf.minY), vf.maxY - h)
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
-    }
-
-    private func dragEnd() {
-        dragStartMouse = nil
-        dragStartOrigin = nil
-        guard let panel else { return }
-        let d = UserDefaults.standard
-        d.set(true, forKey: "pillCustom")
-        d.set(Double(panel.frame.midX), forKey: "pillCustomX")
-        d.set(Double(panel.frame.midY), forKey: "pillCustomY")
+    /// Klemmt einen Fenster-Frame auf den sichtbaren Bereich seines Bildschirms.
+    static func clampToScreen(_ frame: NSRect) -> NSRect {
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        let vf = (NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main)?.visibleFrame ?? frame
+        var f = frame
+        f.origin.x = min(max(f.origin.x, vf.minX), vf.maxX - f.width)
+        f.origin.y = min(max(f.origin.y, vf.minY), vf.maxY - f.height)
+        return f
     }
 
     private func ensurePanel() {
@@ -201,10 +172,25 @@ final class RecordingIndicator {
     }
 }
 
-/// NSHostingView, das den ersten Mausklick akzeptiert — nötig, damit Buttons in
-/// einem nicht-aktivierenden Panel schon beim ersten Klick reagieren.
+/// NSHostingView, das (a) den ersten Mausklick akzeptiert (Buttons reagieren im
+/// nicht-aktivierenden Panel sofort) und (b) beim Ziehen das Fenster NATIV
+/// verschiebt (`performDrag`) — flüssiges Echtzeit-Tracking ohne key/aktives
+/// Fenster. Ein reiner Klick (ohne Ziehen) löst `mouseDragged` nicht aus und
+/// bleibt damit den SwiftUI-Buttons (Start/✕/✓) vorbehalten.
 private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window else { super.mouseDragged(with: event); return }
+        window.performDrag(with: event)   // OS-nativer Drag-Loop bis zum Loslassen
+        // Danach: auf den sichtbaren Bereich klemmen und die Position (Mitte) sichern.
+        let clamped = RecordingIndicator.clampToScreen(window.frame)
+        if clamped != window.frame { window.setFrame(clamped, display: true) }
+        let d = UserDefaults.standard
+        d.set(true, forKey: "pillCustom")
+        d.set(Double(clamped.midX), forKey: "pillCustomX")
+        d.set(Double(clamped.midY), forKey: "pillCustomY")
+    }
 }
 
 /// Die schwebende Pille (drei Layouts, textlos).
@@ -224,14 +210,6 @@ private struct RecordingPill: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        // Ziehen (ab 8 pt) verschiebt die Pille; ein Tippen (<8 pt) bleibt den
-        // Buttons vorbehalten (Start/Abbrechen/Absenden).
-        .gesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { _ in model.onDragChanged() }
-                .onEnded { _ in model.onDragEnded() }
-        )
     }
 
     // Ruhezustand: klickbarer Mic-Knopf.

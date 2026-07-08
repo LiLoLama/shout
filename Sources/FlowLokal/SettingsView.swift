@@ -5,12 +5,15 @@ struct SettingsView: View {
     @ObservedObject var settings: RecordingSettings
     let onRecordHotkey: () -> Void
     var onPersistentPillChanged: (Bool) -> Void = { _ in }
+    var onPillPositionChanged: () -> Void = {}
 
     @AppStorage("formattingEnabled") private var formattingEnabled = true
     @AppStorage("speechCommandsEnabled") private var speechCommands = false
     @AppStorage("transcriptionLanguage") private var language = "de"
     @AppStorage("soundCuesEnabled") private var soundCues = true
     @AppStorage("persistentPill") private var persistentPill = false
+    @AppStorage("pillAnchor") private var pillAnchor = "bottomCenter"
+    @AppStorage("pillCustom") private var pillCustom = false
     @AppStorage("preferredMicUID") private var micUID = ""
     @State private var devices: [AudioDevices.Device] = []
 
@@ -54,6 +57,30 @@ struct SettingsView: View {
                     FieldRow(title: "Pille immer anzeigen",
                              help: "Zeigt die Aufnahme-Pille dauerhaft am Bildschirmrand — per Klick starten, mit ✕/✓ abbrechen oder einfügen.") {
                         Toggle("", isOn: $persistentPill).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: "Position der Pille",
+                             help: pillCustom
+                                ? "Frei platziert. Du kannst die Pille jederzeit mit der Maus verschieben oder hier wieder eine feste Ecke wählen."
+                                : "Wähle eine Ecke — oder zieh die Pille einfach mit der Maus an eine beliebige Stelle.") {
+                        Picker("", selection: Binding(
+                            get: { pillCustom ? "custom" : pillAnchor },
+                            set: { newValue in
+                                guard newValue != "custom" else { return }
+                                pillAnchor = newValue
+                                pillCustom = false
+                                onPillPositionChanged()
+                            }
+                        )) {
+                            Text("Unten Mitte").tag("bottomCenter")
+                            Text("Unten links").tag("bottomLeft")
+                            Text("Unten rechts").tag("bottomRight")
+                            Text("Oben Mitte").tag("topCenter")
+                            Text("Oben links").tag("topLeft")
+                            Text("Oben rechts").tag("topRight")
+                            if pillCustom { Text("Frei verschoben").tag("custom") }
+                        }
+                        .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 160)
                     }
                 }
 

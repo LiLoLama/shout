@@ -38,6 +38,7 @@ struct DashboardView: View {
     let onSelectASR: (String) async -> Void
     let onSelectFormat: (String) async -> Void
     var onPersistentPillChanged: (Bool) -> Void = { _ in }
+    var onPillPositionChanged: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 0) {
@@ -134,7 +135,8 @@ struct DashboardView: View {
         switch model.tab {
         case .aufnahme:
             SettingsView(settings: settings, onRecordHotkey: onRecordHotkey,
-                         onPersistentPillChanged: onPersistentPillChanged)
+                         onPersistentPillChanged: onPersistentPillChanged,
+                         onPillPositionChanged: onPillPositionChanged)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:

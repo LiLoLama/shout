@@ -479,7 +479,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onInsertHistory: { [weak self] text in self?.insertFromHistory(text) },
                 onSelectASR: { [weak self] id in await self?.switchASRModel(to: id) },
                 onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) },
-                onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) }
+                onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
+                onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."

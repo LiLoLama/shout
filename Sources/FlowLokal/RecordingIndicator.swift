@@ -19,11 +19,19 @@ final class RecordingIndicator {
         var onStart: () -> Void = {}
         var onCancel: () -> Void = {}
         var onSubmit: () -> Void = {}
+        var onDragChanged: (CGSize) -> Void = { _ in }
+        var onDragEnded: () -> Void = {}
     }
 
     private let model = PillModel()
     private var panel: NSPanel?
     private var persistent = false
+    private var dragStart: NSPoint?   // Panel-Ursprung beim Start eines Zieh-Vorgangs
+
+    init() {
+        model.onDragChanged = { [weak self] t in self?.dragMove(t) }
+        model.onDragEnded = { [weak self] in self?.dragEnd() }
+    }
 
     /// Aktionen der klickbaren Elemente (vom AppDelegate gesetzt).
     func setActions(start: @escaping () -> Void, cancel: @escaping () -> Void, submit: @escaping () -> Void) {
@@ -90,12 +98,66 @@ final class RecordingIndicator {
         let s = size(for: mode)
         panel.setContentSize(s)
         panel.contentView?.frame = NSRect(origin: .zero, size: s)
-        if let screen = NSScreen.main {
-            let vf = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: vf.midX - s.width / 2, y: vf.minY + 12))
-        }
+        panel.setFrameOrigin(targetOrigin(size: s))
         // Im Verarbeiten-Modus keine Buttons → Klicks durchreichen.
         panel.ignoresMouseEvents = (mode == .processing)
+    }
+
+    /// Reagiert auf eine geänderte Positions-Voreinstellung (aus den Einstellungen).
+    func reposition() {
+        guard let panel else { return }
+        panel.setFrameOrigin(targetOrigin(size: panel.frame.size))
+    }
+
+    // MARK: - Position (Voreinstellung oder frei gezogen)
+
+    private static let margin: CGFloat = 14
+
+    /// Ziel-Ursprung für die aktuelle Größe: frei gezogener Punkt (Mitte) oder Anker.
+    private func targetOrigin(size s: NSSize) -> NSPoint {
+        let d = UserDefaults.standard
+        if d.bool(forKey: "pillCustom") {
+            let center = NSPoint(x: d.double(forKey: "pillCustomX"), y: d.double(forKey: "pillCustomY"))
+            let vf = (NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main)?.visibleFrame ?? .zero
+            let x = min(max(center.x - s.width / 2, vf.minX), vf.maxX - s.width)
+            let y = min(max(center.y - s.height / 2, vf.minY), vf.maxY - s.height)
+            return NSPoint(x: x, y: y)
+        }
+        let vf = NSScreen.main?.visibleFrame ?? .zero
+        let m = Self.margin
+        let anchor = d.string(forKey: "pillAnchor") ?? "bottomCenter"
+        let x: CGFloat
+        switch anchor {
+        case "bottomLeft", "topLeft":   x = vf.minX + m
+        case "bottomRight", "topRight": x = vf.maxX - s.width - m
+        default:                         x = vf.midX - s.width / 2
+        }
+        let y = anchor.hasPrefix("top") ? (vf.maxY - s.height - m) : (vf.minY + m)
+        return NSPoint(x: x, y: y)
+    }
+
+    private func dragMove(_ translation: CGSize) {
+        guard let panel else { return }
+        if dragStart == nil { dragStart = panel.frame.origin }
+        guard let start = dragStart else { return }
+        // SwiftUI-Koordinaten sind y-nach-unten, AppKit y-nach-oben → y invertieren.
+        var x = start.x + translation.width
+        var y = start.y - translation.height
+        let w = panel.frame.width, h = panel.frame.height
+        let center = NSPoint(x: x + w / 2, y: y + h / 2)
+        let vf = (NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main)?.visibleFrame ?? .zero
+        x = min(max(x, vf.minX), vf.maxX - w)
+        y = min(max(y, vf.minY), vf.maxY - h)
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    private func dragEnd() {
+        dragStart = nil
+        guard let panel else { return }
+        let d = UserDefaults.standard
+        d.set(true, forKey: "pillCustom")
+        d.set(Double(panel.frame.midX), forKey: "pillCustomX")
+        d.set(Double(panel.frame.midY), forKey: "pillCustomY")
     }
 
     private func ensurePanel() {
@@ -155,6 +217,14 @@ private struct RecordingPill: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        // Ziehen (ab 8 pt) verschiebt die Pille; ein Tippen (<8 pt) bleibt den
+        // Buttons vorbehalten (Start/Abbrechen/Absenden).
+        .gesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { model.onDragChanged($0.translation) }
+                .onEnded { _ in model.onDragEnded() }
+        )
     }
 
     // Ruhezustand: klickbarer Mic-Knopf.

@@ -1,0 +1,16 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>shout</title>
+        <item>
+            <title>1.0.1</title>
+            <pubDate>Thu, 09 Jul 2026 19:06:48 +0200</pubDate>
+            <link>https://github.com/LiLoLama/shout</link>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.0.1/shout-1.0.1.dmg" length="17008329" type="application/octet-stream" sparkle:edSignature="yRPFkBZGzVAJ8cFNIcAv3lWbz6ZDRMmP5MkIAGNPXRDWAbXHmDHCLPW7M/U2uCqSyIa/e4r3eBpQzPiE4C78Cg=="/>
+        </item>
+    </channel>
+</rss>

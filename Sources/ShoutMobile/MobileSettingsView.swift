@@ -1,6 +1,8 @@
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
-/// Einstellungen: Diktat-Optionen, Modelle (mit Geräte-Empfehlung), Statistiken, Support.
+/// Einstellungen: Diktat-Optionen, Modelle (mit Geräte-Empfehlung), Daten, Statistiken, Support.
 struct MobileSettingsView: View {
     @ObservedObject var engine: MobileEngine
 
@@ -13,6 +15,10 @@ struct MobileSettingsView: View {
     @AppStorage("formatModel") private var formatModel = ModelCatalog.defaultFormatting
     @State private var formattingOn = false
 
+    @State private var importing = false
+    @State private var shareURL: URL?
+    @State private var dataMessage: String?
+
     private var ram: Int { Hardware.physicalMemoryGB }
 
     var body: some View {
@@ -20,11 +26,19 @@ struct MobileSettingsView: View {
             Form {
                 dictationSection
                 modelSection
+                dataSection
                 statsSection
                 supportSection
             }
             .navigationTitle("Einstellungen")
             .onAppear { formattingOn = engine.formattingEnabled }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
+                switch result {
+                case .success(let url): dataMessage = engine.importBundle(from: url)
+                case .failure(let error): dataMessage = error.localizedDescription
+                }
+            }
+            .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
         }
     }
 
@@ -145,6 +159,30 @@ struct MobileSettingsView: View {
         .padding(.vertical, 2)
     }
 
+    // MARK: - Daten (Mac ↔ iPhone)
+
+    private var dataSection: some View {
+        Section {
+            Button {
+                shareURL = engine.exportBundleURL()
+            } label: {
+                Label("Backup exportieren (teilen)", systemImage: "square.and.arrow.up")
+            }
+            Button {
+                importing = true
+            } label: {
+                Label("Backup importieren", systemImage: "square.and.arrow.down")
+            }
+            if let m = dataMessage {
+                Text(m).font(.caption).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Daten (Mac ↔ iPhone)")
+        } footer: {
+            Text("Am Mac unter „Sync & Geräte“ exportieren, per AirDrop aufs iPhone senden und hier importieren — übernimmt Wörterbuch, Verlauf, Statistiken und Einstellungen. Achtung: Import ersetzt die aktuellen Daten.")
+        }
+    }
+
     // MARK: - Statistiken
 
     private var statsSection: some View {
@@ -171,4 +209,18 @@ struct MobileSettingsView: View {
             Text("shout. ist frei und quelloffen (GPL-3.0). Ich bemühe mich, die App aktuell zu halten und zu erweitern — Unterstützung ist freiwillig und hilft sehr. ❤️")
         }
     }
+}
+
+/// Erlaubt `.sheet(item:)` mit einer URL.
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
+}
+
+/// Dünner Wrapper um das System-Teilen-Blatt (UIActivityViewController).
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

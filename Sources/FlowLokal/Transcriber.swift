@@ -56,6 +56,14 @@ actor Transcriber {
         try await load(onProgress: onProgress)
     }
 
+    /// „Aufwärmen": eine kurze Stumm-Transkription direkt nach dem Laden, damit
+    /// die ANE-/GPU-Graphen schon kompiliert sind. Das ERSTE echte Diktat ist
+    /// sonst spürbar langsamer (Graph-Kompilierung passiert beim ersten Lauf).
+    func warmUp() async {
+        guard pipe != nil else { return }
+        _ = try? await run(samples: [Float](repeating: 0, count: 16_000), biasTerms: [])
+    }
+
     func transcribe(_ samples: [Float], biasTerms: [String] = []) async throws -> String {
         guard pipe != nil else { throw TranscriberError.notLoaded }
 

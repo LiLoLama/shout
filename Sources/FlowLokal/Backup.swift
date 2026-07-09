@@ -14,15 +14,15 @@ struct BackupBundle: Codable {
 
 /// Einstellungen (aus RecordingSettings + UserDefaults).
 struct SettingsSnapshot: Codable {
-    var mode: String?
-    var autoStop: Bool?
-    var silenceSeconds: Double?
-    var keyCode: Int?
-    var modifiers: Int?
-    var isModifierOnly: Bool?
-    var formattingEnabled: Bool?
-    var preferredMicUID: String?
-    var voiceProfile: String?
+    var mode: String? = nil
+    var autoStop: Bool? = nil
+    var silenceSeconds: Double? = nil
+    var keyCode: Int? = nil
+    var modifiers: Int? = nil
+    var isModifierOnly: Bool? = nil
+    var formattingEnabled: Bool? = nil
+    var preferredMicUID: String? = nil
+    var voiceProfile: String? = nil
     // Hinweis: Ältere Backups enthalten noch ein "licenseKey"-Feld (aus der Zeit
     // vor Open Source) — Codable ignoriert unbekannte Schlüssel, Import bleibt kompatibel.
 }

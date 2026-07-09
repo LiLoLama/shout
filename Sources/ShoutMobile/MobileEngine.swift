@@ -95,6 +95,7 @@ final class MobileEngine: ObservableObject {
                 try await transcriber.load { [weak self] frac in
                     Task { @MainActor in self?.asrProgress = frac }
                 }
+                await transcriber.warmUp()   // erstes Diktat schon schnell
                 transcriberReady = true
                 state = .idle
             } catch {
@@ -114,6 +115,7 @@ final class MobileEngine: ObservableObject {
             await formatter.load { [weak self] frac in
                 Task { @MainActor in self?.formatProgress = frac }
             }
+            await formatter.warmUp()
             formatProgress = nil
             formatLoadingID = nil
         }
@@ -135,6 +137,7 @@ final class MobileEngine: ObservableObject {
             try await transcriber.reload { [weak self] frac in
                 Task { @MainActor in self?.asrProgress = frac }
             }
+            await transcriber.warmUp()
             state = .idle
         } catch {
             UserDefaults.standard.set(previous, forKey: "asrModel")
@@ -158,6 +161,7 @@ final class MobileEngine: ObservableObject {
         await formatter.reload { [weak self] frac in
             Task { @MainActor in self?.formatProgress = frac }
         }
+        await formatter.warmUp()
         formatProgress = nil
         formatLoadingID = nil
     }
@@ -253,5 +257,46 @@ final class MobileEngine: ObservableObject {
     /// Aus dem Fehlerzustand zurück (nach Berechtigungs-/Netzproblem).
     func recover() {
         if transcriberReady { state = .idle } else { loadModels() }
+    }
+
+    // MARK: - Daten-Übertragung (Mac ↔ iPhone)
+
+    /// Schreibt ein Backup (Wörterbuch, Verlauf, Statistiken, Einstellungen) in
+    /// eine temporäre Datei und gibt deren URL zum Teilen zurück.
+    func exportBundleURL() -> URL? {
+        let snapshot = SettingsSnapshot(
+            autoStop: UserDefaults.standard.bool(forKey: "autoStopEnabled"),
+            silenceSeconds: UserDefaults.standard.object(forKey: "silenceSeconds") as? Double,
+            formattingEnabled: UserDefaults.standard.object(forKey: "formattingEnabled") as? Bool,
+            voiceProfile: UserDefaults.standard.string(forKey: "voiceProfile")
+        )
+        let bundle = BackupBundle(dictionary: dictionary.contents, history: history.entries,
+                                  stats: stats.data, settings: snapshot)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(bundle) else { return nil }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("shout-backup.json")
+        do { try data.write(to: url, options: .atomic); return url } catch { return nil }
+    }
+
+    /// Übernimmt ein am Mac (oder iPhone) exportiertes Backup. Ersetzt Wörterbuch,
+    /// Verlauf und Statistiken; überträgt die geteilten Einstellungen.
+    @discardableResult
+    func importBundle(from url: URL) -> String {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return "Datei nicht lesbar." }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let bundle = try? decoder.decode(BackupBundle.self, from: data) else {
+            return "Ungültige Backup-Datei."
+        }
+        dictionary.replaceContents(bundle.dictionary)
+        history.replaceEntries(bundle.history)
+        stats.replaceData(bundle.stats)
+        if let f = bundle.settings.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
+        if let vp = bundle.settings.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
+        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate."
     }
 }

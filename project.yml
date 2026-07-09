@@ -101,6 +101,7 @@ targets:
           - HuggingFaceModels.swift
           - SoundCues.swift
           - Theme.swift
+          - Backup.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.ios

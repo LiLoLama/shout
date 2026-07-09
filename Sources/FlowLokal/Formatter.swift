@@ -85,6 +85,15 @@ actor Formatter {
         }
     }
 
+    /// „Aufwärmen": ein Ein-Token-Durchlauf, damit die Metal-Pipeline kompiliert
+    /// ist und die erste echte Aufbereitung nicht spürbar länger dauert.
+    func warmUp() async {
+        guard isReady, let container else { return }
+        let session = ChatSession(container, instructions: "Antworte knapp.",
+                                  generateParameters: GenerateParameters(maxTokens: 1))
+        _ = try? await session.respond(to: "Hallo")
+    }
+
     // MARK: - Formatierung
 
     /// Liefert bereinigten Text — oder den (getrimmten) Rohtext bei kurzem

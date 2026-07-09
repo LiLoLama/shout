@@ -1,0 +1,152 @@
+import SwiftUI
+
+/// Haupt-Screen: großer Aufnahme-Knopf, Live-Pegel, Ergebnis mit Kopieren/Teilen.
+struct HomeView: View {
+    @ObservedObject var engine: MobileEngine
+    @State private var copied = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer(minLength: 8)
+
+                statusHeader
+
+                recordButton
+                    .padding(.vertical, 8)
+
+                if case .recording = engine.state {
+                    Button(role: .destructive) { engine.cancelRecording() } label: {
+                        Label("Verwerfen", systemImage: "xmark")
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if case .failed(let message) = engine.state {
+                    VStack(spacing: 10) {
+                        Text(message)
+                            .font(.footnote).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Erneut versuchen") { engine.recover() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.horizontal, 24)
+                }
+
+                if let result = engine.lastResult, engine.state != .recording {
+                    resultCard(result)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("shout.")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    // MARK: - Status
+
+    private var statusHeader: some View {
+        Group {
+            switch engine.state {
+            case .loadingModel:
+                VStack(spacing: 6) {
+                    if let p = engine.asrProgress, p > 0.001, p < 0.999 {
+                        ProgressView(value: p) { Text("Sprachmodell wird geladen … \(Int(p * 100)) %") }
+                            .font(.footnote)
+                    } else {
+                        ProgressView { Text("Sprachmodell wird geladen …").font(.footnote) }
+                    }
+                    Text("Einmalig — danach läuft alles offline.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 32)
+            case .idle:
+                Text(engine.lastResult == nil ? "Tippe zum Diktieren" : "Bereit")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .recording:
+                Text("Ich höre zu …").font(.subheadline).foregroundStyle(Color.shoutLive)
+            case .working:
+                Text("Verarbeite …").font(.subheadline).foregroundStyle(.secondary)
+            case .failed:
+                Text("Problem").font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Aufnahme-Knopf
+
+    private var recordButton: some View {
+        Button { engine.toggleRecording() } label: {
+            ZStack {
+                // Pegel-Ring während der Aufnahme
+                if engine.state == .recording {
+                    Circle()
+                        .stroke(Color.shoutLive.opacity(0.35), lineWidth: 6)
+                        .frame(width: 148, height: 148)
+                        .scaleEffect(1 + CGFloat(engine.level) * 0.35)
+                        .animation(.easeOut(duration: 0.1), value: engine.level)
+                }
+                Circle()
+                    .fill(engine.state == .recording ? Color.shoutLive : Color.shoutLive.opacity(0.92))
+                    .frame(width: 128, height: 128)
+                    .shadow(color: Color.shoutLive.opacity(0.35), radius: 18, y: 6)
+                Group {
+                    switch engine.state {
+                    case .recording:
+                        Image(systemName: "stop.fill").font(.system(size: 40, weight: .bold))
+                    case .working:
+                        ProgressView().controlSize(.large).tint(.white)
+                    default:
+                        Image(systemName: "mic.fill").font(.system(size: 44, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(engine.state == .loadingModel || engine.state == .working || isFailed)
+        .accessibilityLabel(engine.state == .recording ? "Aufnahme stoppen" : "Aufnahme starten")
+    }
+
+    private var isFailed: Bool { if case .failed = engine.state { return true }; return false }
+
+    // MARK: - Ergebnis
+
+    private func resultCard(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("In Zwischenablage kopiert", systemImage: "doc.on.clipboard")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+            }
+            ScrollView {
+                Text(text)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(maxHeight: 180)
+
+            HStack(spacing: 12) {
+                Button {
+                    UIPasteboard.general.string = text
+                    copied = true
+                    Task { try? await Task.sleep(nanoseconds: 1_500_000_000); copied = false }
+                } label: {
+                    Label(copied ? "Kopiert ✓" : "Kopieren", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+
+                ShareLink(item: text) {
+                    Label("Teilen", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+        .padding(.horizontal, 4)
+    }
+}

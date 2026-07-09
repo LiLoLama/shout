@@ -12,6 +12,11 @@ packages:
   mlxlm:
     url: https://github.com/ml-explore/mlx-swift-lm
     from: 3.31.4
+  # Explizit >= 0.31.6: erst ab dort ist mlx-swifts encuda-Hilfstool mit
+  # #if os(macOS) geguardet — 0.31.5 bricht den iOS-Build (Foundation.Process).
+  mlxcore:
+    url: https://github.com/ml-explore/mlx-swift
+    from: 0.31.6
   # swift-transformers auf WhisperKits Range gepinnt, damit WhisperKit und der
   # MLX-Macro-Stack im selben Binary koexistieren (siehe Package.swift-Kommentar).
   transformers:
@@ -71,3 +76,60 @@ targets:
         product: Tokenizers
       - package: huggingface
         product: HuggingFace
+      - package: mlxcore
+        product: MLX
+
+  # iOS-App: gleiche lokale Pipeline (WhisperKit + MLX in-process), mobile UI.
+  # Teilt die Kern-Dateien aus Sources/FlowLokal (plattformneutral gehalten).
+  ShoutMobile:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/ShoutMobile
+      - path: Sources/FlowLokal
+        includes:
+          - Transcriber.swift
+          - Formatter.swift
+          - AudioRecorder.swift
+          - PersonalDictionary.swift
+          - DictationHistory.swift
+          - StatsStore.swift
+          - StoreIO.swift
+          - SpeechCommands.swift
+          - ModelCatalog.swift
+          - HuggingFaceModels.swift
+          - SoundCues.swift
+          - Theme.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.ios
+        PRODUCT_NAME: "shout"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "shout."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln. Nichts verlässt dein Gerät."
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # Großes Speicherlimit für die lokalen Modelle (WhisperKit + MLX-LLM).
+        CODE_SIGN_ENTITLEMENTS: Release/shout-ios.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: G5FFT759WM
+        SWIFT_VERSION: "5.10"
+    dependencies:
+      - package: argmax
+        product: WhisperKit
+      - package: mlxlm
+        product: MLXLLM
+      - package: mlxlm
+        product: MLXLMCommon
+      - package: mlxlm
+        product: MLXHuggingFace
+      - package: transformers
+        product: Tokenizers
+      - package: huggingface
+        product: HuggingFace
+      - package: mlxcore
+        product: MLX

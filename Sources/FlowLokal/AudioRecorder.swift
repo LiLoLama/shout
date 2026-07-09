@@ -56,10 +56,19 @@ final class AudioRecorder {
         noiseFloor = 0.01   // Rausch-Boden je Aufnahme neu einpendeln lassen
         lock.unlock()
 
+        #if os(iOS)
+        // iOS: Audio-Session für Aufnahme aktivieren (ersetzt die macOS-Geräteauswahl).
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .default,
+                                options: [.defaultToSpeaker, .allowBluetooth, .duckOthers])
+        try session.setActive(true)
+        #endif
+
         // Frische Engine je Aufnahme, damit ein Gerätewechsel sauber greift.
         engine = AVAudioEngine()
         let input = engine.inputNode
 
+        #if os(macOS)
         // Gewünschtes Eingabegerät setzen — MUSS vor dem Auslesen des Formats passieren.
         if let uid = preferredDeviceUID,
            let deviceID = AudioDevices.deviceID(forUID: uid),
@@ -71,6 +80,7 @@ final class AudioRecorder {
                 UInt32(MemoryLayout<AudioDeviceID>.size)
             )
         }
+        #endif
 
         let inputFormat = input.inputFormat(forBus: 0)
 
@@ -102,6 +112,10 @@ final class AudioRecorder {
         Thread.sleep(forTimeInterval: 0.09)
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        #if os(iOS)
+        // Session freigeben, damit z. B. Musik-Wiedergabe anderer Apps weiterläuft.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
 
         lock.lock()
         let result = samples

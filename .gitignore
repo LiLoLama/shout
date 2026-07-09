@@ -12,3 +12,9 @@ Package.resolved
 
 # Release-Artefakte
 *.dmg
+
+# xcodegen-generierte Info.plist
+Support/Info-macOS.plist
+# Sparkle-Tools (lokal, nicht versioniert) + dist-Ausgabe
+.sparkle-tools/
+dist/

@@ -3,11 +3,15 @@
 <plist version="1.0">
 <dict>
 	<!-- Hardened-Runtime-Ausnahmen für MLX (Metal/JIT-nahe Speichernutzung).
-	     Kein App-Sandbox (die App braucht Accessibility + globale Hotkeys).
-	     Mikrofon läuft über die NSMicrophoneUsageDescription im Info.plist. -->
+	     Kein App-Sandbox (die App braucht Accessibility + globale Hotkeys). -->
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<!-- PFLICHT unter Hardened Runtime für Mikrofon-Zugriff — ohne dieses
+	     Entitlement blockt macOS die Aufnahme und die App erscheint nicht
+	     einmal in den Datenschutz-Einstellungen. -->
+	<key>com.apple.security.device.audio-input</key>
 	<true/>
 </dict>
 </plist>

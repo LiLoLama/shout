@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import ApplicationServices
 import ServiceManagement
+import Sparkle
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -40,6 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let toast = LearnedToast()
     private let recIndicator = RecordingIndicator()
     private let sounds = SoundCues()
+
+    /// Sparkle-Auto-Update: prüft beim Start (SUEnableAutomaticChecks) und per
+    /// Menüpunkt gegen den Appcast; installiert EdDSA-signierte Updates per Klick.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     private var lastInsertedText = ""
     private var correctionWindow: NSWindow?
 
@@ -340,6 +346,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.addItem(micItem)
 
         menu.addItem(.separator())
+        let updateItem = NSMenuItem(title: "Nach Updates suchen …",
+                                    action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                                    keyEquivalent: "")
+        updateItem.target = updaterController
+        menu.addItem(updateItem)
+
         let quitItem = NSMenuItem(title: "Beenden", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)

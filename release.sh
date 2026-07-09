@@ -70,5 +70,26 @@ rm -f "$DMG"
 hdiutil create -volname "shout." -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 rm -rf "$STAGING"
 
+# ── Sparkle-Appcast erzeugen (EdDSA-signiert, mit dem privaten Key aus dem
+#    Schlüsselbund) ────────────────────────────────────────────────────────────
+# generate_appcast scannt den dist/-Ordner, signiert die DMGs und schreibt
+# appcast.xml. Die Download-URLs zeigen auf das GitHub-Release dieser Version.
+GENAPPCAST=".sparkle-tools/bin/generate_appcast"
+if [ -x "$GENAPPCAST" ]; then
+    echo "▶ Erzeuge signierten Appcast …"
+    mkdir -p dist
+    cp -f "$DMG" dist/
+    "$GENAPPCAST" dist \
+        --download-url-prefix "https://github.com/LiLoLama/shout/releases/download/v$VERSION/" \
+        --link "https://github.com/LiLoLama/shout"
+    cp -f dist/appcast.xml appcast.xml
+    echo "   appcast.xml aktualisiert."
+else
+    echo "⚠︎  .sparkle-tools/bin/generate_appcast fehlt — Appcast nicht erzeugt."
+    echo "    (Tools laden: siehe RELEASE.md → Sparkle.)"
+fi
+
 echo "✅ Fertig: $DMG (notarisiert & gestapelt, Version $VERSION)"
+echo "   Nächste Schritte: DMG als GitHub-Release v$VERSION hochladen UND"
+echo "   die aktualisierte appcast.xml committen+pushen (sonst sehen Nutzer kein Update)."
 echo "   Zum Verteilen einfach dieses DMG weitergeben."

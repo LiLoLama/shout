@@ -47,6 +47,26 @@ xcodebuild \
 APP="$DERIVED/Build/Products/$CONFIG/shout.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 
+# ── Sparkle-Helfer neu signieren ────────────────────────────────────────────
+# xcodebuild signiert die verschachtelten Sparkle-Binaries (Updater.app,
+# Autoupdate, XPC-Services) NICHT mit unserer Developer ID + Zeitstempel neu —
+# Apples Notarisierung lehnt sie sonst ab. Von innen nach außen neu signieren,
+# danach die App erneut (damit der äußere Siegel die neuen Signaturen abdeckt).
+SPK="$APP/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPK" ]; then
+    echo "▶ Signiere Sparkle-Helfer neu …"
+    for xpc in "$SPK"/Versions/B/XPCServices/*.xpc; do
+        [ -e "$xpc" ] && codesign -f -o runtime --timestamp -s "$DEV_ID_APP" "$xpc"
+    done
+    for helper in "$SPK/Versions/B/Autoupdate" "$SPK/Versions/B/Updater.app"; do
+        [ -e "$helper" ] && codesign -f -o runtime --timestamp -s "$DEV_ID_APP" "$helper"
+    done
+    codesign -f -o runtime --timestamp -s "$DEV_ID_APP" "$SPK"
+    # App erneut signieren (mit unseren Entitlements), damit das Siegel passt.
+    codesign -f -o runtime --timestamp \
+        --entitlements Release/shout.entitlements -s "$DEV_ID_APP" "$APP"
+fi
+
 echo "▶ Prüfe Signatur …"
 codesign --verify --deep --strict --verbose=2 "$APP"
 

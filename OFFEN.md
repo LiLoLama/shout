@@ -29,6 +29,11 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Übersetzungs-Modus** (#14) — deutsch sprechen, englisch einfügen.
 - [ ] **Barrierefreiheit** (#15) — VoiceOver-Labels, Menüleisten-Template-Icons (Sound-Feedback ist erledigt).
 
+## 🪟 Windows (`windows/`)
+- [x] **Erste Version gebaut** — C#/.NET-8-Tray-App: Hotkey → NAudio-Aufnahme (VAD-Port) → whisper.cpp (Whisper.net) → Sprachbefehle → optional llama.cpp (LLamaSharp, Qwen 2.5) → Wörterbuch-Korrekturen → Einfügen per Strg+V. Backup-Format kompatibel zu Mac/iOS.
+- [ ] **Auf echtem Windows testen** (entwickelt auf macOS, nur compile-geprüft): Aufnahme, Hotkey, Einfügen in verschiedene Apps, Modell-Downloads, Overlay.
+- [ ] **Später**: Installer/winget, Auto-Update, Mikrofon-Auswahl, GPU-Backends (CUDA/Vulkan) als Option, Onboarding.
+
 ## 📱 iOS
 - [x] **Native iOS-App** (`ShoutMobile`) — gleiche lokale Pipeline (WhisperKit + MLX), mobile UI, Modell-Empfehler, Onboarding, Verlauf/Wörterbuch/Statistik, Daten-Sync Mac↔iPhone.
 - [x] **Diktier-Tastatur** (`ShoutKeyboard`, App-Extension) — „Diktieren" öffnet die App (shout://dictate), Ergebnis via App Group, „Einfügen" schreibt in beliebige App. Braucht Vollzugriff.

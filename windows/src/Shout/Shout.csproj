@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Shout</RootNamespace>
+    <AssemblyName>shout</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>0.1.0</Version>
+    <Product>shout.</Product>
+    <Description>Lokale, private Diktier-App — Windows-Version</Description>
+    <!-- Erlaubt das Kompilieren des Windows-Targets auch auf macOS/Linux
+         (reiner Compile-Check; ausführen kann es nur Windows). -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Spracherkennung: whisper.cpp über Whisper.net (bringt die nativen
+         CPU-Runtimes für win-x64/win-arm64 mit). -->
+    <PackageReference Include="Whisper.net" Version="1.8.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
+    <!-- Optionale KI-Formatierung: llama.cpp über LLamaSharp (CPU-Backend). -->
+    <PackageReference Include="LLamaSharp" Version="0.24.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.24.0" />
+    <!-- Mikrofonaufnahme. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+</Project>

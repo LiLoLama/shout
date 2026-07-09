@@ -33,6 +33,10 @@ Hotkey (default: right ⌥) → record → Whisper (large-v3-turbo, on the Neura
 - A few GB of free disk for the speech model (downloaded once on first launch).
 - Microphone and Accessibility permissions (the onboarding walks you through it).
 
+Also in this repo: a native **iOS app** (incl. a dictation keyboard) built from
+the same Xcode project, and an early **Windows version** (C#/.NET 8 +
+whisper.cpp/llama.cpp) under [`windows/`](windows/README.md).
+
 ## Install
 
 1. Download the latest `shout-x.y.z.dmg` from [Releases](https://github.com/LiLoLama/shout/releases).

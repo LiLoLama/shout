@@ -27,8 +27,13 @@ final class MobileEngine: ObservableObject {
     @Published private(set) var lastResult: String?
     @Published var asrProgress: Double?
     @Published var formatProgress: Double?
+    @Published private(set) var asrLoadingID: String?     // gerade ladendes ASR-Modell
+    @Published private(set) var formatLoadingID: String?  // gerade ladendes LLM
     @Published private(set) var transcriberReady = false
     @Published var modelNote: String?
+
+    var activeASR: String { UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR }
+    var activeFormat: String { UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting }
 
     let dictionary = PersonalDictionary()
     let history = DictationHistory()
@@ -50,6 +55,16 @@ final class MobileEngine: ObservableObject {
     }
 
     init() {
+        // Erststart: die für DIESES Gerät empfohlenen Modelle als Auswahl setzen
+        // (statt des kleinsten Fallbacks) — geladen wird die Empfehlung.
+        let d = UserDefaults.standard
+        if d.string(forKey: "asrModel") == nil {
+            d.set(ModelCatalog.recommendedASR(ramGB: Hardware.physicalMemoryGB).id, forKey: "asrModel")
+        }
+        if d.string(forKey: "formatModel") == nil {
+            d.set(ModelCatalog.recommendedFormatting(ramGB: Hardware.physicalMemoryGB).id, forKey: "formatModel")
+        }
+
         recorder.onLevel = { [weak self] level in
             Task { @MainActor in
                 guard let self else { return }
@@ -74,6 +89,7 @@ final class MobileEngine: ObservableObject {
     func loadModels() {
         state = .loadingModel
         asrProgress = 0
+        asrLoadingID = activeASR
         Task {
             do {
                 try await transcriber.load { [weak self] frac in
@@ -86,6 +102,7 @@ final class MobileEngine: ObservableObject {
                 state = .failed("Sprachmodell konnte nicht geladen werden. Internet prüfen und erneut versuchen.")
             }
             asrProgress = nil
+            asrLoadingID = nil
             if formattingEnabled { loadFormatterIfNeeded() }
         }
     }
@@ -93,10 +110,12 @@ final class MobileEngine: ObservableObject {
     private func loadFormatterIfNeeded() {
         Task {
             formatProgress = 0
+            formatLoadingID = activeFormat
             await formatter.load { [weak self] frac in
                 Task { @MainActor in self?.formatProgress = frac }
             }
             formatProgress = nil
+            formatLoadingID = nil
         }
     }
 
@@ -111,6 +130,7 @@ final class MobileEngine: ObservableObject {
         UserDefaults.standard.set(id, forKey: "asrModel")
         state = .loadingModel
         asrProgress = 0
+        asrLoadingID = id
         do {
             try await transcriber.reload { [weak self] frac in
                 Task { @MainActor in self?.asrProgress = frac }
@@ -123,6 +143,7 @@ final class MobileEngine: ObservableObject {
             modelNote = "Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv."
         }
         asrProgress = nil
+        asrLoadingID = nil
     }
 
     func switchFormatModel(to id: String) async {
@@ -133,10 +154,12 @@ final class MobileEngine: ObservableObject {
         modelNote = nil
         UserDefaults.standard.set(id, forKey: "formatModel")
         formatProgress = 0
+        formatLoadingID = id
         await formatter.reload { [weak self] frac in
             Task { @MainActor in self?.formatProgress = frac }
         }
         formatProgress = nil
+        formatLoadingID = nil
     }
 
     private var isFailed: Bool { if case .failed = state { return true }; return false }

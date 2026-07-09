@@ -26,11 +26,24 @@ actor Transcriber {
     private(set) var loadedModel: String?
 
     /// Lädt das gewählte Modell (Cache-first, offline-fähig wie gehabt).
-    /// `onProgress` bleibt aus API-Gründen erhalten; WhisperKit lädt seinen
-    /// festen, kleinen Modellsatz ohne separaten Fortschritt.
     func load(onProgress: (@Sendable (Double) -> Void)? = nil) async throws {
         let name = modelName
+        #if os(iOS)
+        // iOS: Zwei-Schritt-Weg (erst Download mit echtem Fortschritt, dann aus dem
+        // Ordner laden) — auf dem iPhone (Mobilfunk!) muss der Nutzer den Download
+        // sehen. Fallback auf den kombinierten Weg, falls der Download-Pfad hakt.
+        do {
+            let folder = try await WhisperKit.download(variant: name) { progress in
+                onProgress?(progress.fractionCompleted)
+            }
+            pipe = try await WhisperKit(WhisperKitConfig(modelFolder: folder.path, download: false))
+        } catch {
+            NSLog("shout: Zwei-Schritt-Load fehlgeschlagen (\(error)) → Fallback")
+            pipe = try await WhisperKit(WhisperKitConfig(model: name))
+        }
+        #else
         pipe = try await WhisperKit(WhisperKitConfig(model: name))
+        #endif
         loadedModel = name
     }
 

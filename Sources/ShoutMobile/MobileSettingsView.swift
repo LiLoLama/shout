@@ -57,39 +57,92 @@ struct MobileSettingsView: View {
 
     // MARK: - Modelle
 
-    private var modelSection: some View {
-        Section {
-            LabeledContent("Gerät", value: "\(Hardware.chip) · \(ram) GB RAM")
+    private var anyModelLoading: Bool { engine.asrLoadingID != nil || engine.formatLoadingID != nil }
 
-            Picker("Transkription", selection: $asrModel) {
-                ForEach(ModelCatalog.asr) { o in
-                    Text(o.id == ModelCatalog.recommendedASR(ramGB: ram).id ? "\(o.name) ★" : o.name)
-                        .tag(o.id)
+    private var modelSection: some View {
+        Group {
+            Section {
+                LabeledContent("Gerät", value: "\(Hardware.chip) · \(ram) GB RAM")
+                if let note = engine.modelNote {
+                    Text(note).font(.caption).foregroundStyle(Color.shoutLive)
                 }
+            } header: {
+                Text("Modelle")
+            } footer: {
+                Text("★ = Empfehlung für dein Gerät. Tippe „Laden“, um ein Modell herunterzuladen und zu aktivieren — einmalig, danach läuft alles offline.")
             }
-            .onChange(of: asrModel) { _, id in Task { await engine.switchASRModel(to: id) } }
-            if let p = engine.asrProgress, p > 0.001, p < 0.999 {
-                ProgressView(value: p) { Text("Sprachmodell lädt … \(Int(p * 100)) %").font(.caption) }
+
+            Section("Transkription (Sprache → Text)") {
+                ForEach(ModelCatalog.asr) { o in
+                    modelRow(o,
+                             active: asrModel == o.id,
+                             recommended: o.id == ModelCatalog.recommendedASR(ramGB: ram).id,
+                             loading: engine.asrLoadingID == o.id,
+                             progress: engine.asrProgress) {
+                        Task { await engine.switchASRModel(to: o.id) }
+                    }
+                }
             }
 
             if formattingOn {
-                Picker("Aufbereitung", selection: $formatModel) {
+                Section("Aufbereitung (KI-Textmodell)") {
                     ForEach(ModelCatalog.formatting) { o in
-                        Text(o.id == ModelCatalog.recommendedFormatting(ramGB: ram).id ? "\(o.name) ★" : o.name)
-                            .tag(o.id)
+                        modelRow(o,
+                                 active: formatModel == o.id,
+                                 recommended: o.id == ModelCatalog.recommendedFormatting(ramGB: ram).id,
+                                 loading: engine.formatLoadingID == o.id,
+                                 progress: engine.formatProgress) {
+                            Task { await engine.switchFormatModel(to: o.id) }
+                        }
                     }
                 }
-                .onChange(of: formatModel) { _, id in Task { await engine.switchFormatModel(to: id) } }
             }
-
-            if let note = engine.modelNote {
-                Text(note).font(.caption).foregroundStyle(Color.shoutLive)
-            }
-        } header: {
-            Text("Modelle")
-        } footer: {
-            Text("★ = Empfehlung für dein Gerät. Modelle werden einmalig geladen und laufen danach komplett offline.")
         }
+    }
+
+    /// Eine Modell-Zeile: Name + Größe/Hinweis + Badges, rechts Status oder „Laden".
+    private func modelRow(_ o: ModelCatalog.Option, active: Bool, recommended: Bool,
+                          loading: Bool, progress: Double?, action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(o.name).font(.subheadline.weight(.medium))
+                        if recommended {
+                            Text("★ Empfohlen").font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.shoutLive.opacity(0.15)))
+                                .foregroundStyle(Color.shoutLive)
+                        }
+                        if ram < o.minRAMGB {
+                            Text("Viel RAM nötig").font(.caption2)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Text(o.note).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if active && !loading {
+                    Label("Aktiv", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.medium)).foregroundStyle(.green)
+                        .labelStyle(.titleAndIcon)
+                } else if loading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button("Laden", action: action)
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .disabled(anyModelLoading)
+                }
+            }
+            if loading, let p = progress, p > 0.001, p < 0.999 {
+                ProgressView(value: p) {
+                    Text("Wird geladen … \(Int(p * 100)) %").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: - Statistiken

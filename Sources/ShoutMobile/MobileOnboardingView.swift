@@ -8,6 +8,15 @@ struct MobileOnboardingView: View {
 
     @State private var micGranted = AVAudioApplication.shared.recordPermission == .granted
 
+    /// Zeigt, welches (für dieses Gerät empfohlene) Modell geladen wird — inkl. Größe.
+    private var modelSubtitle: String {
+        let id = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
+        if let option = ModelCatalog.asr.first(where: { $0.id == id }) {
+            return "\(option.name) · \(option.note) — einmalig, danach offline."
+        }
+        return "Einmalig — danach läuft alles offline."
+    }
+
     var body: some View {
         VStack(spacing: 26) {
             Spacer()
@@ -35,10 +44,17 @@ struct MobileOnboardingView: View {
 
                 stepRow(done: engine.transcriberReady,
                         title: engine.transcriberReady ? "Sprachmodell geladen" : "Sprachmodell lädt …",
-                        subtitle: "Einmalig — danach läuft alles offline.",
+                        subtitle: modelSubtitle,
                         action: nil)
-                if let p = engine.asrProgress, p > 0.001, p < 0.999 {
-                    ProgressView(value: p).padding(.horizontal, 32)
+                if !engine.transcriberReady {
+                    if let p = engine.asrProgress, p > 0.001, p < 0.999 {
+                        ProgressView(value: p) {
+                            Text("\(Int(p * 100)) %").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 32)
+                    } else {
+                        ProgressView().padding(.horizontal, 32)
+                    }
                 }
             }
             .padding(.horizontal, 16)

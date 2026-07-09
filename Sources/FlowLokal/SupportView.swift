@@ -5,9 +5,8 @@ import AppKit
 /// Wer mag, kann die Weiterentwicklung freiwillig unterstützen.
 struct SupportView: View {
 
-    // Anpassbare Links (echte Adressen eintragen):
-    private let donateURL = "https://buymeacoffee.com/liamschmid"
-    private let githubURL = "https://github.com/liamschmid/shout"
+    private let donateURL = "https://ko-fi.com/lilolama"
+    private let githubURL = "https://github.com/LiLoLama/shout"
 
     private let points = [
         ("lock.open.fill", "Frei & quelloffen", "Der komplette Quellcode ist öffentlich — nutzen, anpassen, weitergeben."),

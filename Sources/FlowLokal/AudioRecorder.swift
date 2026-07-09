@@ -34,7 +34,7 @@ final class AudioRecorder {
 
     // Adaptiver VAD: statt fester Schwelle läuft ein Rausch-Boden mit, der sich
     // an die Umgebung anpasst. Sprache = RMS deutlich über dem Boden.
-    private var noiseFloor: Float = 0.02
+    private var noiseFloor: Float = 0.01
     private let speechFactor: Float = 3.5      // wie weit über dem Rauschen = Sprache
     private let absoluteFloor: Float = 0.010   // unter diesem RMS ist es immer „still"
 
@@ -53,7 +53,7 @@ final class AudioRecorder {
         heardSpeech = false
         silenceAccumulated = 0
         silenceFired = false
-        noiseFloor = 0.02   // Rausch-Boden je Aufnahme neu einpendeln lassen
+        noiseFloor = 0.01   // Rausch-Boden je Aufnahme neu einpendeln lassen
         lock.unlock()
 
         // Frische Engine je Aufnahme, damit ein Gerätewechsel sauber greift.
@@ -97,42 +97,61 @@ final class AudioRecorder {
     /// Beendet die Aufnahme und gibt die gesammelten 16-kHz-Samples zurück.
     @discardableResult
     func stop() -> [Float] {
+        // Den letzten in-flight Tap-Puffer (~85 ms bei 4096 Frames) noch ankommen
+        // lassen, damit das Ende des letzten Wortes nicht abgeschnitten wird.
+        Thread.sleep(forTimeInterval: 0.09)
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
 
         lock.lock()
         let result = samples
         samples.removeAll(keepingCapacity: true)
-        let threshold = max(absoluteFloor, noiseFloor * speechFactor)   // unter Lock gelesen
         lock.unlock()
-        return trimSilence(result, speechThreshold: threshold)
+        let trimmed = trimSilence(result)
+        if trimmed.count != result.count {
+            NSLog("shout: Aufnahme %.1fs → getrimmt %.1fs",
+                  Double(result.count) / 16_000, Double(trimmed.count) / 16_000)
+        }
+        return trimmed
     }
 
     /// Schneidet führende/abschließende Stille weg, bevor die Samples an Whisper
-    /// gehen (weniger Halluzinationen in Stille, geringere Latenz). Konservativ:
-    /// großzügiges Padding und ein niedriger, gedeckelter Schwellwert, damit auch
-    /// leise Sprache nicht verloren geht.
-    private func trimSilence(_ input: [Float], speechThreshold: Float) -> [Float] {
+    /// gehen (weniger Halluzinationen in Stille, geringere Latenz).
+    ///
+    /// Die Schwelle ist RELATIV zum lautesten Fenster der Aufnahme und eng nach
+    /// oben gedeckelt — bewusst NICHT vom adaptiven Rausch-Boden abgeleitet
+    /// (der kann bei langem Sprechen über den Sprechpegel klettern; leise
+    /// Satzanfänge oder ganze leise Passagen würden dann weggeschnitten).
+    private func trimSilence(_ input: [Float]) -> [Float] {
         guard input.count > 3_200 else { return input }   // < 0,2 s: unverändert lassen
         let window = 480                                   // 30 ms bei 16 kHz
-        let threshold = min(speechThreshold, 0.03)         // gedeckelt → nicht zu aggressiv
 
-        var firstSpeech = -1, lastSpeech = -1
+        // Fenster-RMS einmal berechnen; Peak bestimmt die Schwelle.
+        var windowRMS: [Float] = []
+        windowRMS.reserveCapacity(input.count / window + 1)
         var i = 0
         while i < input.count {
             let end = min(i + window, input.count)
             var sum: Float = 0
             for j in i..<end { sum += input[j] * input[j] }
-            let rms = (sum / Float(end - i)).squareRoot()
-            if rms > threshold {
-                if firstSpeech < 0 { firstSpeech = i }
-                lastSpeech = end
-            }
+            windowRMS.append((sum / Float(end - i)).squareRoot())
             i += window
         }
+        let peak = windowRMS.max() ?? 0
+        guard peak >= 0.008 else { return [] }             // nie substanzielle Energie → still
 
-        guard firstSpeech >= 0 else { return [] }          // durchgehend still → nichts gesprochen
-        let pad = 2_400                                    // 150 ms Sicherheitsrand
+        // 10 % des Peaks, geklemmt auf [0.004, 0.012] — leise Sprecher bleiben drin,
+        // echtes Grundrauschen (~0.002–0.006) bleibt draußen.
+        let threshold = min(max(0.004, peak * 0.10), 0.012)
+
+        var firstSpeech = -1, lastSpeech = -1
+        for (w, rms) in windowRMS.enumerated() where rms > threshold {
+            if firstSpeech < 0 { firstSpeech = w * window }
+            lastSpeech = min(w * window + window, input.count)
+        }
+
+        guard firstSpeech >= 0 else { return [] }
+        let pad = 4_800                                    // 300 ms Sicherheitsrand
         let start = max(0, firstSpeech - pad)
         let stop = min(input.count, lastSpeech + pad)
         return Array(input[start..<stop])
@@ -197,11 +216,16 @@ final class AudioRecorder {
         // fasst den frisch zurückgesetzten Zustand der neuen Aufnahme nicht mehr an.
         lock.lock()
         guard gen == generation else { lock.unlock(); return }
-        // Rausch-Boden nachführen: fällt schnell (Stille), steigt langsam.
+        // Rausch-Boden als Minimum-Tracker: folgt leisen Fenstern schnell nach
+        // unten, „vergisst" nach oben nur sehr langsam und ist hart gedeckelt.
+        // WICHTIG: Er darf NICHT aus Sprach-Chunks lernen — die frühere Variante
+        // (steigt bei jedem Chunk Richtung rms) kletterte bei Dauersprechen in
+        // wenigen Sekunden über den Sprechpegel, wodurch Sprache als „Stille"
+        // galt (Auto-Stopp mitten im Satz, Anfang/Ende weggetrimmt).
         if rms < noiseFloor {
-            noiseFloor = noiseFloor * 0.9 + rms * 0.1
+            noiseFloor = noiseFloor * 0.5 + rms * 0.5
         } else {
-            noiseFloor = noiseFloor * 0.995 + rms * 0.005
+            noiseFloor = min(noiseFloor * 1.002, 0.015)
         }
         let threshold = max(absoluteFloor, noiseFloor * speechFactor)
         if autoStopEnabled, !silenceFired {

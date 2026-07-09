@@ -103,7 +103,20 @@ actor Formatter {
             )
             let out = try await session.respond(to: text)
             let cleaned = stripArtifacts(out)
-            return cleaned.isEmpty ? text : cleaned
+            guard !cleaned.isEmpty else { return text }
+
+            // Kürzungs-Schutz: Das (kleine, quantisierte) Modell soll bereinigen,
+            // nicht zusammenfassen. Verliert die Ausgabe bei längeren Diktaten
+            // fast die Hälfte der Wörter, ist etwas schiefgelaufen → lieber den
+            // Rohtext einfügen als still Inhalt verlieren. (Füllwort-Entfernung
+            // und Listen-Umbau kosten legitim ~20–30 %, nie annähernd 45 %.)
+            let inWords = text.split(whereSeparator: \.isWhitespace).count
+            let outWords = cleaned.split(whereSeparator: \.isWhitespace).count
+            if inWords >= 30, outWords * 100 < inWords * 55 {
+                NSLog("shout: Formatter-Ausgabe verdächtig kurz (%d→%d Wörter) → Rohtext eingefügt", inWords, outWords)
+                return text
+            }
+            return cleaned
         } catch {
             NSLog("Formatierung fehlgeschlagen: \(error)")
             return text

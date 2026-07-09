@@ -47,13 +47,24 @@ actor Transcriber {
         guard pipe != nil else { throw TranscriberError.notLoaded }
 
         let text = try await run(samples: samples, biasTerms: biasTerms)
-        // Prompt-Biasing kann bei Folge-Aufnahmen leeren Text verursachen →
-        // dann einmal ohne Biasing nachziehen. Nur sinnvoll, wenn Bias auch
-        // angewandt wurde — im Auto-Sprachmodus ist es deaktiviert (run()), ein
-        // Retry wäre dort nur eine nutzlose zweite Transkription.
+
+        // Der Bias-Prompt kann Whisper Inhalte verschlucken lassen — nicht nur
+        // komplett leere Ergebnisse, sondern auch teilweise (Anfang fehlt, nur
+        // letzter Satz …). Deshalb zusätzlich zur Leer-Prüfung eine Plausibilitäts-
+        // Prüfung: deutlich zu wenig Text für die Audiolänge (< 3 Zeichen/s bei
+        // > 5 s; normales Diktat liegt bei 10–15) → ohne Bias nachziehen, das
+        // längere Ergebnis gewinnt. Nur sinnvoll, wenn Bias angewandt wurde
+        // (im Auto-Sprachmodus ist er in run() deaktiviert).
         let auto = (UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de") == "auto"
-        if text.isEmpty, !biasTerms.isEmpty, !auto {
-            return try await run(samples: samples, biasTerms: [])
+        let seconds = Double(samples.count) / 16_000.0
+        let suspicious = seconds > 5 && Double(text.count) < seconds * 3
+        if !auto, !biasTerms.isEmpty, text.isEmpty || suspicious {
+            let unbiased = try await run(samples: samples, biasTerms: [])
+            if unbiased.count > text.count {
+                NSLog("shout: Bias-Transkript verdächtig kurz (%d Zeichen für %.0f s) → ohne Bias: %d Zeichen",
+                      text.count, seconds, unbiased.count)
+                return unbiased
+            }
         }
         return text
     }
@@ -77,7 +88,11 @@ actor Transcriber {
             let specialBegin = tokenizer.specialTokens.specialTokenBegin
             let tokens = tokenizer.encode(text: promptText).filter { $0 < specialBegin }
             if !tokens.isEmpty {
-                options.promptTokens = Array(tokens.prefix(200))
+                // Bewusst knapp (64 statt 200): Je größer der Prompt, desto eher
+                // „verschluckt" Whisper Audio-Anfänge oder lässt Inhalte aus.
+                // Das Wörterbuch wächst durch Auto-Lernen — ohne Deckel wird das
+                // Problem mit der Zeit schleichend schlimmer.
+                options.promptTokens = Array(tokens.prefix(64))
                 options.usePrefillPrompt = true
             }
         }

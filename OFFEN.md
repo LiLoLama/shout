@@ -29,6 +29,12 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Übersetzungs-Modus** (#14) — deutsch sprechen, englisch einfügen.
 - [ ] **Barrierefreiheit** (#15) — VoiceOver-Labels, Menüleisten-Template-Icons (Sound-Feedback ist erledigt).
 
+## 📱 iOS
+- [x] **Native iOS-App** (`ShoutMobile`) — gleiche lokale Pipeline (WhisperKit + MLX), mobile UI, Modell-Empfehler, Onboarding, Verlauf/Wörterbuch/Statistik, Daten-Sync Mac↔iPhone.
+- [x] **Diktier-Tastatur** (`ShoutKeyboard`, App-Extension) — „Diktieren" öffnet die App (shout://dictate), Ergebnis via App Group, „Einfügen" schreibt in beliebige App. Braucht Vollzugriff.
+- [ ] **Am Gerät testen**: App-Group-Provisionierung (Automatic Signing muss die Group `group.com.inthezone.shout` registrieren), Vollzugriff-Flow, Öffnen-aus-Tastatur, Auto-Aufnahme, Rückkehr + Einfügen.
+- [ ] **Feinschliff Tastatur** (nach Gerätetest): optional Auto-Einfügen bei Rückkehr statt Tipp, Live-Vorschau, Haptik.
+
 ## ✅ Erledigt
 - **Audit-Runde 2** — behoben: Worker stellt Lizenz jetzt synchron aus und gibt bei Fehler 500 zurück (Stripe-Retry statt stiller Verlust); Worker prüft `payment_status == paid` + `async_payment_succeeded` (SEPA/Klarna); E-Mails im Log maskiert; verlorene Korrektur (fehlendes `save()`); Modell-Ladefehler zeigt Fehlerzustand + „erneut laden" (kein Endlos-Spinner mehr); Hotkey-Aufnahme verlangt Modifier (Escape bricht ab); Format-Modellwechsel mit Rollback; VAD-Data-Race geschlossen; Clipboard sichert alle Typen + Doppel-Diktat-Race; Sound-Cues überstehen Audio-Gerätewechsel; Monotonie-Anker wird laufend nachgeschrieben; Import validiert Hotkey; stale `Resources/Info.plist` entfernt.
 - Kompletter Code-Audit (29 Funde) — alle gefixt (Modellwechsel-Races, Persistenz, Clipboard-Concealed, Lizenz-/VAD-Robustheit u. a.).

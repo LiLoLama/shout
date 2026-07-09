@@ -33,6 +33,11 @@ struct HomeView: View {
                     .padding(.horizontal, 24)
                 }
 
+                if engine.cameFromKeyboard, engine.lastResult != nil,
+                   engine.state == .idle {
+                    keyboardReturnHint
+                }
+
                 if let result = engine.lastResult, engine.state != .recording {
                     resultCard(result)
                 }
@@ -111,6 +116,26 @@ struct HomeView: View {
     }
 
     private var isFailed: Bool { if case .failed = engine.state { return true }; return false }
+
+    // MARK: - Tastatur-Rückkehr
+
+    private var keyboardReturnHint: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "keyboard.badge.ellipsis")
+                .font(.title3).foregroundStyle(Color.shoutLive)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fertig — zurück zu deiner App wischen")
+                    .font(.subheadline.weight(.semibold))
+                Text("Dann in der shout-Tastatur auf Einfügen tippen.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.shoutLive.opacity(0.12)))
+        .padding(.horizontal, 4)
+    }
 
     // MARK: - Ergebnis
 

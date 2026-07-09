@@ -5,6 +5,20 @@ options:
     macOS: "14.0"
   createIntermediateGroups: true
 
+schemes:
+  ShoutMobile:
+    build:
+      # Implizite Abhängigkeiten MÜSSEN an sein, sonst baut Xcode das MLX-
+      # Makro-Target (MLXHuggingFaceMacros) ohne swift-syntax → Build bricht ab.
+      buildImplicitDependencies: true
+      parallelizeBuild: true
+      targets:
+        ShoutMobile: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
 packages:
   argmax:
     url: https://github.com/argmaxinc/argmax-oss-swift.git
@@ -105,6 +119,7 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Sources/ShoutMobile
+      - path: Sources/Shared
       - path: Sources/FlowLokal
         includes:
           - Transcriber.swift
@@ -120,17 +135,27 @@ targets:
           - SoundCues.swift
           - Theme.swift
           - Backup.swift
+    # Explizite Info.plist statt GENERATE_INFOPLIST_FILE — nötig für das
+    # URL-Schema „shout://" (CFBundleURLTypes), über das die Tastatur die App öffnet.
+    info:
+      path: Support/Info-iOS.plist
+      properties:
+        CFBundleDisplayName: "shout."
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln. Nichts verlässt dein Gerät."
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.inthezone.shout
+            CFBundleURLSchemes: [shout]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.ios
         PRODUCT_NAME: "shout"
         MARKETING_VERSION: "1.0.1"
         CURRENT_PROJECT_VERSION: "2"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: "shout."
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln. Nichts verlässt dein Gerät."
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
         # Großes Speicherlimit für die lokalen Modelle (WhisperKit + MLX-LLM).
         CODE_SIGN_ENTITLEMENTS: Release/shout-ios.entitlements
@@ -152,3 +177,30 @@ targets:
         product: HuggingFace
       - package: mlxcore
         product: MLX
+      # Tastatur-Erweiterung in die App einbetten.
+      - target: ShoutKeyboard
+        embed: true
+
+  # Tastatur-Erweiterung: Diktier-Tastatur für beliebige Apps. Bewusst schlank
+  # (KEINE Modelle/MLX — Tastaturen haben ein enges Speicherlimit): öffnet zum
+  # Aufnehmen die Haupt-App und fügt das Ergebnis aus der App Group ein.
+  ShoutKeyboard:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/ShoutKeyboard
+      - path: Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.ios.keyboard
+        PRODUCT_NAME: ShoutKeyboard
+        MARKETING_VERSION: "1.0.1"
+        CURRENT_PROJECT_VERSION: "2"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Sources/ShoutKeyboard/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_ENTITLEMENTS: Release/shout-keyboard.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: G5FFT759WM
+        SWIFT_VERSION: "5.10"

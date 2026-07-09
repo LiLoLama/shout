@@ -2,11 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Erlaubt der App mehr Arbeitsspeicher — nötig für die lokalen Modelle
-	     (Whisper + MLX-LLM) auf dem iPhone. -->
-	<key>com.apple.developer.kernel.increased-memory-limit</key>
-	<true/>
-	<!-- Geteilter Speicher mit der Tastatur-Erweiterung (diktierter Text). -->
+	<!-- Gleiche App Group wie die Haupt-App: die Tastatur liest hier den zuletzt
+	     diktierten Text, um ihn ins Textfeld einzufügen. -->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.inthezone.shout</string>

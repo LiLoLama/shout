@@ -32,6 +32,13 @@ final class MobileEngine: ObservableObject {
     @Published private(set) var transcriberReady = false
     @Published var modelNote: String?
 
+    /// Wurde diese Aufnahme von der shout-Tastatur (via shout://dictate) angestoßen?
+    /// Dann zeigt der Home-Screen den Hinweis, zurück in die App zu wischen und
+    /// „Einfügen" zu tippen.
+    @Published var cameFromKeyboard = false
+    /// URL-Aufruf kam, bevor die Modelle bereit waren → Aufnahme nachholen.
+    private var pendingAutoStart = false
+
     var activeASR: String { UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR }
     var activeFormat: String { UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting }
 
@@ -76,10 +83,7 @@ final class MobileEngine: ObservableObject {
             self.stopAndProcess()
         }
         NotificationCenter.default.addObserver(forName: .shoutStartDictation, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, self.state == .idle else { return }
-                self.startRecording()
-            }
+            Task { @MainActor in self?.requestDictation() }
         }
         loadModels()
     }
@@ -98,6 +102,7 @@ final class MobileEngine: ObservableObject {
                 await transcriber.warmUp()   // erstes Diktat schon schnell
                 transcriberReady = true
                 state = .idle
+                if pendingAutoStart { pendingAutoStart = false; startRecording() }
             } catch {
                 NSLog("shout: Modell-Ladefehler: \(error)")
                 state = .failed("Sprachmodell konnte nicht geladen werden. Internet prüfen und erneut versuchen.")
@@ -171,9 +176,21 @@ final class MobileEngine: ObservableObject {
     // MARK: - Aufnahme
 
     func toggleRecording() {
+        cameFromKeyboard = false   // manueller Start → kein Tastatur-Rückkehr-Hinweis
         switch state {
         case .idle: startRecording()
         case .recording: stopAndProcess()
+        default: break
+        }
+    }
+
+    /// Von der Tastatur (shout://dictate) oder vom App Intent angestoßen.
+    /// Startet sofort, wenn bereit — sonst nach dem Modell-Laden.
+    func requestDictation(fromKeyboard: Bool = false) {
+        cameFromKeyboard = fromKeyboard
+        switch state {
+        case .idle: startRecording()
+        case .loadingModel: pendingAutoStart = true
         default: break
         }
     }
@@ -240,8 +257,10 @@ final class MobileEngine: ObservableObject {
                 guard !final.isEmpty else { return }
 
                 // iOS-Weg: automatisch in die Zwischenablage (systemweites Einfügen
-                // in fremde Apps gibt es auf iOS nicht).
+                // in fremde Apps gibt es auf iOS nicht) UND in die App Group, damit
+                // die shout-Tastatur den Text nach dem Zurückwischen einfügen kann.
                 UIPasteboard.general.string = final
+                AppGroup.setPendingDictation(final)
                 lastResult = final
                 sounds.play(.done)
                 history.add(final)

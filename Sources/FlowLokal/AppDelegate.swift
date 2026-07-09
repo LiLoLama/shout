@@ -36,7 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dictionary = PersonalDictionary()
     private let history = DictationHistory()
     private let stats = StatsStore()
-    private let license = LicenseStore()
     private let correctionWatcher = CorrectionWatcher()
     private let toast = LearnedToast()
     private let recIndicator = RecordingIndicator()
@@ -471,7 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if dashboardWindow == nil {
             let view = DashboardView(
                 model: dashboardModel, settings: settings, dictionary: dictionary,
-                history: history, stats: stats, license: license,
+                history: history, stats: stats,
                 onRecordHotkey: { [weak self] in self?.beginHotkeyCapture() },
                 generateProfile: { [weak self] sample in await self?.formatter.describeVoice(from: sample) ?? nil },
                 onExport: { [weak self] in self?.exportData() ?? "" },
@@ -512,8 +511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             isModifierOnly: settings.isModifierOnly,
             formattingEnabled: UserDefaults.standard.object(forKey: "formattingEnabled") as? Bool,
             preferredMicUID: UserDefaults.standard.string(forKey: "preferredMicUID"),
-            voiceProfile: UserDefaults.standard.string(forKey: "voiceProfile"),
-            licenseKey: license.exportKey
+            voiceProfile: UserDefaults.standard.string(forKey: "voiceProfile")
         )
         let bundle = BackupBundle(dictionary: dictionary.contents, history: history.entries,
                                   stats: stats.data, settings: snapshot)
@@ -568,13 +566,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let f = s.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let mic = s.preferredMicUID { UserDefaults.standard.set(mic, forKey: "preferredMicUID") }
         if let vp = s.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
-        var licenseNote = ""
-        if let lk = s.licenseKey, !lk.isEmpty {
-            licenseNote = license.activate(lk) ? " Lizenz übernommen." : " Achtung: Lizenzschlüssel im Backup ungültig — Lizenz nicht übernommen."
-        }
         updateStatusItem()
 
-        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate.\(licenseNote)"
+        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate."
     }
 
     /// Klick aufs Dock-/Launchpad-Icon öffnet das Hauptfenster wieder.
@@ -602,7 +596,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        license.touch()             // letzten Monotonie-Anker sichern
         correctionWatcher.stop()    // AXObserver + Timer sauber abbauen
         for m in eventMonitors { NSEvent.removeMonitor(m) }
         eventMonitors.removeAll()
@@ -892,11 +885,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Aufnahme-Steuerung
 
     private func startRecording() {
-        // Testphase abgelaufen und keine Lizenz → Kauf-Seite statt Aufnahme.
-        guard license.isActive else {
-            openDashboard(.konto)
-            return
-        }
         // Ziel-App merken, solange sie noch im Vordergrund ist.
         targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         // Aktuelles Mikrofon aus den Einstellungen (Menü oder Dashboard) übernehmen.
@@ -960,7 +948,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 history.add(final)
                 let words = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
                 stats.record(words: words, seconds: Double(samples.count) / 16_000.0)
-                license.touch()   // Monotonie-Anker der Testphase frisch halten
 
                 // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
                 // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.

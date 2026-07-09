@@ -1,25 +1,20 @@
 # shout. — Offene Punkte
 
-Stand: 2026-07-03. Erledigtes steht unten zur Orientierung.
+Stand: 2026-07-08. **Richtungsentscheidung: Open Source** (statt 150-€-Verkauf) —
+kostenlos, quelloffen, freiwillige Unterstützung (Buy Me A Coffee). Lizenz-/
+Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 
-## 🔴 Kauf & Kommerz
-- [ ] **Stripe scharf schalten** (Code steht in `server/`): Produkt + Payment Link (150 €) anlegen, Webhook auf den Worker zeigen, Secrets setzen (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `LICENSE_PRIVATE_KEY`, Mailgun), deployen. Danach `purchaseURL` in `LicenseView.swift` auf den echten Payment Link setzen. Schritte: `server/README.md`.
-- [ ] **End-to-End-Testkauf** im Stripe-Testmodus (Schlüssel kommt per Mail an → in App aktivieren).
-- [ ] **Lizenz-Härtung** (heute bewusst simpel): Payload = nur E-Mail, kein Ablauf/keine Gerätebindung → ein Schlüssel läuft auf beliebig vielen Geräten. Optional: Hardware-UUID/Ablaufdatum in den signierten Payload, Schlüssel in die Keychain (statt UserDefaults).
-- [ ] **Deep-Link-Aktivierung**: `shout://activate?key=…` aus der Kauf-Mail → App öffnet und füllt den Schlüssel automatisch ein (bequemer als Copy-Paste).
-- [ ] **Verkaufsseite/Landing** unter der Kauf-URL (aktuell Platzhalter).
+## 🔴 Open-Source-Release
+- [ ] **Echte Links eintragen** in `SupportView.swift`: Buy-Me-A-Coffee-Konto anlegen (`donateURL`) + GitHub-Repo-URL (`githubURL`).
+- [ ] **Lizenz wählen** (MIT = maximale Verbreitung, GPL-3.0 = keine proprietären Forks) → `LICENSE`-Datei.
+- [ ] **GitHub-Repo anlegen**: README (Screenshots, Features, Systemvoraussetzungen macOS 14+/Apple Silicon, Build-Anleitung), Secrets-Check (`.license-signing/` NIE veröffentlichen — lokal löschen oder behalten, ist gitignored; Git-Historie enthält keine Secrets, aber vor Push einmal prüfen).
+- [ ] **Release v1.0**: notarisiertes DMG als GitHub-Release-Asset (`release.sh` funktioniert unverändert).
+- [ ] **Launch**: AITI-Newsletter (mit AITI absprechen — deren Kanal!), r/macapps, ggf. Hacker News/Product Hunt; später Homebrew-Cask.
 
 ## 🟠 Verteilung / Auslieferung
-- [x] **Signierung + Notarisierung + DMG** — Pipeline steht (`release.sh` + `Release/shout.entitlements` + `RELEASE.md`); Build ist arm64-only (Intel startet nicht). **Offen: Apple Developer Program + Developer-ID-Zertifikat besorgen**, dann `release.sh` mit den Zugangsdaten ausführen.
+- [x] **Signierung + Notarisierung + DMG** — Pipeline steht und ist verifiziert (`release.sh`, notarisiertes shout-0.1.0.dmg erzeugt).
 - [ ] **Auf einem fremden Mac testen** (sauberer Rechner, Modelle nicht gecacht, andere macOS-Version).
-- [ ] **Sparkle-Auto-Update** (EdDSA-signierter Appcast) — sonst ist jeder Bugfix nach Verkauf ein Support-Fall.
-
-## 🟠 Vor dem Verkauf (rechtlich/kommerziell)
-- [ ] **Stripe live** vollständig: beide Webhook-Events, Live-Secrets, Live-Payment-Link in der App, echter Live-Testkauf.
-- [ ] **Rechtstexte (DE):** Impressum, Datenschutzerklärung, AGB + Widerrufsverzicht für digitale Inhalte im Checkout.
-- [ ] **Umsatzsteuer:** Stripe = kein Merchant of Record → EU-USt (OSS) + Rechnungen selbst. (Alternative MoR bewusst verworfen.)
-- [ ] **Verkaufsseite** mit Pitch, Screenshots, Systemvoraussetzungen (macOS 14+, Apple Silicon, Speicher fürs Modell).
-- [ ] **Support-Postfach** (FROM_EMAIL überwachen) + manueller Reissue-Pfad (`make-license.swift`).
+- [ ] **Sparkle-Auto-Update** (EdDSA-signierter Appcast) — auch für OSS sinnvoll; Alternative: schlichter Update-Hinweis, der das neueste GitHub-Release prüft.
 
 ## 🟡 Audio / Sound
 - [ ] **Sound-Cues final abstimmen** (aktuell bei Codex): kurzes, sanftes, warmes „Klopf"-Geräusch — kein Ton, kein Metall. Datei: `SoundCues.swift`.

@@ -3,7 +3,7 @@ import SwiftUI
 /// Hält die ausgewählte Dashboard-Seite (von Menüpunkten steuerbar).
 @MainActor
 final class DashboardModel: ObservableObject {
-    enum Tab: Hashable { case aufnahme, woerterbuch, verlauf, statistik, modelle, sync, konto }
+    enum Tab: Hashable { case aufnahme, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
     @Published var tab: Tab = .aufnahme
 
     // Modell-Zustand zentral (überlebt Tab-Wechsel, damit Spinner/Auswahl
@@ -29,7 +29,6 @@ struct DashboardView: View {
     @ObservedObject var dictionary: PersonalDictionary
     @ObservedObject var history: DictationHistory
     @ObservedObject var stats: StatsStore
-    @ObservedObject var license: LicenseStore
     let onRecordHotkey: () -> Void
     let generateProfile: (String) async -> String?
     let onExport: () -> String
@@ -63,13 +62,6 @@ struct DashboardView: View {
         return "\(settings.hotkeyDescription) \(verb)"
     }
 
-    private var planActive: Bool { license.isLicensed || license.isTrialActive }
-    private var planBadge: String {
-        if license.isLicensed { return "Aktiv" }
-        if license.isTrialActive { return "Test · \(license.trialDaysRemaining)d" }
-        return "Abgelaufen"
-    }
-
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Kopfbereich: Wortmarke + Status
@@ -79,11 +71,11 @@ struct DashboardView: View {
                         Text("shout").font(.system(size: 23, weight: .bold))
                         Text(".").font(.system(size: 23, weight: .bold)).foregroundStyle(Color.shoutLive)
                     }
-                    Text(planBadge)
+                    Text("Open Source")
                         .font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Capsule().fill(planActive ? Color.shoutLive.opacity(0.20) : Color.white.opacity(0.10)))
-                        .foregroundStyle(planActive ? Color.shoutLive : Color(white: 0.6))
+                        .background(Capsule().fill(Color.shoutLive.opacity(0.20)))
+                        .foregroundStyle(Color.shoutLive)
                 }
                 HStack(spacing: 6) {
                     Circle().fill(Color.shoutLive).frame(width: 6, height: 6)
@@ -98,7 +90,7 @@ struct DashboardView: View {
             navRow(.statistik, "Statistiken", "chart.bar.xaxis")
             navRow(.modelle, "Modelle", "cpu")
             navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath")
-            navRow(.konto, "Konto & Lizenz", "person.crop.circle")
+            navRow(.unterstuetzen, "Unterstützen", "heart.fill")
 
             Spacer()
         }
@@ -147,8 +139,8 @@ struct DashboardView: View {
             ModelsView(model: model, onSelectASR: onSelectASR, onSelectFormat: onSelectFormat)
         case .sync:
             SyncView(onExport: onExport, onImport: onImport)
-        case .konto:
-            LicenseView(license: license)
+        case .unterstuetzen:
+            SupportView()
         }
     }
 }

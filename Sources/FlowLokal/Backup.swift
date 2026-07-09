@@ -23,5 +23,6 @@ struct SettingsSnapshot: Codable {
     var formattingEnabled: Bool?
     var preferredMicUID: String?
     var voiceProfile: String?
-    var licenseKey: String?
+    // Hinweis: Ältere Backups enthalten noch ein "licenseKey"-Feld (aus der Zeit
+    // vor Open Source) — Codable ignoriert unbekannte Schlüssel, Import bleibt kompatibel.
 }

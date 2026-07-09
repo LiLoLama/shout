@@ -42,33 +42,30 @@ enum ModelCatalog {
 
     #if os(iOS)
 
-    // Sicherer Start auf jedem Gerät; die Empfehlung stuft nach RAM hoch.
-    static let defaultASR = "base"
+    // Aufs iPhone gehört TEMPO: Diktieren muss schneller sein als Tippen, sonst
+    // ist es sinnlos. Empfohlen werden darum die schnellen Modelle; die großen
+    // bleiben als „genauer, aber deutlich langsamer" wählbar.
+    static let defaultASR = "small"
     static let defaultFormatting = "mlx-community/Llama-3.2-1B-Instruct-4bit"
 
     static let asr: [Option] = [
-        .init(id: "base", name: "Whisper Base", note: "~150 MB · läuft überall", minRAMGB: 3),
-        .init(id: "small", name: "Whisper Small", note: "~500 MB · guter Kompromiss", minRAMGB: 4),
-        .init(id: "large-v3-v20240930_626MB", name: "Whisper Turbo (kompakt)", note: "~600 MB · sehr genau", minRAMGB: 6),
-        .init(id: "large-v3-v20240930_turbo", name: "Whisper Turbo", note: "~1,5 GB · maximale Genauigkeit", minRAMGB: 8),
+        .init(id: "base", name: "Whisper Base", note: "~150 MB · am schnellsten, einfache Sätze", minRAMGB: 3),
+        .init(id: "small", name: "Whisper Small", note: "~500 MB · schnell & solide — guter Alltag", minRAMGB: 4),
+        .init(id: "large-v3-v20240930_626MB", name: "Whisper Turbo (kompakt)", note: "~600 MB · sehr genau, aber deutlich langsamer", minRAMGB: 6),
+        .init(id: "large-v3-v20240930_turbo", name: "Whisper Turbo", note: "~1,5 GB · maximale Genauigkeit, langsam am iPhone", minRAMGB: 8),
     ]
 
     static let formatting: [Option] = [
-        .init(id: "mlx-community/Llama-3.2-1B-Instruct-4bit", name: "Llama 3.2 · 1B", note: "~0,7 GB · sehr leicht", minRAMGB: 4),
-        .init(id: "mlx-community/Qwen2.5-1.5B-Instruct-4bit", name: "Qwen 2.5 · 1.5B", note: "~1 GB · gut im Deutschen", minRAMGB: 6),
-        .init(id: "mlx-community/gemma-4-e2b-it-4bit", name: "Gemma 4 · E2B", note: "~2 GB · beste Qualität", minRAMGB: 8),
+        .init(id: "mlx-community/Llama-3.2-1B-Instruct-4bit", name: "Llama 3.2 · 1B", note: "~0,7 GB · am schnellsten", minRAMGB: 4),
+        .init(id: "mlx-community/Qwen2.5-1.5B-Instruct-4bit", name: "Qwen 2.5 · 1.5B", note: "~1 GB · besser im Deutschen, langsamer", minRAMGB: 6),
+        .init(id: "mlx-community/gemma-4-e2b-it-4bit", name: "Gemma 4 · E2B", note: "~2 GB · beste Qualität, am langsamsten", minRAMGB: 8),
     ]
 
     static func recommendedASR(ramGB: Int) -> Option {
-        if ramGB >= 8 { return asr[2] }   // 626MB-Turbo: genau UND lässt Platz fürs LLM
-        if ramGB >= 6 { return asr[2] }
-        if ramGB >= 4 { return asr[1] }
-        return asr[0]
+        ramGB >= 4 ? asr[1] : asr[0]      // Small: der beste Tempo/Qualität-Deal am iPhone
     }
     static func recommendedFormatting(ramGB: Int) -> Option {
-        if ramGB >= 8 { return formatting[2] }   // Gemma E2B
-        if ramGB >= 6 { return formatting[1] }   // Qwen 1.5B
-        return formatting[0]                      // Llama 1B
+        formatting[0]                      // Llama 1B: Aufbereitung darf nicht bremsen
     }
 
     #else

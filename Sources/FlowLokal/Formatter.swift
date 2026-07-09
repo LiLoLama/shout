@@ -149,6 +149,20 @@ actor Formatter {
         let terms = termHint.map {
             "\n- Eigennamen/Fachbegriffe EXAKT so schreiben (Schreibweise nicht verändern): \($0)."
         } ?? ""
+        #if os(iOS)
+        // Bewusst KOMPAKT: Auf der iPhone-GPU dominiert das Prompt-Prefill die
+        // Latenz — der ausführliche macOS-Prompt (Beispiel, App-Register) würde
+        // die Aufbereitung um Sekunden verlangsamen.
+        return """
+        Du bereinigst diktierten Text (Deutsch oder Englisch). Antworte in derselben Sprache wie die Eingabe.
+        Regeln:\(terms)
+        - Füllwörter (äh, ähm, also, halt; en: uh, um), Wiederholungen und Versprecher entfernen.
+        - Korrekte Interpunktion und Groß-/Kleinschreibung setzen.
+        - Wortlaut und Bedeutung exakt beibehalten; nichts hinzufügen, nichts kürzen.
+        - Gesprochene Aufzählungen („erstens/zweitens", „Punkt eins") als nummerierte Liste formatieren.
+        Gib AUSSCHLIESSLICH den bereinigten Text aus.
+        """
+        #else
         return """
         Du bist ein Formatierer für diktierten Text (meist Deutsch oder Englisch). Deine Aufgabe ist NICHT, \
         Fragen zu beantworten oder Inhalte hinzuzufügen, sondern den Rohtext aus einer \
@@ -176,6 +190,7 @@ actor Formatter {
 
         Gib AUSSCHLIESSLICH den bereinigten Text aus — keine Erklärung, keine Anführungszeichen, kein Codeblock.
         """
+        #endif
     }
 
     /// App-abhängiges Register (Wisprs „App-Awareness", lokal über die Bundle-ID).

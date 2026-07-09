@@ -1,88 +1,84 @@
 # shout.
 
-Ein voll-lokales Diktier-Tool für macOS (Apple Silicon) — angelehnt an Wispr Flow,
-aber komplett on-device: **kein Cloud, keine Netzwerkabhängigkeit, volle Privatsphäre.**
+**Local, private dictation for macOS.** Press a hotkey, speak, and your words are
+typed wherever your cursor is — transcribed and cleaned up entirely **on your Mac**.
+No cloud, no account, no data ever leaves the device. Inspired by Wispr Flow,
+built to be fully offline and open source.
 
 ```
-Hotkey (Standard: rechte ⌥) → Aufnahme → WhisperKit (large-v3-turbo, ANE)
-→ lokales Gemma-4 (MLX, in-process) räumt Text auf → Einfügen am Cursor
+Hotkey (default: right ⌥) → record → Whisper (large-v3-turbo, on the Neural Engine)
+→ optional local LLM (Gemma, MLX, in-process) cleans the text → pasted at the cursor
 ```
 
-## Funktionen
+<!-- TODO: Screenshots einfügen (Dashboard, schwebende Pille, Onboarding) -->
 
-- **Transkription** on-device via WhisperKit (Deutsch), mit Wörterbuch-Biasing.
-- **Formatierung** über ein lokales LLM (Gemma-4, MLX): Füllwörter raus,
-  Interpunktion, nummerierte Listen, app-abhängiges Register.
-- **Persönliches Wörterbuch:** Begriffe + Korrekturen (falsch→richtig), manuell
-  pflegbar **und** automatisch lernend (beobachtet Korrekturen im Zielfeld über
-  die Accessibility-API); universelles Nachlernen per **⌃⌘V**.
-- **Aufnahme-Modi:** Halten (Push-to-talk) oder Umschalten, frei wählbarer Hotkey,
-  optionaler Auto-Stopp bei Sprechpause.
-- **Mikrofon-Auswahl**, Autostart bei Login.
-- **Schwebender, textloser Aufnahme-Hinweis** unten am Bildschirm, der auf den
-  Live-Pegel reagiert.
-- **Dashboard-Fenster** im flachen Graphit-Look (Aufnahme & Text, Wörterbuch,
-  Platzhalter für künftige Pro-Funktionen).
+## Features
 
-## Bauen (WICHTIG: `xcodebuild`, nicht `swift build`)
+- **On-device transcription** via WhisperKit — German, English, or auto-detect.
+- **Local LLM cleanup** (Gemma via MLX, runs in-process): removes filler words,
+  adds punctuation, builds numbered lists, adapts tone to the target app.
+- **Learning dictionary** — teach names/terms; it also auto-learns your corrections.
+- **Spoken commands** — “Komma”, “Punkt”, “neue Zeile”, … become real punctuation.
+- **Floating pill** — draggable anywhere, optional always-on; click to start,
+  ✕ to cancel, ✓ to insert.
+- **Model picker** — detects your hardware, recommends a model, shows a live list
+  from Hugging Face with download progress; switch freely.
+- **Adaptive silence detection** with trimming, gentle sound cues, history & stats
+  (incl. a “your voice” profile), and local file-based backup/sync (no cloud).
 
-MLX kompiliert seine Metal-Shader nur über `xcodebuild`; `swift build` (CLI) erzeugt
-keine `metallib` → die App crasht beim Modell-Laden. Der Build läuft daher über ein
-per **xcodegen** generiertes Xcode-Projekt:
+## Requirements
+
+- **macOS 14+**
+- **Apple Silicon** (M1 or newer) — the app is arm64-only; MLX/WhisperKit need it.
+- A few GB of free disk for the speech model (downloaded once on first launch).
+- Microphone and Accessibility permissions (the onboarding walks you through it).
+
+## Install
+
+1. Download the latest `shout-x.y.z.dmg` from [Releases](https://github.com/LiLoLama/shout/releases).
+2. Open it and drag **shout.** to your Applications folder.
+3. Launch it — the onboarding guides you through the microphone + accessibility
+   permissions and the one-time model download.
+
+The app is signed with a Developer ID and notarized by Apple, so it opens without
+Gatekeeper warnings.
+
+## Build from source
+
+Needs Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`).
 
 ```bash
-./build.sh          # xcodegen generate + xcodebuild (Debug), signiert mit "Flow Lokal Self-Signed"
-./build.sh Release  # Release-Build
+git clone https://github.com/LiLoLama/shout.git
+cd shout
+./build.sh Release        # → build/Build/Products/Release/shout.app
 ```
 
-Einmalige Voraussetzungen:
-- `brew install xcodegen`
-- Metal-Toolchain: `xcodebuild -downloadComponent MetalToolchain`
-- Selbstsigniertes Zertifikat „Flow Lokal Self-Signed" in der Login-Keychain
-  (für stabile Accessibility-Freigabe über Rebuilds hinweg).
+> **Note:** MLX compiles its Metal shaders only through `xcodebuild`, not
+> `swift build` — always use `build.sh`. For a signed & notarized DMG see
+> `release.sh` and `RELEASE.md` (requires an Apple Developer ID).
 
-App liegt danach unter `build/Build/Products/<Config>/shout.app`.
-Installation: `cp -R build/Build/Products/Release/shout.app /Applications/`.
+## Privacy
 
-## Erster Start
+Everything runs locally. There is **no telemetry and no account.** The only time
+shout. touches the network is the **one-time model download** from Hugging Face
+(and, optionally, when you open the model picker to browse available models).
+Your audio and transcripts never leave your Mac.
 
-1. **Mikrofon** erlauben (Dialog erscheint automatisch).
-2. **Bedienungshilfen** (Accessibility) für `shout.app` aktivieren:
-   Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen.
-   Nötig für globalen Hotkey **und** das Einfügen via ⌘V.
-3. Beim allerersten Start werden WhisperKit- und Gemma-Modell einmalig geladen
-   (einige GB) und lokal gecached.
+## Contributing
 
-## Bedienung
+Issues and pull requests are welcome. shout. is a spare-time project — I try to keep
+it maintained, improved and extended, but please be patient. 🙏
 
-- Menu-Bar-Icon zeigt den Zustand: ⏳ lädt · 🎙️ bereit · 🔴 Aufnahme · ✍️ verarbeitet
-- **Rechte ⌥ halten**, sprechen, loslassen → Text erscheint am Cursor.
-- **⌃⌘V** — zuletzt Gesprochenes erneut einfügen.
-- **⌥⌘C** — letztes Diktat korrigieren (lernt die Korrektur).
-- **⌘,** — Fenster öffnen.
+## Support
 
-## Projektstruktur
+shout. is free and open source. If it helps you and you’d like to support the
+development, you can — entirely optional:
 
-```
-Sources/FlowLokal/
-├── main.swift            App-Start (Menu-Bar + Fenster)
-├── AppDelegate.swift     Zustandsmaschine, Hotkeys, Menü, Fenster, Verdrahtung
-├── AudioRecorder.swift   Mikrofon → 16-kHz-Mono-Float, Live-Pegel, Auto-Stopp
-├── Transcriber.swift     WhisperKit-Hülle (+ Wörterbuch-Biasing, Retry)
-├── Formatter.swift       Gemma-4 (MLX) Formatting-Layer
-├── TextInjector.swift    Pasteboard + ⌘V (mit Delay & Clipboard-Wiederherstellung)
-├── PersonalDictionary.swift  Begriffe + Korrekturen (JSON in Application Support)
-├── CorrectionWatcher.swift   Auto-Lernen aus Korrekturen (Accessibility)
-├── RecordingIndicator.swift  Schwebende, pegel-reaktive Aufnahme-Pille
-├── RecordingSettings.swift   Modus, Hotkey, Auto-Stopp (UserDefaults)
-├── AudioDevices.swift    Mikrofon-Enumeration (Core Audio)
-├── DashboardView / SettingsView / DictionaryView / ConsoleUI  UI (flacher Look)
-└── Theme.swift           Farben (Graphit + „live"-Orange)
-project.yml               xcodegen-Projektdefinition
-build.sh                  xcodegen + xcodebuild → signierte .app
-```
+- ☕ [Ko-fi](https://ko-fi.com/lilolama)
+- 💖 [GitHub Sponsors](https://github.com/sponsors/LiLoLama)
 
-## Modellwechsel
+## License
 
-- ASR: `modelName` in `Transcriber.swift` (`large-v3-v20240930_turbo` u. a.).
-- Formatting: `modelID` in `Formatter.swift` (`mlx-community/gemma-4-e4b-it-4bit`).
+[GPL-3.0](LICENSE) — free to use, modify and share; derivatives must stay open
+source under the same license.

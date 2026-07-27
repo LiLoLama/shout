@@ -28,12 +28,28 @@ public static class ModelDownloader
         {
             var buffer = new byte[1 << 16];
             long written = 0;
+            var lastPercent = -1;
             int read;
             while ((read = await source.ReadAsync(buffer, cancel)) > 0)
             {
                 await file.WriteAsync(buffer.AsMemory(0, read), cancel);
                 written += read;
-                onProgress?.Invoke(total > 0 ? (double)written / total : -1);
+                if (total > 0)
+                {
+                    // Nur bei vollen Prozentschritten melden — der Callback landet
+                    // per Post/BeginInvoke im UI-Thread, und pro 64-KB-Chunk wären
+                    // das bei großen Modellen zehntausende UI-Nachrichten.
+                    var percent = (int)(written * 100 / total);
+                    if (percent > lastPercent)
+                    {
+                        lastPercent = percent;
+                        onProgress?.Invoke((double)written / total);
+                    }
+                }
+                else
+                {
+                    onProgress?.Invoke(-1);
+                }
             }
         }
 

@@ -41,6 +41,11 @@ public static class StoreIO
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
+        // Ohne Naming-Policy schriebe Settings (einzige Klasse OHNE explizite
+        // JsonPropertyName-Attribute) PascalCase — camelCase hier macht alle
+        // Dateien einheitlich; case-insensitiv liest ältere Dateien weiter.
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new IsoSecondsDateConverter() },
     };

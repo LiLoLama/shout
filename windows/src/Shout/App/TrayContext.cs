@@ -64,7 +64,10 @@ public sealed class TrayContext : ApplicationContext
         hotkey.OnHotkey += ToggleRecording;
         RegisterHotkeyFromSettings();
 
-        _ = LoadModelsAsync();
+        // Threadpool statt UI-Thread: WhisperFactory.FromPath liest das komplette
+        // Modell (bis 1,6 GB) synchron — auf dem UI-Thread stünde die Tray-UI so
+        // lange still. Alle UI-Zugriffe darin laufen ohnehin über ui.Post.
+        _ = Task.Run(LoadModelsAsync);
     }
 
     // MARK: Modelle
@@ -93,7 +96,7 @@ public sealed class TrayContext : ApplicationContext
     }
 
     /// <summary>Nach Modellwechsel in den Einstellungen neu laden.</summary>
-    public void ReloadModels() => _ = LoadModelsAsync();
+    public void ReloadModels() => _ = Task.Run(LoadModelsAsync);
 
     public void RegisterHotkeyFromSettings()
     {
@@ -142,7 +145,9 @@ public sealed class TrayContext : ApplicationContext
         SetState(State.Working);
         overlay.ShowPhase(RecordingOverlay.Phase.Working);
 
-        _ = ProcessAsync(samples);
+        // Threadpool: die Inferenz darf nie den UI-Thread blockieren (die
+        // „Verarbeite …"-Animation liefe sonst nicht) — UI-Arbeit geht per ui.Post.
+        _ = Task.Run(() => ProcessAsync(samples));
     }
 
     private async Task ProcessAsync(float[] samples)

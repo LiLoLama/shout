@@ -16,9 +16,10 @@ public static class TextInjector
     {
         public uint Type;
         public KeyboardInput Ki;
-        // Padding auf die Größe der größten Union-Variante (MOUSEINPUT).
-        public long Padding1;
-        public int Padding2;
+        // KEYBDINPUT (24 B) auf die größte Union-Variante (MOUSEINPUT, 32 B)
+        // auffüllen: Type (4) + Alignment (4) + 32 = exakt 40 B wie Win32-INPUT
+        // auf x64/arm64. Stimmt cbSize nicht, sendet SendInput NICHTS (Fehler 87).
+        public long Padding;
     }
 
     [StructLayout(LayoutKind.Sequential)]

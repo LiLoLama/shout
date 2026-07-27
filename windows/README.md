@@ -56,6 +56,9 @@ Compile-Check) — ausführen kann es nur Windows.
    richtet sich nach dem Arbeitsspeicher).
 3. **Strg + Alt + Leertaste** (änderbar) startet/stoppt das Diktat. Alternativ
    Doppelklick auf das Tray-Icon.
+   > ⚠️ Die Claude-Desktop-App belegt diese Kombination systemweit — läuft sie,
+   > schlägt die Registrierung fehl (kurzer Hinweis erscheint). Dann in den
+   > Einstellungen einfach eine andere Kombination wählen (z. B. Strg+Alt+F10).
 4. Der erkannte Text wird ins aktive Fenster eingefügt und liegt zusätzlich in
    der Zwischenablage.
 
@@ -71,8 +74,9 @@ Compile-Check) — ausführen kann es nur Windows.
 
 ## Status / bekannte Grenzen
 
-- ⚠️ **Noch nicht auf echtem Windows getestet** — entwickelt und
-  compile-geprüft auf macOS. Erste Tests bitte mit Whisper Base/Small.
+- ✅ **Auf echtem Windows getestet** (Win 11 x64): Build/Publish, Modell-Download,
+  Whisper-Transkription, Sprachbefehle, Hotkey → Aufnahme-Overlay → Verarbeitung.
+  Noch offen: Diktat mit echtem Mikrofon quer durch verschiedene Ziel-Apps.
 - Kein Installer/Auto-Update (v1: einfache EXE). Geplant: winget/Installer.
 - Kein Overlay-Klick-Through-Feintuning, keine Mikrofon-Auswahl (nimmt das
   Standard-Eingabegerät), kein Onboarding-Assistent.

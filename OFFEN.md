@@ -31,7 +31,9 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 
 ## 🪟 Windows (`windows/`)
 - [x] **Erste Version gebaut** — C#/.NET-8-Tray-App: Hotkey → NAudio-Aufnahme (VAD-Port) → whisper.cpp (Whisper.net) → Sprachbefehle → optional llama.cpp (LLamaSharp, Qwen 2.5) → Wörterbuch-Korrekturen → Einfügen per Strg+V. Backup-Format kompatibel zu Mac/iOS.
-- [ ] **Auf echtem Windows testen** (entwickelt auf macOS, nur compile-geprüft): Aufnahme, Hotkey, Einfügen in verschiedene Apps, Modell-Downloads, Overlay.
+- [x] **Auf echtem Windows getestet** (2026-07-27, Win 11 / Ryzen 5800X3D): Build, Publish (runtimes/ intakt), Modell-Download, Whisper-Transkription (TTS-Audio wortgenau), Sprachbefehle, Hotkey → Overlay-Pille → Verarbeitung → Idle, Stille-Handling. Dabei gefixt: SendInput-Struct war 48 statt 40 Bytes (Einfügen ging NIE — Fehler 87), Modell-Laden/Inferenz auf Threadpool statt UI-Thread, Download-Fortschritt gedrosselt, camelCase-Naming-Policy für settings.json, SplitterDistance-Klemmung.
+- [ ] **Diktat mit echtem Mikrofon testen** (einziger offener Testschritt — Einfügen in verschiedene Ziel-Apps gleich mitprüfen; Komponenten sind einzeln verifiziert).
+- [ ] **Standard-Hotkey überdenken**: Strg+Alt+Leertaste ist auf Rechnern mit Claude-Desktop-App belegt (globaler Claude-Shortcut) — Registrierung schlägt fehl, nur Balloon-Hinweis. Alternativen prüfen oder beim Fehlschlag automatisch Ausweich-Kombi anbieten.
 - [ ] **Später**: Installer/winget, Auto-Update, Mikrofon-Auswahl, GPU-Backends (CUDA/Vulkan) als Option, Onboarding.
 
 ## 📱 iOS

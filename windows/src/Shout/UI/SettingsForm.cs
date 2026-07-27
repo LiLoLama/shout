@@ -228,7 +228,17 @@ public sealed class SettingsForm : Form
     private TabPage BuildDictionaryTab()
     {
         var page = new TabPage("Wörterbuch");
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 200 };
+        // SplitterDistance NICHT im Initializer setzen: der Container hat da noch
+        // seine Default-Größe (100 px hoch) und Windows klemmt den Wert still auf
+        // ~70 px — erst nach dem Docking-Layout setzen.
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
+        var splitterPlaced = false;
+        split.SizeChanged += (_, _) =>
+        {
+            if (splitterPlaced || split.Height < 300) return;
+            splitterPlaced = true;
+            split.SplitterDistance = split.Height / 2;
+        };
 
         // Begriffe
         var termsList = new ListBox { Dock = DockStyle.Fill };

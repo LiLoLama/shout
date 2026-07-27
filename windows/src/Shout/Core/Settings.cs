@@ -32,6 +32,20 @@ public sealed class Settings
     // Einfügen: zusätzlich immer in die Zwischenablage (Standard an)
     public bool KeepInClipboard { get; set; } = true;
 
+    /// <summary>Dezente Töne bei Start der Aufnahme und beim Einfügen.</summary>
+    public bool SoundCuesEnabled { get; set; } = true;
+
+    // Pille (wie am Mac): dauerhaft sichtbar, Anker oder frei gezogene Position
+    public bool PersistentPill { get; set; } = false;
+    /// <summary>"bottomCenter", "bottomLeft", "bottomRight", "topCenter", "topLeft", "topRight".</summary>
+    public string PillAnchor { get; set; } = "bottomCenter";
+    public bool PillCustom { get; set; } = false;
+    public int PillCustomX { get; set; }
+    public int PillCustomY { get; set; }
+
+    /// <summary>Aufnahmegerät: -1 = Systemstandard, sonst NAudio-Geräteindex.</summary>
+    public int InputDeviceIndex { get; set; } = -1;
+
     [JsonIgnore]
     public static Settings Shared { get; } = Load();
 

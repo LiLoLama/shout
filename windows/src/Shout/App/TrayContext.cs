@@ -30,20 +30,31 @@ public sealed class TrayContext : ApplicationContext
     private readonly ToolStripMenuItem statusItem;
     private readonly SynchronizationContext ui;
 
-    public TrayContext()
+    public TrayContext(bool openSettings = false)
     {
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
         statusItem = new ToolStripMenuItem("Modell wird geladen …") { Enabled = false };
         dictateItem = new ToolStripMenuItem("Diktieren", null, (_, _) => ToggleRecording());
 
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(),
+            BackColor = Theme.Card,
+            ForeColor = Theme.Ink,
+            Font = Theme.Body,
+        };
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(dictateItem);
         menu.Items.Add(new ToolStripMenuItem("Einstellungen …", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Beenden", null, (_, _) => ExitThread()));
+        foreach (var item in menu.Items.OfType<ToolStripMenuItem>())
+        {
+            item.BackColor = Theme.Card;
+            item.ForeColor = item == statusItem ? Theme.InkMuted : Theme.Ink;
+        }
 
         tray = new NotifyIcon
         {
@@ -54,7 +65,12 @@ public sealed class TrayContext : ApplicationContext
         };
         tray.DoubleClick += (_, _) => ToggleRecording();
 
-        overlay.OnClickStop += () => { if (state == State.Recording) StopAndProcess(); };
+        // Die Pille steuert dieselben Aktionen wie am Mac: Klick startet,
+        // ✕ verwirft, ✓ fügt ein.
+        overlay.OnStart += () => { if (state == State.Idle) StartRecording(); };
+        overlay.OnCancel += CancelRecording;
+        overlay.OnSubmit += () => { if (state == State.Recording) StopAndProcess(); };
+
         recorder.OnLevel += level => ui.Post(_ => overlay.SetLevel(level), null);
         recorder.OnSilence += () => ui.Post(_ =>
         {
@@ -68,6 +84,37 @@ public sealed class TrayContext : ApplicationContext
         // Modell (bis 1,6 GB) synchron — auf dem UI-Thread stünde die Tray-UI so
         // lange still. Alle UI-Zugriffe darin laufen ohnehin über ui.Post.
         _ = Task.Run(LoadModelsAsync);
+
+        if (Settings.Shared.PersistentPill) overlay.ShowPhase(RecordingOverlay.Phase.Idle);
+
+        // Lauscht auf „shout.exe --settings" eines zweiten Starts.
+        messageWindow = new SettingsMessageWindow(ShowSettings);
+        if (openSettings) ShowSettings();
+    }
+
+    private readonly SettingsMessageWindow messageWindow;
+
+    /// <summary>
+    /// Unsichtbares Fenster, das die per <c>RegisterWindowMessage</c> registrierte
+    /// Nachricht „Einstellungen öffnen" empfängt (gesendet von einer zweiten Instanz).
+    /// </summary>
+    private sealed class SettingsMessageWindow : NativeWindow, IDisposable
+    {
+        private readonly Action openSettings;
+
+        public SettingsMessageWindow(Action openSettings)
+        {
+            this.openSettings = openSettings;
+            CreateHandle(new CreateParams());
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == Program.OpenSettingsMessage) openSettings();
+            base.WndProc(ref m);
+        }
+
+        public void Dispose() => DestroyHandle();
     }
 
     // MARK: Modelle
@@ -107,6 +154,23 @@ public sealed class TrayContext : ApplicationContext
         UpdateMenu();
     }
 
+    /// <summary>„Pille immer anzeigen" wurde umgeschaltet.</summary>
+    public void ApplyPersistentPill()
+    {
+        if (Settings.Shared.PersistentPill)
+        {
+            if (state is State.Idle or State.LoadingModel or State.Failed)
+                overlay.ShowPhase(RecordingOverlay.Phase.Idle);
+        }
+        else if (state != State.Recording && state != State.Working)
+        {
+            overlay.HideOverlay();
+        }
+    }
+
+    /// <summary>Position der Pille wurde in den Einstellungen geändert.</summary>
+    public void RepositionPill() => overlay.MoveToAnchor();
+
     // MARK: Aufnahme
 
     private void ToggleRecording()
@@ -115,7 +179,7 @@ public sealed class TrayContext : ApplicationContext
         {
             case State.Idle: StartRecording(); break;
             case State.Recording: StopAndProcess(); break;
-            case State.Failed: _ = LoadModelsAsync(); break;   // erneuter Versuch
+            case State.Failed: _ = Task.Run(LoadModelsAsync); break;   // erneuter Versuch
         }
     }
 
@@ -129,24 +193,34 @@ public sealed class TrayContext : ApplicationContext
             recorder.Start();
             SetState(State.Recording);
             overlay.ShowPhase(RecordingOverlay.Phase.Recording);
-            SystemSounds.Exclamation.Play();
+            PlayCue(SystemSounds.Exclamation);
         }
         catch (Exception ex)
         {
             SetState(State.Failed);
+            FinishPill();
             tray.ShowBalloonTip(4000, "shout.",
                 $"Aufnahme konnte nicht gestartet werden: {ex.Message}", ToolTipIcon.Error);
         }
+    }
+
+    /// <summary>✕ auf der Pille: Aufnahme verwerfen, nichts einfügen.</summary>
+    private void CancelRecording()
+    {
+        if (state != State.Recording) return;
+        _ = recorder.Stop();   // Puffer verwerfen
+        SetState(State.Idle);
+        FinishPill();
     }
 
     private void StopAndProcess()
     {
         var samples = recorder.Stop();
         SetState(State.Working);
-        overlay.ShowPhase(RecordingOverlay.Phase.Working);
+        overlay.ShowPhase(RecordingOverlay.Phase.Processing);
 
         // Threadpool: die Inferenz darf nie den UI-Thread blockieren (die
-        // „Verarbeite …"-Animation liefe sonst nicht) — UI-Arbeit geht per ui.Post.
+        // Verarbeiten-Welle liefe sonst nicht) — UI-Arbeit geht per ui.Post.
         _ = Task.Run(() => ProcessAsync(samples));
     }
 
@@ -170,7 +244,7 @@ public sealed class TrayContext : ApplicationContext
             ui.Post(_ =>
             {
                 TextInjector.Insert(final, s.KeepInClipboard);
-                SystemSounds.Asterisk.Play();
+                PlayCue(SystemSounds.Asterisk);
             }, null);
 
             history.Add(final);
@@ -180,16 +254,28 @@ public sealed class TrayContext : ApplicationContext
         catch (Exception ex)
         {
             Log($"Verarbeitung fehlgeschlagen: {ex.Message}");
-            ui.Post(_ => SystemSounds.Hand.Play(), null);
+            ui.Post(_ => PlayCue(SystemSounds.Hand), null);
         }
         finally
         {
             ui.Post(_ =>
             {
-                overlay.HideOverlay();
                 SetState(transcriber.IsReady ? State.Idle : State.Failed);
+                FinishPill();
             }, null);
         }
+    }
+
+    /// <summary>Nach Abschluss/Abbruch: Idle-Pille zeigen (wenn dauerhaft) oder ausblenden.</summary>
+    private void FinishPill()
+    {
+        if (Settings.Shared.PersistentPill) overlay.ShowPhase(RecordingOverlay.Phase.Idle);
+        else overlay.HideOverlay();
+    }
+
+    private static void PlayCue(SystemSound sound)
+    {
+        if (Settings.Shared.SoundCuesEnabled) sound.Play();
     }
 
     // MARK: UI-Zustand
@@ -216,20 +302,43 @@ public sealed class TrayContext : ApplicationContext
         dictateItem.Text = state == State.Recording ? "Aufnahme stoppen" : "Diktieren";
         dictateItem.Enabled = state is State.Idle or State.Recording or State.Failed;
         tray.Icon = MakeIcon(idle: state != State.Recording);
+        settingsForm?.RefreshStatus();
     }
 
-    private SettingsForm? settingsForm;
+    private DashboardForm? settingsForm;
 
     private void ShowSettings()
     {
         if (settingsForm is { IsDisposed: false })
         {
+            if (settingsForm.WindowState == FormWindowState.Minimized)
+                settingsForm.WindowState = FormWindowState.Normal;
             settingsForm.Activate();
             return;
         }
-        settingsForm = new SettingsForm(this, dictionary, history, stats);
+        settingsForm = new DashboardForm(this, dictionary, history, stats);
         settingsForm.Show();
     }
+
+    /// <summary>Beschriftung für die Seitenleiste der Einstellungen.</summary>
+    public string StatusLine
+    {
+        get
+        {
+            var hotkeyLabel = HotkeyManager.Describe(Settings.Shared.HotkeyModifiers, Settings.Shared.HotkeyKey);
+            return state switch
+            {
+                State.LoadingModel => "Modell wird geladen …",
+                State.Recording => "Ich höre zu …",
+                State.Working => "Verarbeite …",
+                State.Failed => "Modell-Fehler",
+                _ => $"Bereit · {hotkeyLabel} drücken",
+            };
+        }
+    }
+
+    /// <summary>Läuft gerade eine Aufnahme? (Modellwechsel ist dann gesperrt.)</summary>
+    public bool IsBusy => state is State.Recording or State.Working;
 
     // MARK: Icon
 
@@ -240,7 +349,7 @@ public sealed class TrayContext : ApplicationContext
         using var bmp = new Bitmap(32, 32);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        var accent = Color.FromArgb(255, 74, 10);
+        var accent = Theme.Live;
         if (idle)
         {
             using var pen = new Pen(accent, 5);
@@ -273,6 +382,8 @@ public sealed class TrayContext : ApplicationContext
         recorder.Dispose();
         transcriber.Dispose();
         formatter.Dispose();
+        overlay.Dispose();
+        messageWindow.Dispose();
         base.ExitThreadCore();
     }
 }

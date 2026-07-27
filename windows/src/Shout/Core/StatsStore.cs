@@ -57,6 +57,35 @@ public sealed class StatsStore
         }
     }
 
+    /// <summary>Längster jemals erreichter Streak (für die Statistik-Seite).</summary>
+    public int LongestStreak
+    {
+        get
+        {
+            var days = Data.ActiveDays
+                .Select(d => DateTime.TryParse(d, out var parsed) ? parsed.Date : (DateTime?)null)
+                .Where(d => d.HasValue)
+                .Select(d => d!.Value)
+                .Distinct()
+                .OrderBy(d => d)
+                .ToList();
+
+            var best = 0;
+            var run = 0;
+            DateTime? previous = null;
+            foreach (var day in days)
+            {
+                run = previous.HasValue && (day - previous.Value).Days == 1 ? run + 1 : 1;
+                best = Math.Max(best, run);
+                previous = day;
+            }
+            return best;
+        }
+    }
+
+    /// <summary>War an diesem Tag mindestens ein Diktat? (Aktivitäts-Kalender)</summary>
+    public bool IsActive(DateTime day) => Data.ActiveDays.Contains(DayKey(day));
+
     /// <summary>Ersetzt die Statistik-Daten (für Import).</summary>
     public void ReplaceData(StatsData newData)
     {

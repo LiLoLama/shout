@@ -62,6 +62,12 @@ Compile-Check) — ausführen kann es nur Windows.
 4. Der erkannte Text wird ins aktive Fenster eingefügt und liegt zusätzlich in
    der Zwischenablage.
 
+Während der Aufnahme erscheint die **Pille** am Bildschirmrand: eine
+pegelreaktive Wellenform zwischen ✕ (verwerfen) und ✓ (einfügen). Sie lässt sich
+mit der Maus frei verschieben; Ecke und „immer anzeigen" stehen in den
+Einstellungen. Die Einstellungen öffnest du über das Tray-Menü — oder mit
+`shout.exe --settings` (eine bereits laufende Instanz holt ihr Fenster nach vorn).
+
 ## Performance-Hinweise
 
 - Standard ist das **CPU-Backend** — läuft überall, braucht keinen speziellen
@@ -72,13 +78,21 @@ Compile-Check) — ausführen kann es nur Windows.
   für breite GPU-Unterstützung `Whisper.net.Runtime.Vulkan` — die Erkennung
   wird damit um ein Vielfaches schneller.
 
+## Gestaltung
+
+Die Oberfläche folgt derselben Gestaltung wie die Mac-App: Graphit-Seitenleiste
+mit Wortmarke, flache Karten-Panels, warmes Vermillion als Signalfarbe. WinForms
+bringt davon nichts mit, daher liegt in `UI/` ein eigenes, komplett
+eigengezeichnetes Design-System (`Theme.cs` = Farben/Schriften/Geometrie,
+`Icons.cs` = die SF-Symbols als GDI+-Vektoren, `Controls.cs` + `Widgets.cs` =
+Karten, Schalter, Segment-Umschalter, Dropdowns, Chips, Listen).
+
 ## Status / bekannte Grenzen
 
 - ✅ **Auf echtem Windows getestet** (Win 11 x64): Build/Publish, Modell-Download,
-  Whisper-Transkription, Sprachbefehle, Hotkey → Aufnahme-Overlay → Verarbeitung.
-  Noch offen: Diktat mit echtem Mikrofon quer durch verschiedene Ziel-Apps.
+  Whisper-Transkription, Sprachbefehle, Diktat per Mikrofon inklusive Einfügen.
 - Kein Installer/Auto-Update (v1: einfache EXE). Geplant: winget/Installer.
-- Kein Overlay-Klick-Through-Feintuning, keine Mikrofon-Auswahl (nimmt das
-  Standard-Eingabegerät), kein Onboarding-Assistent.
+- Gegenüber der Mac-App fehlen noch: Onboarding-Assistent, „Dein Sprachprofil",
+  die Hugging-Face-Live-Modellliste und der Kontakte-Import im Wörterbuch.
 - Einfügen per Strg+V funktioniert nicht in Konsolen ohne Paste-Support und
   erhöht-privilegierten Fenstern (Windows-Sicherheitsgrenze).

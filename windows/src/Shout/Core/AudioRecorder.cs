@@ -58,6 +58,8 @@ public sealed class AudioRecorder : IDisposable
         waveIn?.Dispose();
         waveIn = new WaveInEvent
         {
+            // -1 = Wave-Mapper (Systemstandard); sonst der gewählte Geräteindex.
+            DeviceNumber = DeviceIndexOrDefault(),
             WaveFormat = new WaveFormat(SampleRate, 16, 1),
             BufferMilliseconds = 100,
         };
@@ -89,6 +91,26 @@ public sealed class AudioRecorder : IDisposable
     {
         waveIn?.Dispose();
         waveIn = null;
+    }
+
+    /// <summary>Gewähltes Gerät, sofern es noch existiert — sonst Systemstandard.
+    /// (Ein abgezogenes USB-Mikrofon darf die Aufnahme nicht dauerhaft blockieren.)</summary>
+    private static int DeviceIndexOrDefault()
+    {
+        var index = Settings.Shared.InputDeviceIndex;
+        return index >= 0 && index < WaveInEvent.DeviceCount ? index : -1;
+    }
+
+    /// <summary>Verfügbare Eingänge als (Index, Name) für die Einstellungen.</summary>
+    public static List<(int Index, string Name)> InputDevices()
+    {
+        var list = new List<(int, string)>();
+        for (var i = 0; i < WaveInEvent.DeviceCount; i++)
+        {
+            try { list.Add((i, WaveInEvent.GetCapabilities(i).ProductName)); }
+            catch { /* Gerät gerade nicht abfragbar — überspringen */ }
+        }
+        return list;
     }
 
     // MARK: Intern

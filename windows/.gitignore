@@ -3,3 +3,5 @@ bin/
 obj/
 *.user
 publish/
+# Fertige Installer/Update-Pakete (gehören ins GitHub-Release, nicht ins Repo)
+release/

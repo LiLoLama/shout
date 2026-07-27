@@ -63,7 +63,7 @@ internal sealed class DashboardForm : Form
         pages[Tab.Statistik] = new StatisticsPage(stats, history, dictionary);
         pages[Tab.Modelle] = new ModelsPage(app);
         pages[Tab.Sync] = new SyncPage(dictionary, history, stats);
-        pages[Tab.Unterstuetzen] = new SupportPage();
+        pages[Tab.Unterstuetzen] = new SupportPage(app);
 
         foreach (var page in pages.Values)
         {
@@ -151,6 +151,18 @@ internal sealed class DashboardForm : Form
             return;
         }
         sidebar.Invalidate();
+    }
+
+    /// <summary>Aktualisierungs-Abschnitt auf der Unterstützen-Seite nachziehen.</summary>
+    public void RefreshUpdateState()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(RefreshUpdateState);
+            return;
+        }
+        if (pages.TryGetValue(Tab.Unterstuetzen, out var page) && page is SupportPage support)
+            support.RefreshUpdateState();
     }
 
     // MARK: Hotkey-Aufnahme

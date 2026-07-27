@@ -1,0 +1,89 @@
+# Baut das Windows-Release und veröffentlicht es — ausgelöst durch einen Tag
+# „windows-v<version>", z. B.:
+#
+#   git tag windows-v1.0.0
+#   git push origin windows-v1.0.0
+#
+# Ergebnis: ein GitHub-Release mit shout-win-Setup.exe (zum Herunterladen und
+# Installieren) sowie releases.win.json und dem .nupkg — die beiden braucht
+# Velopack, damit sich installierte Kopien selbst aktualisieren können.
+name: Windows-Release
+
+on:
+  push:
+    tags:
+      - "windows-v*"
+  # Erlaubt einen Probelauf ohne Veröffentlichung (Artefakt zum Herunterladen).
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version für den Probelauf (z. B. 1.0.0)"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Velopack-Werkzeug installieren
+        run: dotnet tool install -g vpk --version 1.2.0
+
+      - name: Version aus dem Tag ableiten
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like "refs/tags/windows-v*") {
+            $version = $env:GITHUB_REF -replace "^refs/tags/windows-v", ""
+          } else {
+            $version = "${{ github.event.inputs.version }}"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Version: $version"
+
+      - name: Release bauen
+        shell: pwsh
+        working-directory: windows
+        run: ./release.ps1 -Version ${{ steps.version.outputs.version }}
+
+      - name: Artefakte sichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: shout-windows-${{ steps.version.outputs.version }}
+          path: windows/release/*
+
+      # Nur bei einem echten Tag veröffentlichen, nicht beim Probelauf.
+      - name: GitHub-Release anlegen
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $notes = @"
+          **shout. $version für Windows** — lokale, private Diktier-App.
+
+          ## Installieren
+          ``shout-win-Setup.exe`` herunterladen und ausführen. Kein Administrator
+          nötig; die .NET-8-Desktop-Runtime wird bei Bedarf mitinstalliert.
+          Wer nichts installieren will, nimmt ``shout-win-Portable.zip``.
+
+          ## Aktualisieren
+          Installierte Kopien suchen selbst nach neuen Versionen und melden sich,
+          sobald eine bereitliegt — Neustart über das Tray-Menü genügt.
+
+          Die übrigen Dateien (``releases.win.json``, ``.nupkg``) gehören zu dieser
+          Auto-Aktualisierung und werden nicht von Hand heruntergeladen.
+          "@
+          gh release create "windows-v$version" (Get-ChildItem windows/release/* | ForEach-Object { $_.FullName }) `
+            --title "shout. $version für Windows" `
+            --notes $notes

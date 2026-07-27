@@ -39,13 +39,27 @@ whisper.cpp/llama.cpp) under [`windows/`](windows/README.md).
 
 ## Install
 
+### macOS
+
 1. Download the latest `shout-x.y.z.dmg` from [Releases](https://github.com/LiLoLama/shout/releases).
 2. Open it and drag **shout.** to your Applications folder.
 3. Launch it — the onboarding guides you through the microphone + accessibility
    permissions and the one-time model download.
 
 The app is signed with a Developer ID and notarized by Apple, so it opens without
-Gatekeeper warnings.
+Gatekeeper warnings. Updates arrive automatically via Sparkle.
+
+### Windows
+
+1. Download `shout-win-Setup.exe` from the latest
+   [Windows release](https://github.com/LiLoLama/shout/releases?q=windows).
+2. Run it — no administrator required; the .NET 8 Desktop Runtime is installed
+   if missing. The installer is not code-signed yet, so SmartScreen shows a
+   warning on first run ("More info" → "Run anyway").
+3. Press **Ctrl + Alt + Space** (configurable) to dictate.
+
+Installed copies keep themselves up to date. See
+[`windows/README.md`](windows/README.md) for details.
 
 ## Build from source
 

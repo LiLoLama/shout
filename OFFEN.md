@@ -35,8 +35,11 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [x] **Diktat mit echtem Mikrofon getestet** — läuft: gesprochener Text wird transkribiert und eingefügt (im Verlauf nachweisbar).
 - [x] **Gestaltung an die Mac-App angeglichen** — eigenes GDI+-Design-System (`UI/Theme.cs`, `UI/Controls.cs`, `UI/Widgets.cs`): Graphit-Seitenleiste mit Wortmarke, Karten-Panels, eigene Schalter/Segment-Umschalter/Dropdowns/Chips, SF-Symbols als Vektor-Icons, dunkle Titelleiste. Die Pille ist jetzt ein Layered Window mit pegelreaktiver Wellenform (✕ · Waveform · ✓) und laufender Welle beim Verarbeiten — textlos wie am Mac; frei verschiebbar, Anker wählbar, „immer anzeigen" möglich.
 - [ ] **Standard-Hotkey überdenken**: Strg+Alt+Leertaste ist auf Rechnern mit Claude-Desktop-App belegt (globaler Claude-Shortcut) — Registrierung schlägt fehl, nur Balloon-Hinweis. Alternativen prüfen oder beim Fehlschlag automatisch Ausweich-Kombi anbieten.
+- [x] **Installer + Auto-Update** (Velopack, Windows-Pendant zu Sparkle): `windows/release.ps1` erzeugt `shout-win-Setup.exe` (ohne Admin-Rechte, installiert bei Bedarf die .NET-Runtime mit), Portable-ZIP und den Update-Feed. Der Workflow `windows-release.yml` veröffentlicht bei einem Tag `windows-v*` automatisch als GitHub-Release. Installation und Aktualisierungs-Prüfung auf diesem Rechner verifiziert.
+- [ ] **Ersten Windows-Tag pushen** (`windows-v1.0.0`), damit das Release entsteht — danach am besten auf einem zweiten Rechner installieren und ein echtes Update von 1.0.0 auf 1.0.1 durchspielen.
+- [ ] **Code-Signing-Zertifikat** für Windows — ohne Signatur warnt SmartScreen beim ersten Start. (`release.ps1` kann `vpk`-Signierparameter durchreichen.)
 - [ ] **Noch nicht portiert**: „Dein Sprachprofil" (KI-Text auf der Statistik-Seite), Hugging-Face-Live-Liste in „Modelle", Onboarding-Assistent, Kontakte-Import im Wörterbuch (Windows hat keine entsprechende lokale Schnittstelle).
-- [ ] **Später**: Installer/winget, Auto-Update, GPU-Backends (CUDA/Vulkan) als Option.
+- [ ] **Später**: winget-Paket, GPU-Backends (CUDA/Vulkan) als Option.
 
 ## 📱 iOS
 - [x] **Native iOS-App** (`ShoutMobile`) — gleiche lokale Pipeline (WhisperKit + MLX), mobile UI, Modell-Empfehler, Onboarding, Verlauf/Wörterbuch/Statistik, Daten-Sync Mac↔iPhone.

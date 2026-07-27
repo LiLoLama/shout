@@ -28,7 +28,11 @@ public sealed class TrayContext : ApplicationContext
 
     private readonly ToolStripMenuItem dictateItem;
     private readonly ToolStripMenuItem statusItem;
+    private readonly ToolStripMenuItem updateItem;
     private readonly SynchronizationContext ui;
+
+    /// <summary>Automatische Aktualisierung (Velopack, gegen die GitHub-Releases).</summary>
+    public Updater Updates { get; } = new();
 
     public TrayContext(bool openSettings = false)
     {
@@ -36,6 +40,7 @@ public sealed class TrayContext : ApplicationContext
 
         statusItem = new ToolStripMenuItem("Modell wird geladen …") { Enabled = false };
         dictateItem = new ToolStripMenuItem("Diktieren", null, (_, _) => ToggleRecording());
+        updateItem = new ToolStripMenuItem("Nach Aktualisierungen suchen …", null, (_, _) => UpdateMenuClicked());
 
         var menu = new ContextMenuStrip
         {
@@ -49,6 +54,7 @@ public sealed class TrayContext : ApplicationContext
         menu.Items.Add(dictateItem);
         menu.Items.Add(new ToolStripMenuItem("Einstellungen …", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(updateItem);
         menu.Items.Add(new ToolStripMenuItem("Beenden", null, (_, _) => ExitThread()));
         foreach (var item in menu.Items.OfType<ToolStripMenuItem>())
         {
@@ -90,7 +96,68 @@ public sealed class TrayContext : ApplicationContext
         // Lauscht auf „shout.exe --settings" eines zweiten Starts.
         messageWindow = new SettingsMessageWindow(ShowSettings);
         if (openSettings) ShowSettings();
+
+        Updates.Changed += () => ui.Post(_ => UpdateStateChanged(), null);
+        // Stiller Start-Check wie Sparkle am Mac: sucht und lädt im Hintergrund,
+        // meldet sich erst, wenn eine Version bereitliegt.
+        if (Updates.IsSupported) _ = Task.Run(Updates.CheckAndDownloadAsync);
     }
+
+    // MARK: Aktualisierung
+
+    /// <summary>Klick auf den Menüpunkt — je nach Zustand suchen, laden oder neu starten.</summary>
+    private void UpdateMenuClicked()
+    {
+        switch (Updates.Status)
+        {
+            case Updater.State.Available:
+                _ = Task.Run(Updates.DownloadAsync);
+                break;
+            case Updater.State.ReadyToRestart:
+                Updates.ApplyAndRestart();
+                break;
+            case Updater.State.Unsupported:
+                tray.ShowBalloonTip(6000, "shout.", Updates.StatusText, ToolTipIcon.Info);
+                break;
+            default:
+                _ = Task.Run(async () =>
+                {
+                    await Updates.CheckAsync();
+                    if (Updates.Status == Updater.State.UpToDate)
+                        ui.Post(_ => tray.ShowBalloonTip(4000, "shout.",
+                            $"shout. {Updates.CurrentVersion} ist aktuell.", ToolTipIcon.Info), null);
+                    else if (Updates.Status == Updater.State.Available)
+                        await Updates.DownloadAsync();
+                });
+                break;
+        }
+    }
+
+    private void UpdateStateChanged()
+    {
+        updateItem.Text = Updates.Status switch
+        {
+            Updater.State.Checking => "Suche nach Aktualisierungen …",
+            Updater.State.Available => $"Version {Updates.AvailableVersion} laden",
+            Updater.State.Downloading => $"Wird geladen … {Updates.Progress} %",
+            Updater.State.ReadyToRestart => $"Neu starten für Version {Updates.AvailableVersion}",
+            _ => "Nach Aktualisierungen suchen …",
+        };
+        updateItem.Enabled = Updates.Status is not (Updater.State.Checking or Updater.State.Downloading);
+
+        // Einmalige Meldung, sobald die neue Version bereitliegt.
+        if (Updates.Status == Updater.State.ReadyToRestart && !restartNotified)
+        {
+            restartNotified = true;
+            tray.ShowBalloonTip(8000, "shout.",
+                $"Version {Updates.AvailableVersion} ist bereit. Über das Tray-Menü neu starten, "
+                + "um sie zu übernehmen.", ToolTipIcon.Info);
+        }
+
+        settingsForm?.RefreshUpdateState();
+    }
+
+    private bool restartNotified;
 
     private readonly SettingsMessageWindow messageWindow;
 

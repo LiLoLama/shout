@@ -1,3 +1,4 @@
+using Shout.App;
 using Shout.Core;
 
 namespace Shout.UI;
@@ -113,9 +114,30 @@ internal sealed class SupportPage : PageBase
     private const string DonateUrl = "https://ko-fi.com/lilolama";
     private const string GithubUrl = "https://github.com/LiLoLama/shout";
 
-    public SupportPage()
+    private readonly Updater updates;
+    private readonly TextBlock updateStatus;
+    private readonly ConsoleButton updateButton;
+
+    public SupportPage(TrayContext app)
     {
+        updates = app.Updates;
+
         Push(new SectionHeader("Unterstützen"), 0);
+
+        // MARK: Aktualisierung
+
+        updateStatus = new TextBlock(updates.StatusText, Theme.Small, Theme.Gray(0.62));
+        updateButton = new ConsoleButton("Nach Aktualisierungen suchen");
+        updateButton.Click2 += UpdateButtonClicked;
+
+        var updatePanel = new ConsoleBox { Title = "Aktualisierung" };
+        updatePanel.Add(new TextBlock($"shout. {updates.CurrentVersion} für Windows",
+                                      Theme.RowTitle, Theme.Gray(0.9)), 0);
+        updatePanel.Add(updateStatus, 6);
+        updatePanel.Add(new Cluster(new Control[] { updateButton }), 14);
+        Push(updatePanel);
+
+        RefreshUpdateState();
 
         var donate = new ConsoleButton("Unterstützen", primary: true, icon: Icons.Kind.Coffee);
         donate.Click2 += () => OpenUrl(DonateUrl);
@@ -162,6 +184,45 @@ internal sealed class SupportPage : PageBase
 
         Push(TextBlock.Footnote(
             "Fehler gefunden oder eine Idee? Auf GitHub freue ich mich über Issues und Pull Requests."));
+    }
+
+    /// <summary>Je nach Zustand suchen, laden oder neu starten.</summary>
+    private void UpdateButtonClicked()
+    {
+        switch (updates.Status)
+        {
+            case Updater.State.Available:
+                _ = Task.Run(updates.DownloadAsync);
+                break;
+            case Updater.State.ReadyToRestart:
+                updates.ApplyAndRestart();
+                break;
+            case Updater.State.Unsupported:
+                OpenUrl(GithubUrl + "/releases/latest");
+                break;
+            default:
+                _ = Task.Run(async () =>
+                {
+                    await updates.CheckAsync();
+                    if (updates.Status == Updater.State.Available) await updates.DownloadAsync();
+                });
+                break;
+        }
+    }
+
+    /// <summary>Statuszeile und Knopfbeschriftung nachziehen (vom TrayContext gerufen).</summary>
+    public void RefreshUpdateState()
+    {
+        updateStatus.SetText(updates.StatusText);
+        updateButton.Text = updates.Status switch
+        {
+            Updater.State.Available => "Jetzt laden",
+            Updater.State.ReadyToRestart => "Neu starten und übernehmen",
+            Updater.State.Unsupported => "Releases auf GitHub öffnen",
+            _ => "Nach Aktualisierungen suchen",
+        };
+        updateButton.SetEnabled(updates.Status is not (Updater.State.Checking or Updater.State.Downloading));
+        NotifyHeightChanged();
     }
 
     private static void OpenUrl(string url)

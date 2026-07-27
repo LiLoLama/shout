@@ -9,9 +9,11 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <Product>shout.</Product>
+    <Company>inthezone</Company>
     <Description>Lokale, private Diktier-App — Windows-Version</Description>
+    <ApplicationIcon>..\..\assets\shout.ico</ApplicationIcon>
     <!-- Erlaubt das Kompilieren des Windows-Targets auch auf macOS/Linux
          (reiner Compile-Check; ausführen kann es nur Windows). -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -28,6 +30,9 @@
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.24.0" />
     <!-- Mikrofonaufnahme. -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- Installer + Auto-Update (Velopack): erzeugt Setup.exe und aktualisiert
+         später gegen die GitHub-Releases. Windows-Pendant zu Sparkle am Mac. -->
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
 </Project>

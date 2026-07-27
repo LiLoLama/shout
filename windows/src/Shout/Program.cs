@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Shout.App;
+using Velopack;
 
 namespace Shout;
 
@@ -19,6 +20,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // MUSS als Erstes laufen — noch vor dem Einzelinstanz-Mutex und jeder UI:
+        // Velopack ruft die App bei Installation, Aktualisierung und Deinstallation
+        // mit Sonderargumenten auf; diese Durchläufe müssen sofort beendet werden
+        // und dürfen nicht am Mutex hängen bleiben.
+        VelopackApp.Build().Run();
+
         // Nur eine Instanz — ein zweiter Start würde Hotkey/Tray doppeln.
         using var mutex = new Mutex(true, "shout-single-instance", out var isFirst);
         if (!isFirst)

@@ -36,7 +36,12 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Velopack-Werkzeug installieren
-        run: dotnet tool install -g vpk --version 1.2.0
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk --version 1.2.0
+          # Der Ordner für globale dotnet-Werkzeuge liegt auf den Runnern nicht
+          # zwangsläufig im PATH — sonst findet release.ps1 „vpk" nicht.
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Version aus dem Tag ableiten
         id: version

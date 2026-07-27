@@ -78,15 +78,26 @@ internal sealed class DashboardForm : Form
         Controls.Add(sidebar);
 
         // Mausrad soll überall im Inhalt scrollen — auch über Karten hinweg.
-        Application.AddMessageFilter(new WheelForwarder(host));
+        // Beim Schließen wieder abmelden, sonst sammeln sich die Filter an (das
+        // Fenster wird bei jedem Sprachwechsel neu aufgebaut).
+        wheelFilter = new WheelForwarder(host);
+        Application.AddMessageFilter(wheelFilter);
 
         Select(Tab.Aufnahme);
     }
+
+    private readonly WheelForwarder wheelFilter;
 
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
         UseDarkTitleBar();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        Application.RemoveMessageFilter(wheelFilter);
+        base.OnFormClosed(e);
     }
 
     /// <summary>Dunkle Titelleiste (Win 10 2004+/Win 11) — sonst sitzt ein weißer

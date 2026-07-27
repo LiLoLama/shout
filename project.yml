@@ -120,6 +120,9 @@ targets:
     sources:
       - path: Sources/ShoutMobile
       - path: Sources/Shared
+      # Eigener iOS-Asset-Katalog. Der bestehende Katalog unter Resources/
+      # enthält ausschließlich das macOS-App-Icon.
+      - path: Resources/iOSAssets.xcassets
       - path: Sources/FlowLokal
         includes:
           - Transcriber.swift
@@ -147,11 +150,19 @@ targets:
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # Für iPad-Multitasking verlangt App Store Connect Unterstützung aller
+        # vier Geräteausrichtungen.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         CFBundleURLTypes:
           - CFBundleURLName: com.inthezone.shout
             CFBundleURLSchemes: [shout]
     settings:
       base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.ios
         PRODUCT_NAME: "shout"
         MARKETING_VERSION: "1.0.1"

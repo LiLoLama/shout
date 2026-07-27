@@ -389,17 +389,20 @@ internal sealed class Cluster : ThemedControl, IAutoHeight
     public int PreferredHeightFor(int width) => items.Length > 0 ? items.Max(i => i.Height) : 0;
 
     /// <summary>Hintergrundfarbe an die Kinder weitergeben — sonst blitzt an ihren
-    /// abgerundeten Ecken die Fensterfarbe statt der Kartenfarbe durch.</summary>
+    /// abgerundeten Ecken die Fensterfarbe statt der Kartenfarbe durch.
+    /// Der Basiskonstruktor setzt BackColor bereits, bevor <c>items</c> zugewiesen
+    /// ist — daher die Null-Prüfung.</summary>
     protected override void OnBackColorChanged(EventArgs e)
     {
         base.OnBackColorChanged(e);
+        if (items == null) return;
         foreach (var item in items) item.BackColor = BackColor;
     }
 
     protected override void OnLayout(LayoutEventArgs e)
     {
         base.OnLayout(e);
-        if (items.Length == 0) return;
+        if (items == null || items.Length == 0) return;
 
         if (StretchFirst && Width > 0)
         {

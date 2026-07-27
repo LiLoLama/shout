@@ -39,8 +39,19 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [x] **Release 1.0.0 veröffentlicht** — Tag `windows-v1.0.0`, der Workflow lief durch, das [Release](https://github.com/LiLoLama/shout/releases/tag/windows-v1.0.0) enthält Setup, Portable-ZIP und Feed. Verifiziert: Velopack findet den Feed über die GitHub-API trotz des Tag-Schemas `windows-v*` (liefert `shout-1.0.0-full.nupkg`), Setup installiert ohne Admin, Portable-Variante startet.
 - [ ] **Echtes Update durchspielen**: beim nächsten Versionssprung prüfen, dass eine installierte 1.0.0 die neue Version findet, lädt und beim Neustart übernimmt. Die Feed-Erkennung ist verifiziert, der Download-/Übernahme-Pfad noch nicht (dafür braucht es zwei Releases).
 - [ ] **Code-Signing-Zertifikat** für Windows — ohne Signatur warnt SmartScreen beim ersten Start. (`release.ps1` kann `vpk`-Signierparameter durchreichen.)
+- [x] **Zweisprachig (Deutsch/Englisch)** — `Core/Localization.cs`: der deutsche Text ist der Schlüssel, ein fehlender Eintrag fällt harmlos auf Deutsch zurück. Standard ist die Windows-Anzeigesprache, umschaltbar unter „Aufnahme & Text → Sprache & Ton → Oberfläche"; der Wechsel baut Menü und Fenster sofort neu auf, ohne Neustart. Auch die Diktier-Sprache wird beim Erststart aus der Systemsprache belegt.
+- [x] **Echtes Logo als Icon** — `windows/assets/shout.ico` wird von `make-icon.ps1` aus dem gemeinsamen App-Icon (`Resources/Assets.xcassets`) erzeugt; unter 48 px zeichnet das Skript eine vereinfachte Waveform, weil die feinen Balken des Originals dort (auch bei Apples 16-px-Asset) zu einem Klecks verschmelzen. Genutzt für Fenster, Taskleiste, Alt-Tab, Setup und Infobereich.
 - [ ] **Noch nicht portiert**: „Dein Sprachprofil" (KI-Text auf der Statistik-Seite), Hugging-Face-Live-Liste in „Modelle", Onboarding-Assistent, Kontakte-Import im Wörterbuch (Windows hat keine entsprechende lokale Schnittstelle).
 - [ ] **Später**: winget-Paket, GPU-Backends (CUDA/Vulkan) als Option.
+
+## 🌍 Mehrsprachigkeit Mac + iOS (offen)
+Die Windows-Version ist deutsch/englisch und folgt der Systemsprache. Für Mac und iOS steht das noch aus — bewusst nicht blind erledigt, weil sich Swift auf dem Windows-Rechner nicht kompilieren lässt und ein Fehler beide Apps unbaubar machen würde.
+
+Der Weg, wenn es am Mac gemacht wird:
+- [ ] **Kein automatischer SwiftUI-Mechanismus nutzbar**: `Text("…")` würde als `LocalizedStringKey` selbst übersetzen, aber die Titel und Hilfetexte laufen fast überall als `String`-Parameter durch (`FieldRow(title:help:)`, `navRow(_:_:_:)`, `ConsolePanel(title:)` …) — und `Text(String)` übersetzt NICHT. Es braucht also echte Änderungen an den Aufrufstellen.
+- [ ] **Risikoarmer Weg**: eine globale Funktion `L(_ key: String) -> String` (gleiche Idee wie `Loc.T` unter Windows, deutscher Text als Schlüssel) plus die Übersetzungstabelle — dann an den Aufrufstellen `"Text"` → `L("Text")`. Keine Signaturänderung, also kein Typfehler-Risiko; die Tabelle aus `windows/src/Shout/Core/Localization.cs` deckt den Großteil der Texte schon ab.
+- [ ] **Sprachauswahl**: „Wie das System / Deutsch / English" analog zu Windows; Umschalten über `AppleLanguages` in den UserDefaults wirkt erst nach einem Neustart — Hinweis in der Oberfläche einplanen.
+- [ ] **Diktier-Sprache** beim Erststart aus `Locale.current` belegen statt fest „de" (Windows macht das jetzt so).
 
 ## 📱 iOS
 - [x] **Native iOS-App** (`ShoutMobile`) — gleiche lokale Pipeline (WhisperKit + MLX), mobile UI, Modell-Empfehler, Onboarding, Verlauf/Wörterbuch/Statistik, Daten-Sync Mac↔iPhone.

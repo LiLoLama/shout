@@ -319,7 +319,9 @@ internal sealed class ModelListPanel : ThemedControl, IAutoHeight
         return h + RowPadV * 2;
     }
 
-    private static string Subtitle(ModelEntry entry) => $"{entry.SizeHint} · {entry.Note}";
+    // Die Beschreibungen stehen im Katalog auf Deutsch (statisches Feld) und
+    // werden erst hier, beim Anzeigen, übersetzt.
+    private static string Subtitle(ModelEntry entry) => $"{entry.SizeHint} · {Loc.T(entry.Note)}";
 
     public int PreferredHeightFor(int width)
     {
@@ -417,8 +419,8 @@ internal sealed class ModelListPanel : ThemedControl, IAutoHeight
 
             // Abzeichen rechts vom Namen
             var badgeX = textLeft + nameSize.Width + 7;
-            if (entry.Recommended) badgeX += DrawBadge(g, "Empfohlen", Theme.Live, badgeX, top, nameSize.Height);
-            if (entry.TooBig) DrawBadge(g, "Viel RAM nötig", Theme.Gray(0.55), badgeX, top, nameSize.Height);
+            if (entry.Recommended) badgeX += DrawBadge(g, Loc.T("Empfohlen"), Theme.Live, badgeX, top, nameSize.Height);
+            if (entry.TooBig) DrawBadge(g, Loc.T("Viel RAM nötig"), Theme.Gray(0.55), badgeX, top, nameSize.Height);
 
             DrawText(g, Subtitle(entry), Theme.Help, Theme.Gray(0.55),
                      new Rectangle(textLeft, top + nameSize.Height + 2, textWidth, subSize.Height),
@@ -464,7 +466,7 @@ internal sealed class ModelListPanel : ThemedControl, IAutoHeight
         }
         else
         {
-            DrawText(g, "lädt …", Theme.Help, Theme.Live,
+            DrawText(g, Loc.T("lädt …"), Theme.Help, Theme.Live,
                      new Rectangle(right - 60, row.Y, 60, row.Height),
                      TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.NoPrefix);
         }

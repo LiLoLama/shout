@@ -20,7 +20,7 @@ internal sealed class StatisticsPage : PageBase, IRefreshablePage
         this.stats = stats;
         this.history = history;
         this.dictionary = dictionary;
-        Push(new SectionHeader("Statistiken"), 0);
+        Push(new SectionHeader(Loc.T("Statistiken")), 0);
         Rebuild();
     }
 
@@ -32,25 +32,25 @@ internal sealed class StatisticsPage : PageBase, IRefreshablePage
 
         Push(new GridRow(new Control[]
         {
-            new StatCard(stats.Data.TotalWords.ToString("N0"), "Wörter gesamt"),
-            new StatCard(stats.AverageWpm.ToString(), "Ø Wörter/Minute"),
-            new StatCard(stats.Data.TotalDictations.ToString(), "Diktate"),
-            new StatCard(dictionary.Data.Corrections.Count.ToString(), "Korrekturen gelernt"),
+            new StatCard(stats.Data.TotalWords.ToString("N0"), Loc.T("Wörter gesamt")),
+            new StatCard(stats.AverageWpm.ToString(), Loc.T("Ø Wörter/Minute")),
+            new StatCard(stats.Data.TotalDictations.ToString(), Loc.T("Diktate")),
+            new StatCard(dictionary.Data.Corrections.Count.ToString(), Loc.T("Korrekturen gelernt")),
         }, 150));
 
-        var streak = new ConsoleBox { Title = "Streak" };
+        var streak = new ConsoleBox { Title = Loc.T("Streak") };
         streak.Add(new MetricRow(new[]
         {
-            (stats.CurrentStreak.ToString(), "Tage aktuell"),
-            (stats.LongestStreak.ToString(), "längster"),
+            (stats.CurrentStreak.ToString(), Loc.T("Tage aktuell")),
+            (stats.LongestStreak.ToString(), Loc.T("längster")),
         }), 0);
         streak.Add(new HeatmapView(stats), 14);
         Push(streak);
 
         Push(new GridRow(new Control[]
         {
-            new InfoCard("Meistgenutztes Wort", MostUsedWord() ?? "—"),
-            new InfoCard("Aktivste Zeit", PeakTime() ?? "—"),
+            new InfoCard(Loc.T("Meistgenutztes Wort"), MostUsedWord() ?? "—"),
+            new InfoCard(Loc.T("Aktivste Zeit"), PeakTime() ?? "—"),
         }, 220));
 
         NotifyHeightChanged();
@@ -58,8 +58,15 @@ internal sealed class StatisticsPage : PageBase, IRefreshablePage
 
     // MARK: Ableitungen aus dem Verlauf (gleiche Regeln wie am Mac)
 
+    /// <summary>Füllwörter, die als „meistgenutztes Wort" nichts aussagen — deutsch
+    /// und englisch, weil diktiert werden kann, was der Nutzer will.</summary>
     private static readonly HashSet<string> Stopwords = new(StringComparer.OrdinalIgnoreCase)
     {
+        "that", "this", "these", "those", "with", "from", "have", "been", "were", "they",
+        "them", "their", "there", "then", "than", "what", "when", "which", "would", "could",
+        "should", "will", "just", "like", "about", "your", "yours", "mine", "into", "some",
+        "also", "because", "here", "very", "much", "more", "most", "only", "even", "does",
+
         "und", "oder", "aber", "dass", "eine", "einen", "einem", "einer", "nicht", "auch",
         "dann", "wenn", "also", "dieser", "diese", "dieses", "noch", "schon", "sein", "sind",
         "haben", "hier", "dort", "mein", "dein", "kann", "können", "wird", "werden", "mich",
@@ -93,11 +100,11 @@ internal sealed class StatisticsPage : PageBase, IRefreshablePage
         var peak = buckets.MaxBy(kv => kv.Value).Key;
         return peak switch
         {
-            >= 5 and < 11 => "Vormittags",
-            >= 11 and < 14 => "Mittags",
-            >= 14 and < 18 => "Nachmittags",
-            >= 18 and < 23 => "Abends",
-            _ => "Nachts",
+            >= 5 and < 11 => Loc.T("Vormittags"),
+            >= 11 and < 14 => Loc.T("Mittags"),
+            >= 14 and < 18 => Loc.T("Nachmittags"),
+            >= 18 and < 23 => Loc.T("Abends"),
+            _ => Loc.T("Nachts"),
         };
     }
 }

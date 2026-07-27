@@ -29,6 +29,8 @@ public sealed class TrayContext : ApplicationContext
     private readonly ToolStripMenuItem dictateItem;
     private readonly ToolStripMenuItem statusItem;
     private readonly ToolStripMenuItem updateItem;
+    private readonly ToolStripMenuItem settingsMenuItem;
+    private readonly ToolStripMenuItem quitMenuItem;
     private readonly SynchronizationContext ui;
 
     /// <summary>Automatische Aktualisierung (Velopack, gegen die GitHub-Releases).</summary>
@@ -38,9 +40,9 @@ public sealed class TrayContext : ApplicationContext
     {
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
-        statusItem = new ToolStripMenuItem("Modell wird geladen …") { Enabled = false };
-        dictateItem = new ToolStripMenuItem("Diktieren", null, (_, _) => ToggleRecording());
-        updateItem = new ToolStripMenuItem("Nach Aktualisierungen suchen …", null, (_, _) => UpdateMenuClicked());
+        statusItem = new ToolStripMenuItem(Loc.T("Modell wird geladen …")) { Enabled = false };
+        dictateItem = new ToolStripMenuItem(Loc.T("Diktieren"), null, (_, _) => ToggleRecording());
+        updateItem = new ToolStripMenuItem(Loc.T("Nach Aktualisierungen suchen …"), null, (_, _) => UpdateMenuClicked());
 
         var menu = new ContextMenuStrip
         {
@@ -49,13 +51,16 @@ public sealed class TrayContext : ApplicationContext
             ForeColor = Theme.Ink,
             Font = Theme.Body,
         };
+        settingsMenuItem = new ToolStripMenuItem(Loc.T("Einstellungen …"), null, (_, _) => ShowSettings());
+        quitMenuItem = new ToolStripMenuItem(Loc.T("Beenden"), null, (_, _) => ExitThread());
+
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(dictateItem);
-        menu.Items.Add(new ToolStripMenuItem("Einstellungen …", null, (_, _) => ShowSettings()));
+        menu.Items.Add(settingsMenuItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(updateItem);
-        menu.Items.Add(new ToolStripMenuItem("Beenden", null, (_, _) => ExitThread()));
+        menu.Items.Add(quitMenuItem);
         foreach (var item in menu.Items.OfType<ToolStripMenuItem>())
         {
             item.BackColor = Theme.Card;
@@ -64,8 +69,8 @@ public sealed class TrayContext : ApplicationContext
 
         tray = new NotifyIcon
         {
-            Icon = MakeIcon(idle: true),
-            Text = "shout. — lokale Diktier-App",
+            Icon = AppIcons.Tray(recording: false),
+            Text = Loc.T("shout. — lokale Diktier-App"),
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -125,7 +130,7 @@ public sealed class TrayContext : ApplicationContext
                     await Updates.CheckAsync();
                     if (Updates.Status == Updater.State.UpToDate)
                         ui.Post(_ => tray.ShowBalloonTip(4000, "shout.",
-                            $"shout. {Updates.CurrentVersion} ist aktuell.", ToolTipIcon.Info), null);
+                            Loc.F("shout. {0} ist aktuell.", Updates.CurrentVersion), ToolTipIcon.Info), null);
                     else if (Updates.Status == Updater.State.Available)
                         await Updates.DownloadAsync();
                 });
@@ -137,11 +142,11 @@ public sealed class TrayContext : ApplicationContext
     {
         updateItem.Text = Updates.Status switch
         {
-            Updater.State.Checking => "Suche nach Aktualisierungen …",
-            Updater.State.Available => $"Version {Updates.AvailableVersion} laden",
-            Updater.State.Downloading => $"Wird geladen … {Updates.Progress} %",
-            Updater.State.ReadyToRestart => $"Neu starten für Version {Updates.AvailableVersion}",
-            _ => "Nach Aktualisierungen suchen …",
+            Updater.State.Checking => Loc.T("Suche nach Aktualisierungen …"),
+            Updater.State.Available => Loc.F("Version {0} laden", Updates.AvailableVersion),
+            Updater.State.Downloading => Loc.F("Wird geladen … {0} %", Updates.Progress),
+            Updater.State.ReadyToRestart => Loc.F("Neu starten für Version {0}", Updates.AvailableVersion),
+            _ => Loc.T("Nach Aktualisierungen suchen …"),
         };
         updateItem.Enabled = Updates.Status is not (Updater.State.Checking or Updater.State.Downloading);
 
@@ -150,8 +155,8 @@ public sealed class TrayContext : ApplicationContext
         {
             restartNotified = true;
             tray.ShowBalloonTip(8000, "shout.",
-                $"Version {Updates.AvailableVersion} ist bereit. Über das Tray-Menü neu starten, "
-                + "um sie zu übernehmen.", ToolTipIcon.Info);
+                Loc.F("Version {0} ist bereit. Über das Tray-Menü neu starten, um sie zu übernehmen.",
+                      Updates.AvailableVersion), ToolTipIcon.Info);
         }
 
         settingsForm?.RefreshUpdateState();
@@ -193,15 +198,15 @@ public sealed class TrayContext : ApplicationContext
         {
             await transcriber.LoadAsync(p =>
                 ui.Post(_ => statusItem.Text = p is > 0 and < 1
-                    ? $"Sprachmodell wird geladen … {(int)(p * 100)} %"
-                    : "Sprachmodell wird geladen …", null));
+                    ? Loc.F("Sprachmodell wird geladen … {0} %", (int)(p * 100))
+                    : Loc.T("Sprachmodell wird geladen …"), null));
             await transcriber.WarmUpAsync();
             SetState(State.Idle);
         }
         catch (Exception ex)
         {
             SetState(State.Failed);
-            ui.Post(_ => statusItem.Text = "Modell-Fehler — Internet prüfen, dann erneut „Diktieren“ wählen", null);
+            ui.Post(_ => statusItem.Text = Loc.T("Modell-Fehler — Internet prüfen, dann erneut „Diktieren“ wählen"), null);
             Log($"Modell-Ladefehler: {ex.Message}");
         }
 
@@ -217,7 +222,7 @@ public sealed class TrayContext : ApplicationContext
         var s = Settings.Shared;
         if (!hotkey.Register(s.HotkeyModifiers, s.HotkeyKey))
             tray?.ShowBalloonTip(4000, "shout.",
-                "Der Hotkey ist bereits belegt — bitte in den Einstellungen ändern.", ToolTipIcon.Warning);
+                Loc.T("Der Hotkey ist bereits belegt — bitte in den Einstellungen ändern."), ToolTipIcon.Warning);
         UpdateMenu();
     }
 
@@ -237,6 +242,38 @@ public sealed class TrayContext : ApplicationContext
 
     /// <summary>Position der Pille wurde in den Einstellungen geändert.</summary>
     public void RepositionPill() => overlay.MoveToAnchor();
+
+    /// <summary>
+    /// Oberflächensprache wurde umgestellt. Die Texte stecken in bereits gebauten
+    /// Controls, deshalb wird das Tray-Menü neu betextet und das Fenster auf
+    /// derselben Seite neu aufgebaut — so wirkt der Wechsel sofort, ohne Neustart.
+    /// </summary>
+    public void ApplyLanguageChange()
+    {
+        RetranslateMenu();
+        UpdateMenu();
+        UpdateStateChanged();
+
+        if (settingsForm is not { IsDisposed: false }) return;
+        var openTab = settingsForm.CurrentTab;
+        var bounds = settingsForm.Bounds;
+        var old = settingsForm;
+        settingsForm = new DashboardForm(this, dictionary, history, stats);
+        settingsForm.StartPosition = FormStartPosition.Manual;
+        settingsForm.Bounds = bounds;
+        settingsForm.Show();
+        settingsForm.SelectTab(openTab);
+        old.Close();
+    }
+
+    /// <summary>Beschriftungen der festen Menüpunkte neu setzen.</summary>
+    private void RetranslateMenu()
+    {
+        dictateItem.Text = Loc.T("Diktieren");
+        settingsMenuItem.Text = Loc.T("Einstellungen …");
+        quitMenuItem.Text = Loc.T("Beenden");
+        tray.Text = Loc.T("shout. — lokale Diktier-App");
+    }
 
     // MARK: Aufnahme
 
@@ -267,7 +304,7 @@ public sealed class TrayContext : ApplicationContext
             SetState(State.Failed);
             FinishPill();
             tray.ShowBalloonTip(4000, "shout.",
-                $"Aufnahme konnte nicht gestartet werden: {ex.Message}", ToolTipIcon.Error);
+                Loc.F("Aufnahme konnte nicht gestartet werden: {0}", ex.Message), ToolTipIcon.Error);
         }
     }
 
@@ -360,15 +397,15 @@ public sealed class TrayContext : ApplicationContext
         statusItem.Text = state switch
         {
             State.LoadingModel => statusItem.Text,   // Fortschritt läuft schon
-            State.Idle => $"Bereit — {hotkeyLabel}",
-            State.Recording => "Ich höre zu …",
-            State.Working => "Verarbeite …",
+            State.Idle => Loc.F("Bereit — {0}", hotkeyLabel),
+            State.Recording => Loc.T("Ich höre zu …"),
+            State.Working => Loc.T("Verarbeite …"),
             State.Failed => statusItem.Text,
             _ => "shout.",
         };
-        dictateItem.Text = state == State.Recording ? "Aufnahme stoppen" : "Diktieren";
+        dictateItem.Text = state == State.Recording ? Loc.T("Aufnahme stoppen") : Loc.T("Diktieren");
         dictateItem.Enabled = state is State.Idle or State.Recording or State.Failed;
-        tray.Icon = MakeIcon(idle: state != State.Recording);
+        tray.Icon = AppIcons.Tray(recording: state == State.Recording);
         settingsForm?.RefreshStatus();
     }
 
@@ -395,11 +432,11 @@ public sealed class TrayContext : ApplicationContext
             var hotkeyLabel = HotkeyManager.Describe(Settings.Shared.HotkeyModifiers, Settings.Shared.HotkeyKey);
             return state switch
             {
-                State.LoadingModel => "Modell wird geladen …",
-                State.Recording => "Ich höre zu …",
-                State.Working => "Verarbeite …",
-                State.Failed => "Modell-Fehler",
-                _ => $"Bereit · {hotkeyLabel} drücken",
+                State.LoadingModel => Loc.T("Modell wird geladen …"),
+                State.Recording => Loc.T("Ich höre zu …"),
+                State.Working => Loc.T("Verarbeite …"),
+                State.Failed => Loc.T("Modell-Fehler"),
+                _ => Loc.F("Bereit · {0} drücken", hotkeyLabel),
             };
         }
     }
@@ -408,28 +445,6 @@ public sealed class TrayContext : ApplicationContext
     public bool IsBusy => state is State.Recording or State.Working;
 
     // MARK: Icon
-
-    /// <summary>Zeichnet das Tray-Icon zur Laufzeit: oranger Punkt (Aufnahme:
-    /// gefüllt, sonst Ring) — kein Icon-Asset nötig.</summary>
-    private static Icon MakeIcon(bool idle)
-    {
-        using var bmp = new Bitmap(32, 32);
-        using var g = Graphics.FromImage(bmp);
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        var accent = Theme.Live;
-        if (idle)
-        {
-            using var pen = new Pen(accent, 5);
-            g.DrawEllipse(pen, 5, 5, 22, 22);
-        }
-        else
-        {
-            using var brush = new SolidBrush(accent);
-            g.FillEllipse(brush, 3, 3, 26, 26);
-        }
-        var handle = bmp.GetHicon();
-        return Icon.FromHandle(handle);
-    }
 
     private static void Log(string message)
     {

@@ -23,7 +23,7 @@ internal sealed class ModelsPage : PageBase
         var s = Settings.Shared;
 
         note.Visible = false;
-        Push(new SectionHeader("Modelle"), 0);
+        Push(new SectionHeader(Loc.T("Modelle")), 0);
         Push(note, 0);
 
         // MARK: Hardware
@@ -48,7 +48,7 @@ internal sealed class ModelsPage : PageBase
             }).ToArray(),
             s.AsrModel)
         {
-            Title = "Transkription (Sprache → Text)",
+            Title = Loc.T("Transkription (Sprache → Text)"),
             Locked = () => app.IsBusy,
         };
         asrList.Selected += id => SwitchModel(asrList, id, isAsr: true);
@@ -68,15 +68,14 @@ internal sealed class ModelsPage : PageBase
             }).ToArray(),
             s.LlmModel)
         {
-            Title = "Aufbereitung & Formatierung (KI-Textmodell)",
+            Title = Loc.T("Aufbereitung & Formatierung (KI-Textmodell)"),
             Locked = () => app.IsBusy,
         };
         llmList.Selected += id => SwitchModel(llmList, id, isAsr: false);
         Push(llmList);
 
-        Push(TextBlock.Footnote(
-            "Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal "
-            + "gespeichert. Alles läuft anschließend komplett offline auf deinem Rechner."));
+        Push(TextBlock.Footnote(Loc.T(
+            "Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Rechner.")));
     }
 
     /// <summary>Grober RAM-Bedarf je Modell — nur für das Abzeichen „Viel RAM nötig".</summary>
@@ -96,7 +95,7 @@ internal sealed class ModelsPage : PageBase
         TextRenderer.DrawText(g, Hardware.Chip, Theme.PageTitle,
                               new Rectangle(inner.X + 46, inner.Y, inner.Width - 46, 22),
                               Theme.Gray(0.95), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        TextRenderer.DrawText(g, $"{Hardware.MemoryGB} GB Arbeitsspeicher · {Hardware.Cores} Kerne",
+        TextRenderer.DrawText(g, Loc.F("{0} GB Arbeitsspeicher · {1} Kerne", Hardware.MemoryGB, Hardware.Cores),
                               Theme.Small, new Rectangle(inner.X + 46, inner.Y + 22, inner.Width - 46, 20),
                               Theme.Gray(0.58), TextFormatFlags.NoPrefix);
 
@@ -105,7 +104,8 @@ internal sealed class ModelsPage : PageBase
 
         Icons.Draw(g, Icons.Kind.Sparkle, new RectangleF(inner.X, inner.Y + 62, 16, 18), Theme.Live, 13f);
         TextRenderer.DrawText(g,
-            $"Empfohlen für diesen Rechner: {asr.Name} zum Transkribieren, {llm.Name} zum Aufbereiten.",
+            Loc.F("Empfohlen für diesen Rechner: {0} zum Transkribieren, {1} zum Aufbereiten.",
+                  asr.Name, llm.Name),
             Theme.Small, new Rectangle(inner.X + 24, inner.Y + 60, inner.Width - 24, 34),
             Theme.Gray(0.7), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
     }
@@ -115,7 +115,7 @@ internal sealed class ModelsPage : PageBase
     {
         if (app.IsBusy)
         {
-            note.SetText("Während einer Aufnahme lässt sich das Modell nicht wechseln.");
+            note.SetText(Loc.T("Während einer Aufnahme lässt sich das Modell nicht wechseln."));
             note.Visible = true;
             NotifyHeightChanged();
             return;
@@ -149,7 +149,7 @@ internal sealed class ModelsPage : PageBase
                 BeginInvoke(() =>
                 {
                     list.SetLoading(null, null);
-                    note.SetText($"Download fehlgeschlagen: {ex.Message}");
+                    note.SetText(Loc.F("Download fehlgeschlagen: {0}", ex.Message));
                     note.Visible = true;
                     NotifyHeightChanged();
                 });

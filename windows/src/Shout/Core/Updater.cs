@@ -146,16 +146,15 @@ public sealed class Updater
     /// <summary>Kurze Beschreibung des Zustands für die Oberfläche.</summary>
     public string StatusText => Status switch
     {
-        State.Unsupported =>
-            "Automatische Aktualisierung steht nur in der installierten Version zur Verfügung "
-            + "(Setup.exe von der Releases-Seite). Diese Kopie läuft aus einem Programmordner.",
-        State.Checking => "Suche nach Aktualisierungen …",
-        State.UpToDate => "shout. ist aktuell.",
-        State.Available => $"Version {AvailableVersion} ist verfügbar.",
-        State.Downloading => $"Wird geladen … {Progress} %",
-        State.ReadyToRestart => $"Version {AvailableVersion} ist bereit — beim Neustart wird sie übernommen.",
-        State.Failed => $"Aktualisierung fehlgeschlagen: {Error}",
-        _ => "Noch nicht nach Aktualisierungen gesucht.",
+        State.Unsupported => Loc.T(
+            "Automatische Aktualisierung steht nur in der installierten Version zur Verfügung (Setup.exe von der Releases-Seite). Diese Kopie läuft aus einem Programmordner."),
+        State.Checking => Loc.T("Suche nach Aktualisierungen …"),
+        State.UpToDate => Loc.T("shout. ist aktuell."),
+        State.Available => Loc.F("Version {0} ist verfügbar.", AvailableVersion),
+        State.Downloading => Loc.F("Wird geladen … {0} %", Progress),
+        State.ReadyToRestart => Loc.F("Version {0} ist bereit — beim Neustart wird sie übernommen.", AvailableVersion),
+        State.Failed => Loc.F("Aktualisierung fehlgeschlagen: {0}", Error),
+        _ => Loc.T("Noch nicht nach Aktualisierungen gesucht."),
     };
 
     private void Set(State next)

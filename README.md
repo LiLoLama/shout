@@ -1,41 +1,48 @@
 # shout.
 
-**Local, private dictation for macOS.** Press a hotkey, speak, and your words are
-typed wherever your cursor is — transcribed and cleaned up entirely **on your Mac**.
-No cloud, no account, no data ever leaves the device. Inspired by Wispr Flow,
-built to be fully offline and open source.
+**Local, private dictation — on your Mac, your PC and your iPhone.** Press a
+hotkey, speak, and your words are typed wherever your cursor is — transcribed and
+cleaned up entirely **on your own device**. No cloud, no account, no data ever
+leaves the machine. Inspired by Wispr Flow, built to be fully offline and open
+source.
 
 ```
-Hotkey (default: right ⌥) → record → Whisper (large-v3-turbo, on the Neural Engine)
-→ optional local LLM (Gemma, MLX, in-process) cleans the text → pasted at the cursor
+Hotkey → record → Whisper (speech → text) → optional local LLM cleans the text
+       → pasted at the cursor
 ```
 
 <!-- TODO: Screenshots einfügen (Dashboard, schwebende Pille, Onboarding) -->
 
+## Platforms
+
+| | macOS | Windows | iOS |
+|---|---|---|---|
+| Speech recognition | WhisperKit (Neural Engine) | whisper.cpp ([Whisper.net](https://github.com/sandrohanea/whisper.net)) | WhisperKit |
+| Text cleanup | MLX (Gemma) | llama.cpp ([LLamaSharp](https://github.com/SciSharp/LLamaSharp), Qwen 2.5) | MLX |
+| Insert at cursor | Accessibility paste | clipboard + simulated Ctrl+V | dictation keyboard |
+| Auto-update | Sparkle | [Velopack](https://velopack.io) | App Store / Xcode |
+| Source | [`Sources/FlowLokal`](Sources/FlowLokal) | [`windows/`](windows/README.md) | [`Sources/ShoutMobile`](Sources/ShoutMobile) |
+
+All three keep your dictionary, history and statistics in a **compatible backup
+file**, so you can move them between devices (no cloud involved).
+
 ## Features
 
-- **On-device transcription** via WhisperKit — German, English, or auto-detect.
-- **Local LLM cleanup** (Gemma via MLX, runs in-process): removes filler words,
-  adds punctuation, builds numbered lists, adapts tone to the target app.
+- **On-device transcription** — German, English, or auto-detect.
+- **Local LLM cleanup**: removes filler words, adds punctuation, builds numbered
+  lists, adapts tone to the target app.
 - **Learning dictionary** — teach names/terms; it also auto-learns your corrections.
 - **Spoken commands** — “Komma”, “Punkt”, “neue Zeile”, … become real punctuation.
-- **Floating pill** — draggable anywhere, optional always-on; click to start,
-  ✕ to cancel, ✓ to insert.
-- **Model picker** — detects your hardware, recommends a model, shows a live list
-  from Hugging Face with download progress; switch freely.
-- **Adaptive silence detection** with trimming, gentle sound cues, history & stats
-  (incl. a “your voice” profile), and local file-based backup/sync (no cloud).
+- **Floating pill** with a level-reactive waveform — draggable anywhere, optional
+  always-on; click to start, ✕ to cancel, ✓ to insert.
+- **Model picker** — detects your hardware, recommends a model, shows download
+  progress; switch freely.
+- **Adaptive silence detection** with trimming, gentle sound cues, history & stats,
+  and local file-based backup/sync.
 
-## Requirements
-
-- **macOS 14+**
-- **Apple Silicon** (M1 or newer) — the app is arm64-only; MLX/WhisperKit need it.
-- A few GB of free disk for the speech model (downloaded once on first launch).
-- Microphone and Accessibility permissions (the onboarding walks you through it).
-
-Also in this repo: a native **iOS app** (incl. a dictation keyboard) built from
-the same Xcode project, and an early **Windows version** (C#/.NET 8 +
-whisper.cpp/llama.cpp) under [`windows/`](windows/README.md).
+Some extras exist on macOS only for now: the onboarding assistant, the live
+Hugging Face model list, the AI “your voice” profile and importing terms from
+Contacts.
 
 ## Install
 
@@ -46,8 +53,9 @@ whisper.cpp/llama.cpp) under [`windows/`](windows/README.md).
 3. Launch it — the onboarding guides you through the microphone + accessibility
    permissions and the one-time model download.
 
-The app is signed with a Developer ID and notarized by Apple, so it opens without
-Gatekeeper warnings. Updates arrive automatically via Sparkle.
+Requires **macOS 14+** on **Apple Silicon** (M1 or newer; MLX/WhisperKit need it).
+Signed with a Developer ID and notarized, so it opens without Gatekeeper
+warnings. Updates arrive automatically via Sparkle.
 
 ### Windows
 
@@ -55,13 +63,21 @@ Gatekeeper warnings. Updates arrive automatically via Sparkle.
    [Windows release](https://github.com/LiLoLama/shout/releases?q=windows).
 2. Run it — no administrator required; the .NET 8 Desktop Runtime is installed
    if missing. The installer is not code-signed yet, so SmartScreen shows a
-   warning on first run ("More info" → "Run anyway").
+   warning on first run (“More info” → “Run anyway”).
 3. Press **Ctrl + Alt + Space** (configurable) to dictate.
 
-Installed copies keep themselves up to date. See
-[`windows/README.md`](windows/README.md) for details.
+Requires **Windows 10/11 (x64)**. Installed copies keep themselves up to date;
+see [`windows/README.md`](windows/README.md) for details.
+
+### iOS
+
+No App Store build yet — build it yourself from this repo (see below) and run it
+on your device from Xcode. The app includes a **dictation keyboard** extension so
+you can dictate into any app; it needs “Full Access” in the keyboard settings.
 
 ## Build from source
+
+### macOS and iOS
 
 Needs Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 (`brew install xcodegen`).
@@ -74,14 +90,38 @@ cd shout
 
 > **Note:** MLX compiles its Metal shaders only through `xcodebuild`, not
 > `swift build` — always use `build.sh`. For a signed & notarized DMG see
-> `release.sh` and `RELEASE.md` (requires an Apple Developer ID).
+> `release.sh` and `RELEASE.md` (requires an Apple Developer ID). The iOS targets
+> (`ShoutMobile`, `ShoutKeyboard`) come from the same generated Xcode project.
+
+### Windows
+
+Needs the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0); no
+Visual Studio required.
+
+```powershell
+cd windows
+dotnet run --project src/Shout
+```
+
+See [`windows/README.md`](windows/README.md) for the release build (installer,
+update feed) and the design notes.
+
+## Language
+
+The **dictation language** — German, English or auto-detect — is set in the app
+on every platform.
+
+The **interface language** is available in German and English on **Windows**: it
+follows the Windows display language by default and can be switched under
+*Recording & text → Language & sound → Interface*. The macOS and iOS apps are
+still German-only; localizing them is on the [to-do list](OFFEN.md).
 
 ## Privacy
 
 Everything runs locally. There is **no telemetry and no account.** The only time
 shout. touches the network is the **one-time model download** from Hugging Face
-(and, optionally, when you open the model picker to browse available models).
-Your audio and transcripts never leave your Mac.
+(and, optionally, when you open the model picker to browse available models) plus
+the update check. Your audio and transcripts never leave your device.
 
 ## Contributing
 

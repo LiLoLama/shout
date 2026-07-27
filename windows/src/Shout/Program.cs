@@ -37,6 +37,9 @@ internal static class Program
             return;
         }
 
+        // Oberflächensprache festlegen, bevor irgendein Text erzeugt wird.
+        Core.Loc.Initialize();
+
         ApplicationConfiguration.Initialize();
         Application.Run(new TrayContext(openSettings: args.Contains("--settings", StringComparer.OrdinalIgnoreCase)));
     }

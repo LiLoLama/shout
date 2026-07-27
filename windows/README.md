@@ -119,6 +119,18 @@ Einstellungen. Die Einstellungen öffnest du über das Tray-Menü — oder mit
   für breite GPU-Unterstützung `Whisper.net.Runtime.Vulkan` — die Erkennung
   wird damit um ein Vielfaches schneller.
 
+## Sprache
+
+Die Oberfläche gibt es auf **Deutsch und Englisch**. Standardmäßig folgt sie der
+Windows-Anzeigesprache; umschaltbar unter **Aufnahme & Text → Sprache & Ton →
+Oberfläche** (der Wechsel wirkt sofort, ohne Neustart). Die Diktier-Sprache wird
+beim ersten Start ebenfalls aus der Systemsprache belegt und ist davon unabhängig
+einstellbar.
+
+Übersetzt wird über `Core/Localization.cs`: Schlüssel ist der deutsche Text, ein
+fehlender Eintrag fällt auf Deutsch zurück statt einen Platzhalter zu zeigen.
+Für weitere Sprachen genügt eine zusätzliche Tabelle.
+
 ## Gestaltung
 
 Die Oberfläche folgt derselben Gestaltung wie die Mac-App: Graphit-Seitenleiste

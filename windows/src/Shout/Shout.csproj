@@ -21,6 +21,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Das Logo zusätzlich einbetten: so lässt sich zur Laufzeit die passgenaue
+         Größe für Fenster (32 px) und Infobereich (16 px) entnehmen. -->
+    <EmbeddedResource Include="..\..\assets\shout.ico" LogicalName="shout.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Spracherkennung: whisper.cpp über Whisper.net (bringt die nativen
          CPU-Runtimes für win-x64/win-arm64 mit). -->
     <PackageReference Include="Whisper.net" Version="1.8.1" />

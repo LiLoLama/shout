@@ -17,16 +17,16 @@ internal sealed class HistoryPage : PageBase, IRefreshablePage
     {
         this.history = history;
 
-        clearAll = new ConsoleButton("Alle löschen");
+        clearAll = new ConsoleButton(Loc.T("Alle löschen"));
         clearAll.Click2 += () =>
         {
-            if (MessageBox.Show("Gesamten Verlauf löschen?", "shout.",
+            if (MessageBox.Show(Loc.T("Gesamten Verlauf löschen?"), "shout.",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             history.Clear();
             Rebuild();
         };
 
-        Push(new SectionHeader("Verlauf", clearAll), 0);
+        Push(new SectionHeader(Loc.T("Verlauf"), clearAll), 0);
         Rebuild();
     }
 
@@ -40,8 +40,8 @@ internal sealed class HistoryPage : PageBase, IRefreshablePage
 
         if (history.Entries.Count == 0)
         {
-            Push(new EmptyState(Icons.Kind.History, "Noch keine Diktate",
-                "Was du diktierst, erscheint hier — zum Nachlesen und erneut Kopieren."));
+            Push(new EmptyState(Icons.Kind.History, Loc.T("Noch keine Diktate"),
+                Loc.T("Was du diktierst, erscheint hier — zum Nachlesen und erneut Kopieren.")));
             NotifyHeightChanged();
             return;
         }
@@ -83,8 +83,8 @@ internal sealed class HistoryPage : PageBase, IRefreshablePage
 
     private static string DayLabel(DateTime day)
     {
-        if (day == DateTime.Today) return "Heute";
-        if (day == DateTime.Today.AddDays(-1)) return "Gestern";
+        if (day == DateTime.Today) return Loc.T("Heute");
+        if (day == DateTime.Today.AddDays(-1)) return Loc.T("Gestern");
         return day.ToString("d. MMMM yyyy");
     }
 }

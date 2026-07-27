@@ -62,9 +62,9 @@ public sealed class BackupBundle
         }
         catch
         {
-            return "Ungültige Backup-Datei.";
+            return Loc.T("Ungültige Backup-Datei.");
         }
-        if (bundle == null) return "Ungültige Backup-Datei.";
+        if (bundle == null) return Loc.T("Ungültige Backup-Datei.");
 
         dictionary.ReplaceContents(bundle.Dictionary);
         history.ReplaceEntries(bundle.History);
@@ -76,6 +76,7 @@ public sealed class BackupBundle
         if (bundle.Settings.FormattingEnabled is { } fmt) s.FormattingEnabled = fmt;
         s.Save();
 
-        return $"Importiert: {bundle.Dictionary.Terms.Count} Begriffe, {bundle.History.Count} Diktate.";
+        return Loc.F("Importiert: {0} Begriffe, {1} Diktate.",
+                     bundle.Dictionary.Terms.Count, bundle.History.Count);
     }
 }

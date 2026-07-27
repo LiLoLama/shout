@@ -27,6 +27,7 @@ internal sealed class DashboardForm : Form
         this.app = app;
 
         Text = "shout.";
+        Icon = AppIcons.Window;   // Logo in Titelleiste, Taskleiste und Alt-Tab
         BackColor = Theme.Window;
         ForeColor = Theme.Ink;
         Font = Theme.Body;
@@ -107,6 +108,9 @@ internal sealed class DashboardForm : Form
 
     /// <summary>Seite von außen anspringen (z. B. „Einstellungen bei Modelle öffnen").</summary>
     internal void SelectTab(Tab tab) => Select(tab);
+
+    /// <summary>Gerade angezeigte Seite — damit ein Neuaufbau (Sprachwechsel) sie behält.</summary>
+    internal Tab CurrentTab => current;
 
     private void Select(Tab tab)
     {
@@ -250,6 +254,12 @@ internal interface IRefreshablePage
 /// </summary>
 internal sealed class Sidebar : ThemedControl
 {
+    /// <summary>
+    /// Die Navigationseinträge. Die Titel stehen hier auf DEUTSCH und werden erst
+    /// beim Zeichnen übersetzt: ein statisches Feld wird beim Laden der Klasse
+    /// einmalig ausgewertet und würde nach einem Sprachwechsel in der alten
+    /// Sprache stehen bleiben.
+    /// </summary>
     private static readonly (DashboardForm.Tab Tab, string Title, Icons.Kind Icon)[] Items =
     {
         (DashboardForm.Tab.Aufnahme, "Aufnahme & Text", Icons.Kind.Mic),
@@ -364,7 +374,7 @@ internal sealed class Sidebar : ThemedControl
 
             var color = active ? Color.White : Theme.Gray(0.64);
             Icons.Draw(g, icon, new RectangleF(row.X + 11, row.Y, 20, row.Height), color, 14f);
-            DrawText(g, title, active ? Theme.RowTitleStrong : Theme.RowTitle, color,
+            DrawText(g, Loc.T(title), active ? Theme.RowTitleStrong : Theme.RowTitle, color,
                      new Rectangle(row.X + 41, row.Y, row.Width - 48, row.Height),
                      TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }

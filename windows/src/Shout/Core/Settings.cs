@@ -16,8 +16,12 @@ public sealed class Settings
     public uint HotkeyModifiers { get; set; } = 0x0001 | 0x0002;   // MOD_ALT | MOD_CONTROL
     public uint HotkeyKey { get; set; } = 0x20;                    // VK_SPACE
 
-    // Sprache: "de", "en" oder "auto"
-    public string Language { get; set; } = "de";
+    /// <summary>Diktier-Sprache: "de", "en" oder "auto". Leer = beim Erststart
+    /// aus der Systemsprache belegen (siehe <see cref="Load"/>).</summary>
+    public string Language { get; set; } = "";
+
+    /// <summary>Oberflächensprache: "system" (Windows-Anzeigesprache), "de" oder "en".</summary>
+    public string UiLanguage { get; set; } = "system";
 
     // Verarbeitung
     public bool SpeechCommandsEnabled { get; set; } = false;
@@ -55,6 +59,11 @@ public sealed class Settings
         // Erststart: für DIESES Gerät empfohlene Modelle als Auswahl setzen.
         if (string.IsNullOrEmpty(s.AsrModel)) s.AsrModel = ModelCatalog.RecommendedAsr().Id;
         if (string.IsNullOrEmpty(s.LlmModel)) s.LlmModel = ModelCatalog.RecommendedLlm().Id;
+        // Erststart: auch diktiert wird in der Systemsprache — außer Deutsch gibt
+        // es hier nur Englisch, „auto" kann der Nutzer jederzeit wählen.
+        if (string.IsNullOrEmpty(s.Language))
+            s.Language = System.Globalization.CultureInfo.CurrentUICulture
+                .TwoLetterISOLanguageName == "de" ? "de" : "en";
         return s;
     }
 

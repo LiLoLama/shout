@@ -14,9 +14,9 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
     private readonly PersonalDictionary dictionary;
     private readonly ChipFlow chips = new();
     private readonly CorrectionList corrections = new();
-    private readonly TextBlock emptyTerms = TextBlock.Body("Noch keine Begriffe.");
+    private readonly TextBlock emptyTerms = TextBlock.Body(Loc.T("Noch keine Begriffe."));
     private readonly TextBlock emptyCorrections = TextBlock.Body(
-        "Noch keine Korrekturen — trag eine falsche und die richtige Schreibweise ein.");
+        Loc.T("Noch keine Korrekturen — trag eine falsche und die richtige Schreibweise ein."));
     private readonly TextBlock importStatus = new("", Theme.Help, Theme.Live);
     private readonly ConsoleTextField termField;
     private readonly ConsoleTextField wrongField;
@@ -28,8 +28,8 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
 
         // MARK: Begriffe
 
-        termField = new ConsoleTextField("Neuer Begriff (z. B. inthezone)", 240);
-        var addTerm = new ConsoleButton("Hinzufügen");
+        termField = new ConsoleTextField(Loc.T("Neuer Begriff (z. B. inthezone)"), 240);
+        var addTerm = new ConsoleButton(Loc.T("Hinzufügen"));
         addTerm.Click2 += AddTerm;
         termField.Inner.KeyDown += (_, e) =>
         {
@@ -38,10 +38,10 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
             AddTerm();
         };
 
-        var importFile = new ConsoleButton("Aus Datei (CSV/TXT) …");
+        var importFile = new ConsoleButton(Loc.T("Aus Datei (CSV/TXT) …"));
         importFile.Click2 += ImportFromFile;
 
-        var termsBox = new ConsoleBox { Title = "Wörter, die shout. richtig schreiben soll" };
+        var termsBox = new ConsoleBox { Title = Loc.T("Wörter, die shout. richtig schreiben soll") };
         termsBox.Add(new Cluster(new Control[] { termField, addTerm }) { StretchFirst = true }, 0);
         termsBox.Add(new Cluster(new Control[] { importFile, importStatus }));
         termsBox.Add(emptyTerms);
@@ -55,9 +55,9 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
 
         // MARK: Korrekturen
 
-        wrongField = new ConsoleTextField("falsch", 130);
-        rightField = new ConsoleTextField("richtig", 130);
-        var addCorrection = new ConsoleButton("Hinzufügen");
+        wrongField = new ConsoleTextField(Loc.T("falsch"), 130);
+        rightField = new ConsoleTextField(Loc.T("richtig"), 130);
+        var addCorrection = new ConsoleButton(Loc.T("Hinzufügen"));
         addCorrection.Click2 += AddCorrection;
         rightField.Inner.KeyDown += (_, e) =>
         {
@@ -66,7 +66,7 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
             AddCorrection();
         };
 
-        var correctionsBox = new ConsoleBox { Title = "Automatisch verbessert" };
+        var correctionsBox = new ConsoleBox { Title = Loc.T("Automatisch verbessert") };
         correctionsBox.Add(new Cluster(new Control[]
         {
             wrongField,
@@ -128,8 +128,8 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Text/CSV (*.csv;*.txt)|*.csv;*.txt|Alle Dateien (*.*)|*.*",
-            Title = "Begriffe importieren",
+            Filter = Loc.T("Text/CSV (*.csv;*.txt)|*.csv;*.txt|Alle Dateien (*.*)|*.*"),
+            Title = Loc.T("Begriffe importieren"),
         };
         if (dialog.ShowDialog() != DialogResult.OK) return;
 
@@ -142,11 +142,11 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
                 var term = field.Trim(' ', '\t', '"', '\'');
                 if (term.Length > 0) dictionary.AddTerm(term);
             }
-            importStatus.SetText($"{dictionary.Data.Terms.Count - before} neue Begriffe.");
+            importStatus.SetText(Loc.F("{0} neue Begriffe.", dictionary.Data.Terms.Count - before));
         }
         catch (Exception ex)
         {
-            importStatus.SetText($"Import fehlgeschlagen: {ex.Message}");
+            importStatus.SetText(Loc.F("Import fehlgeschlagen: {0}", ex.Message));
         }
         Reload();
     }

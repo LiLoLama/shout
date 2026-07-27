@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Shout.Core;
 
 namespace Shout.App;
 
@@ -63,9 +64,9 @@ public sealed class HotkeyManager : NativeWindow, IDisposable
     public static string Describe(uint modifiers, uint key)
     {
         var parts = new List<string>();
-        if ((modifiers & ModControl) != 0) parts.Add("Strg");
+        if ((modifiers & ModControl) != 0) parts.Add(Loc.T("Strg"));
         if ((modifiers & ModAlt) != 0) parts.Add("Alt");
-        if ((modifiers & ModShift) != 0) parts.Add("Umschalt");
+        if ((modifiers & ModShift) != 0) parts.Add(Loc.T("Umschalt"));
         if ((modifiers & ModWin) != 0) parts.Add("Win");
         parts.Add(KeyName(key));
         return string.Join(" + ", parts);
@@ -73,8 +74,8 @@ public sealed class HotkeyManager : NativeWindow, IDisposable
 
     private static string KeyName(uint vk) => vk switch
     {
-        0x20 => "Leertaste",
-        0x0D => "Eingabe",
+        0x20 => Loc.T("Leertaste"),
+        0x0D => Loc.T("Eingabe"),
         >= 0x70 and <= 0x87 => "F" + (vk - 0x6F),
         _ => ((Keys)vk).ToString(),
     };

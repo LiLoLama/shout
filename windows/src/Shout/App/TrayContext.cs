@@ -217,6 +217,14 @@ public sealed class TrayContext : ApplicationContext
     /// <summary>Nach Modellwechsel in den Einstellungen neu laden.</summary>
     public void ReloadModels() => _ = Task.Run(LoadModelsAsync);
 
+    /// <summary>Ist das KI-Textmodell geladen? Ohne das gibt es kein Sprachprofil
+    /// (und das Modell wird nur geladen, wenn die Aufbereitung eingeschaltet ist).</summary>
+    public bool FormatterReady => formatter.IsReady;
+
+    /// <summary>Erzeugt „Dein Sprachprofil" aus einer Textprobe des Verlaufs.
+    /// null = kein Modell geladen oder Erzeugung fehlgeschlagen.</summary>
+    public Task<string?> DescribeVoiceAsync(string sample) => formatter.DescribeVoiceAsync(sample);
+
     public void RegisterHotkeyFromSettings()
     {
         var s = Settings.Shared;

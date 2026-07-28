@@ -166,6 +166,16 @@ public static class Loc
         ["Tage aktuell"] = "days current",
         ["längster"] = "longest",
         ["Meistgenutztes Wort"] = "Most used word",
+        ["Dein Sprachprofil"] = "Your speech profile",
+        ["Wird nach {0} weiteren Diktaten freigeschaltet."] = "Unlocks after {0} more dictations.",
+        ["shout. kann aus deinen Diktaten ein kurzes Profil deines Sprachstils erstellen — vollständig lokal."] =
+            "shout. can build a short profile of your speaking style from your dictations — entirely local.",
+        ["Profil erstellen"] = "Create profile",
+        ["Erstelle …"] = "Creating…",
+        ["Aktualisieren"] = "Refresh",
+        ["Dafür muss „Text automatisch aufräumen“ eingeschaltet sein — das lädt das KI-Textmodell."] =
+            "This needs “Clean up text automatically” switched on, which loads the AI text model.",
+        ["Profil konnte nicht erstellt werden."] = "The profile could not be created.",
         ["Aktivste Zeit"] = "Most active time",
         ["Vormittags"] = "Mornings",
         ["Mittags"] = "Midday",
@@ -185,6 +195,15 @@ public static class Loc
         ["Während einer Aufnahme lässt sich das Modell nicht wechseln."] =
             "The model cannot be switched while recording.",
         ["Download fehlgeschlagen: {0}"] = "Download failed: {0}",
+        // Live-Liste von Hugging Face
+        ["AKTUELLE MODELLE · HUGGING FACE"] = "CURRENT MODELS · HUGGING FACE",
+        ["Suche aktuelle Modelle …"] = "Looking for current models…",
+        ["Keine Modelle gefunden."] = "No models found.",
+        ["Keine Verbindung zu Hugging Face. {0}"] = "No connection to Hugging Face. {0}",
+        ["Live von Hugging Face · {0}× geladen"] = "Live from Hugging Face · {0} downloads",
+        ["Live von Hugging Face, ausschließlich Qwen-Modelle — das Chat-Template der Aufbereitung ist darauf abgestimmt, ein fremdes Modell würde still Unsinn liefern."] =
+            "Live from Hugging Face, Qwen models only — the cleanup model’s chat template is built for them, a foreign model would quietly produce nonsense.",
+
         ["Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Rechner."] =
             "Models are downloaded from Hugging Face once when first selected and then stored locally. Everything runs completely offline on your machine afterwards.",
         // Modell-Beschreibungen

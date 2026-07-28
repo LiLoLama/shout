@@ -43,6 +43,7 @@ public sealed class BackupBundle
                 AutoStop = s.AutoStopEnabled,
                 SilenceSeconds = s.SilenceSeconds,
                 FormattingEnabled = s.FormattingEnabled,
+                VoiceProfile = s.VoiceProfile.Length > 0 ? s.VoiceProfile : null,
             },
         };
         File.WriteAllText(path, JsonSerializer.Serialize(bundle, StoreIO.JsonOptions));
@@ -74,6 +75,7 @@ public sealed class BackupBundle
         if (bundle.Settings.AutoStop is { } auto) s.AutoStopEnabled = auto;
         if (bundle.Settings.SilenceSeconds is { } sil) s.SilenceSeconds = sil;
         if (bundle.Settings.FormattingEnabled is { } fmt) s.FormattingEnabled = fmt;
+        if (bundle.Settings.VoiceProfile is { } profile) s.VoiceProfile = profile;
         s.Save();
 
         return Loc.F("Importiert: {0} Begriffe, {1} Diktate.",

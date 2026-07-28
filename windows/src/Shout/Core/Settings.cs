@@ -33,11 +33,20 @@ public sealed class Settings
     public string AsrModel { get; set; } = "";
     public string LlmModel { get; set; } = "";
 
+    /// <summary>Über die Hugging-Face-Live-Liste gewählte Modelle. Die müssen hier
+    /// liegen, weil <see cref="ModelCatalog.LlmById"/> sie nach einem Neustart
+    /// noch auflösen muss — sonst lädt der Formatter still das empfohlene Modell.</summary>
+    public List<ModelCatalog.Model> DiscoveredLlmModels { get; set; } = new();
+
     // Einfügen: zusätzlich immer in die Zwischenablage (Standard an)
     public bool KeepInClipboard { get; set; } = true;
 
     /// <summary>Dezente Töne bei Start der Aufnahme und beim Einfügen.</summary>
     public bool SoundCuesEnabled { get; set; } = true;
+
+    /// <summary>„Dein Sprachprofil" — vom Formatierungs-Modell erzeugter Text auf
+    /// der Statistik-Seite (Mac: UserDefaults-Schlüssel „voiceProfile").</summary>
+    public string VoiceProfile { get; set; } = "";
 
     // Pille (wie am Mac): dauerhaft sichtbar, Anker oder frei gezogene Position
     public bool PersistentPill { get; set; } = false;
@@ -56,6 +65,9 @@ public sealed class Settings
     private static Settings Load()
     {
         var s = StoreIO.Load<Settings>("settings.json") ?? new Settings();
+        // Steht in der Datei ausdrücklich "discoveredLlmModels": null, greift der
+        // Initialisierer oben NICHT — und LlmById würde beim Modell-Laden werfen.
+        s.DiscoveredLlmModels ??= new();
         // Erststart: für DIESES Gerät empfohlene Modelle als Auswahl setzen.
         if (string.IsNullOrEmpty(s.AsrModel)) s.AsrModel = ModelCatalog.RecommendedAsr().Id;
         if (string.IsNullOrEmpty(s.LlmModel)) s.LlmModel = ModelCatalog.RecommendedLlm().Id;

@@ -45,9 +45,10 @@ file**, so you can move them between devices (no cloud involved).
 - **Adaptive silence detection** with trimming, gentle sound cues, history & stats,
   and local file-based backup/sync.
 
-Some extras exist on macOS only for now: the onboarding assistant, the live
-Hugging Face model list, the AI “your voice” profile and importing terms from
-Contacts.
+Some extras exist on macOS only for now: the onboarding assistant and importing
+terms from Contacts. The live Hugging Face model list is on both, but on Windows
+it lists Qwen models only, because llama.cpp loads a single file and the cleanup
+model’s chat template is built for that family.
 
 ## Install
 

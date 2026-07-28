@@ -150,7 +150,10 @@ Karten, Schalter, Segment-Umschalter, Dropdowns, Chips, Listen).
   Code-Signing-Zertifikat würde das beheben; `release.ps1` unterstützt dafür
   `vpk`-Signierparameter.
 - Kein winget-Paket (geplant).
-- Gegenüber der Mac-App fehlen noch: Onboarding-Assistent, „Dein Sprachprofil",
-  die Hugging-Face-Live-Modellliste und der Kontakte-Import im Wörterbuch.
+- Gegenüber der Mac-App fehlen noch: Onboarding-Assistent und der
+  Kontakte-Import im Wörterbuch (Windows hat keine vergleichbare lokale
+  Schnittstelle). Die Hugging-Face-Live-Liste zeigt hier nur Qwen-Modelle als
+  Einzeldatei-GGUF — llama.cpp lädt eine Datei, und das Chat-Template des
+  Formatters ist auf Qwen abgestimmt.
 - Einfügen per Strg+V funktioniert nicht in Konsolen ohne Paste-Support und
   erhöht-privilegierten Fenstern (Windows-Sicherheitsgrenze).

@@ -33,7 +33,7 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [x] **„Über shout."** — Klick auf die Wortmarke in der Seitenleiste öffnet ein Popover mit App-Icon, Version + Build (per Klick kopierbar), Aktualisierungs-Prüfung (Sparkle), Schalter für die automatische Prüfung, Zeitpunkt der letzten Prüfung und Verweisen auf Quellcode, Issues, Lizenz und Unterstützen. Auch über das Programm-Menü und das Menü der Menüleiste erreichbar (`AboutView.swift`).
 - [x] **„In der Zwischenablage behalten"** — die Windows-Option gibt es jetzt auch am Mac (`TextInjector.paste(_:keepInClipboard:)`). Standard AUS, weil der Mac den vorherigen Inhalt bisher immer wiederhergestellt und das Diktat als vertraulich/transient markiert hat; Windows hat die Option standardmäßig AN.
 - [x] **Hardware-Karte** zeigt zusätzlich die Kernzahl (wie Windows).
-- [ ] **Umgekehrt fehlt Windows** noch: „Dein Sprachprofil", Hugging-Face-Live-Liste, Onboarding-Assistent, Kontakte-Import, Halten-Modus (siehe unten).
+- [ ] **Umgekehrt fehlt Windows** noch: Onboarding-Assistent, Kontakte-Import (keine vergleichbare lokale Schnittstelle) und der Halten-Modus (siehe unten). „Dein Sprachprofil" und die Hugging-Face-Live-Liste sind nachgezogen, aber noch nicht auf Windows gebaut/getestet.
 
 ## 🪟 Windows (`windows/`)
 - [x] **Erste Version gebaut** — C#/.NET-8-Tray-App: Hotkey → NAudio-Aufnahme (VAD-Port) → whisper.cpp (Whisper.net) → Sprachbefehle → optional llama.cpp (LLamaSharp, Qwen 2.5) → Wörterbuch-Korrekturen → Einfügen per Strg+V. Backup-Format kompatibel zu Mac/iOS.
@@ -47,7 +47,9 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Code-Signing-Zertifikat** für Windows — ohne Signatur warnt SmartScreen beim ersten Start. (`release.ps1` kann `vpk`-Signierparameter durchreichen.)
 - [x] **Zweisprachig (Deutsch/Englisch)** — `Core/Localization.cs`: der deutsche Text ist der Schlüssel, ein fehlender Eintrag fällt harmlos auf Deutsch zurück. Standard ist die Windows-Anzeigesprache, umschaltbar unter „Aufnahme & Text → Sprache & Ton → Oberfläche"; der Wechsel baut Menü und Fenster sofort neu auf, ohne Neustart. Auch die Diktier-Sprache wird beim Erststart aus der Systemsprache belegt.
 - [x] **Echtes Logo als Icon** — `windows/assets/shout.ico` wird von `make-icon.ps1` aus dem gemeinsamen App-Icon (`Resources/Assets.xcassets`) erzeugt; unter 48 px zeichnet das Skript eine vereinfachte Waveform, weil die feinen Balken des Originals dort (auch bei Apples 16-px-Asset) zu einem Klecks verschmelzen. Genutzt für Fenster, Taskleiste, Alt-Tab, Setup und Infobereich.
-- [ ] **Noch nicht portiert**: „Dein Sprachprofil" (KI-Text auf der Statistik-Seite), Hugging-Face-Live-Liste in „Modelle", Onboarding-Assistent, Kontakte-Import im Wörterbuch (Windows hat keine entsprechende lokale Schnittstelle).
+- [x] **„Dein Sprachprofil" portiert** — `LlmFormatter.DescribeVoiceAsync` plus Panel auf der Statistik-Seite, ab 5 Diktaten. Ohne eingeschaltete Aufbereitung ist kein Modell geladen; dann steht dort ein Hinweis statt eines Knopfs, der nichts tut. **Auf Windows noch nicht gebaut/getestet.**
+- [x] **Hugging-Face-Live-Liste portiert** — `Core/HuggingFaceModels.cs`. Anders als am Mac nur Qwen-Modelle (das Chat-Template des Formatters ist darauf abgestimmt) und nur Einzeldatei-GGUFs, weil `ModelDownloader` keine gesplitteten Modelle zusammensetzt. Deshalb bewusst nicht auf `author=Qwen` begrenzt: Qwens eigene großen q4_k_m sind gesplittet, Community-Repos liefern sie als eine Datei. **Auf Windows noch nicht gebaut/getestet.**
+- [ ] **Noch nicht portiert**: Onboarding-Assistent, Kontakte-Import im Wörterbuch (Windows hat keine entsprechende lokale Schnittstelle).
 - [ ] **Später**: winget-Paket, GPU-Backends (CUDA/Vulkan) als Option.
 
 ## 🌍 Mehrsprachigkeit

@@ -6,7 +6,7 @@ namespace Shout.UI;
 /// <summary>
 /// „Modelle" — erkennt die Hardware, empfiehlt das passende lokale Modell und
 /// lässt frei umschalten; beim Wechsel wird (falls nötig) geladen
-/// (Mac: ModelsView.swift, ohne die Hugging-Face-Live-Liste).
+/// (Mac: ModelsView.swift).
 /// </summary>
 internal sealed class ModelsPage : PageBase
 {
@@ -16,6 +16,13 @@ internal sealed class ModelsPage : PageBase
     private readonly ModelListPanel asrList;
     private readonly ModelListPanel llmList;
     private readonly TextBlock note = new("", Theme.Small, Theme.Gray(0.8), 0);
+
+    // MARK: Live-Liste von Hugging Face
+    private readonly ConsoleButton refreshButton;
+    private readonly TextBlock remoteStatus;
+    private ModelListPanel? remoteList;
+    private bool remoteLoading;
+    private bool didFetch;
 
     public ModelsPage(TrayContext app)
     {
@@ -74,8 +81,150 @@ internal sealed class ModelsPage : PageBase
         llmList.Selected += id => SwitchModel(llmList, id, isAsr: false);
         Push(llmList);
 
+        // MARK: Aktuelle Modelle von Hugging Face
+
+        refreshButton = new ConsoleButton(Loc.T("Aktualisieren"), icon: Icons.Kind.Refresh);
+        refreshButton.Click2 += () => LoadRemote(force: true);
+        // GroupLabel statt SectionHeader: der zeichnet in Theme.PageTitle und
+        // stünde als zweiter Seitentitel neben „Modelle".
+        Push(new GroupLabel(Loc.T("AKTUELLE MODELLE · HUGGING FACE")));
+        Push(new Cluster(new Control[] { refreshButton }), 8);
+
+        remoteStatus = TextBlock.Body(Loc.T("Suche aktuelle Modelle …"));
+        Push(remoteStatus, 8);
+
+        PushFootnotes();
+    }
+
+    /// <summary>Anzahl der festen Stapel-Elemente vor der Live-Liste: Kopf,
+    /// Hinweis, Hardware-Karte, die beiden festen Listen, Abschnittslabel,
+    /// Aktualisieren-Knopf und Statuszeile. Alles danach baut
+    /// <see cref="ShowRemote"/> neu auf.</summary>
+    private const int FixedElements = 8;
+
+    private void PushFootnotes()
+    {
+        Push(TextBlock.Footnote(Loc.T(
+            "Live von Hugging Face, ausschließlich Qwen-Modelle — das Chat-Template der Aufbereitung ist darauf abgestimmt, ein fremdes Modell würde still Unsinn liefern.")));
         Push(TextBlock.Footnote(Loc.T(
             "Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Rechner.")));
+    }
+
+    /// <summary>Beim ersten Anzeigen der Seite einmal live nachsehen.</summary>
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible && !didFetch) LoadRemote(force: false);
+    }
+
+    /// <summary>
+    /// Holt die Live-Liste und hängt sie als eigenes Panel unter die
+    /// Statuszeile. Fehler landen als Text in der Statuszeile — eine fehlende
+    /// Internet-Verbindung darf die Seite nicht unbrauchbar machen.
+    /// </summary>
+    private void LoadRemote(bool force)
+    {
+        if (remoteLoading) return;
+        if (didFetch && !force) return;
+
+        didFetch = true;
+        remoteLoading = true;
+        refreshButton.SetEnabled(false);
+        remoteStatus.SetText(Loc.T("Suche aktuelle Modelle …"));
+        remoteStatus.Visible = true;
+        NotifyHeightChanged();
+
+        _ = Task.Run(async () =>
+        {
+            List<HuggingFaceModels.Discovered> found;
+            string? error = null;
+            try
+            {
+                found = await HuggingFaceModels.FetchLlmAsync();
+            }
+            catch (Exception ex)
+            {
+                found = new List<HuggingFaceModels.Discovered>();
+                error = ex.Message;
+            }
+
+            // Ohne diesen Rückweg bliebe remoteLoading true und der Knopf tot.
+            try
+            {
+                if (IsDisposed || !IsHandleCreated) throw new ObjectDisposedException(nameof(ModelsPage));
+                var list = found;
+                var err = error;
+                BeginInvoke(() => ShowRemote(list, err));
+            }
+            catch
+            {
+                remoteLoading = false;
+                didFetch = false;
+            }
+        });
+    }
+
+    private void ShowRemote(List<HuggingFaceModels.Discovered> found, string? error)
+    {
+        remoteLoading = false;
+        refreshButton.SetEnabled(true);
+
+        // Der Stapel kennt kein Einfügen: alles hinter der Statuszeile abräumen
+        // (TrimStack gibt die Controls frei) und neu aufbauen.
+        remoteList = null;
+        TrimStack(FixedElements);
+
+        if (error != null)
+        {
+            remoteStatus.SetText(Loc.F("Keine Verbindung zu Hugging Face. {0}", error));
+            remoteStatus.Visible = true;
+            PushFootnotes();
+            NotifyHeightChanged();
+            return;
+        }
+        if (found.Count == 0)
+        {
+            remoteStatus.SetText(Loc.T("Keine Modelle gefunden."));
+            remoteStatus.Visible = true;
+            PushFootnotes();
+            NotifyHeightChanged();
+            return;
+        }
+
+        remoteStatus.Visible = false;
+        var ram = Hardware.MemoryGB;
+
+        remoteList = Push(new ModelListPanel(
+            found.Select(d => new ModelEntry
+            {
+                Id = d.Model.Id,
+                Name = d.Model.Name,
+                Note = Loc.F("Live von Hugging Face · {0}× geladen",
+                             HuggingFaceModels.Compact(d.Downloads)),
+                SizeHint = d.Model.SizeHint,
+                // Bewusst kein „Empfohlen": das empfiehlt schon die feste Liste
+                // nach RAM. Das beliebteste Repo ist oft ein Winzmodell.
+                TooBig = d.MinRamGB > ram,
+            }).ToArray(),
+            Settings.Shared.LlmModel)
+        {
+            Locked = () => app.IsBusy,
+        }, 12);
+
+        var list = remoteList;
+        list.Selected += id =>
+        {
+            var model = found.FirstOrDefault(d => d.Model.Id == id)?.Model;
+            if (model == null) return;
+            // Merken und speichern, BEVOR gewechselt wird: SwitchModel löst das
+            // Modell über ModelCatalog.LlmById auf, und dort steht es erst danach.
+            ModelCatalog.Remember(model);
+            Settings.Shared.Save();
+            SwitchModel(list, id, isAsr: false);
+        };
+
+        PushFootnotes();
+        NotifyHeightChanged();
     }
 
     /// <summary>Grober RAM-Bedarf je Modell — nur für das Abzeichen „Viel RAM nötig".</summary>
@@ -140,6 +289,14 @@ internal sealed class ModelsPage : PageBase
                     if (isAsr) s.AsrModel = id; else s.LlmModel = id;
                     s.Save();
                     list.SetSelected(id);
+                    // Feste und Live-Liste steuern DIESELBE Einstellung — die
+                    // jeweils andere muss ihre Markierung verlieren.
+                    if (!isAsr)
+                    {
+                        if (!ReferenceEquals(list, llmList)) llmList.SetSelected(id);
+                        if (remoteList != null && !ReferenceEquals(list, remoteList))
+                            remoteList.SetSelected(id);
+                    }
                     list.SetLoading(null, null);
                     app.ReloadModels();
                 });

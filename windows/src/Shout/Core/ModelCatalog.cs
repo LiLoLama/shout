@@ -56,7 +56,27 @@ public static class ModelCatalog
         => PhysicalMemoryGB() >= 16 ? LlmModels[1] : LlmModels[0];
 
     public static Model? AsrById(string id) => AsrModels.FirstOrDefault(m => m.Id == id);
-    public static Model? LlmById(string id) => LlmModels.FirstOrDefault(m => m.Id == id);
+
+    /// <summary>
+    /// Erst der feste Katalog, dann die über die Hugging-Face-Liste gewählten
+    /// Modelle aus den Einstellungen.
+    /// ACHTUNG: nicht aus <c>Settings.Load()</c> heraus aufrufen — dort ist
+    /// <c>Settings.Shared</c> noch nicht fertig initialisiert.
+    /// </summary>
+    public static Model? LlmById(string id)
+        => LlmModels.FirstOrDefault(m => m.Id == id)
+           ?? Settings.Shared.DiscoveredLlmModels.FirstOrDefault(m => m.Id == id);
+
+    /// <summary>Merkt ein entdecktes Modell, damit es nach dem Neustart auflösbar
+    /// bleibt. Mehr als ein Dutzend brauchen wir nicht — die Liste bleibt kurz.</summary>
+    public static void Remember(Model model)
+    {
+        var list = Settings.Shared.DiscoveredLlmModels;
+        if (LlmModels.Any(m => m.Id == model.Id)) return;
+        list.RemoveAll(m => m.Id == model.Id);
+        list.Insert(0, model);
+        if (list.Count > 12) list.RemoveRange(12, list.Count - 12);
+    }
 
     public static string PathFor(Model model) => Path.Combine(StoreIO.ModelDirectory, model.Id);
     public static bool IsDownloaded(Model model) => File.Exists(PathFor(model));

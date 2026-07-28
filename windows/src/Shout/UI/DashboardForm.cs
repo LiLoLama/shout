@@ -61,7 +61,7 @@ internal sealed class DashboardForm : Form
             timer.Start();
         };
         pages[Tab.Verlauf] = historyPage;
-        pages[Tab.Statistik] = new StatisticsPage(stats, history, dictionary);
+        pages[Tab.Statistik] = new StatisticsPage(app, stats, history, dictionary);
         pages[Tab.Modelle] = new ModelsPage(app);
         pages[Tab.Sync] = new SyncPage(dictionary, history, stats);
         pages[Tab.Unterstuetzen] = new SupportPage(app);

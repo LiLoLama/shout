@@ -1,22 +1,34 @@
+using Shout.App;
 using Shout.Core;
 
 namespace Shout.UI;
 
 /// <summary>
-/// „Statistiken" — Kennzahlen-Kacheln, Streak mit Aktivitäts-Kalender und
-/// abgeleitete Werte aus dem Verlauf (Mac: StatisticsView.swift). Das
-/// KI-Sprachprofil der Mac-App fehlt hier noch.
+/// „Statistiken" — Kennzahlen-Kacheln, Streak mit Aktivitäts-Kalender,
+/// abgeleitete Werte aus dem Verlauf und „Dein Sprachprofil" vom lokalen
+/// KI-Textmodell (Mac: StatisticsView.swift).
 /// </summary>
 internal sealed class StatisticsPage : PageBase, IRefreshablePage
 {
     protected override int MaxContentWidth => 680;
 
+    /// <summary>Diktate, bis „Dein Sprachprofil" freigeschaltet ist (wie am Mac).</summary>
+    private const int UnlockAt = 5;
+
+    private readonly TrayContext app;
     private readonly StatsStore stats;
     private readonly DictationHistory history;
     private readonly PersonalDictionary dictionary;
 
-    public StatisticsPage(StatsStore stats, DictationHistory history, PersonalDictionary dictionary)
+    /// <summary>Läuft gerade eine Profil-Erzeugung? Steuert Knopftext und Sperre.</summary>
+    private bool generating;
+    /// <summary>Letzter Fehlschlag, wird bis zum nächsten Versuch angezeigt.</summary>
+    private bool lastAttemptFailed;
+
+    public StatisticsPage(TrayContext app, StatsStore stats, DictationHistory history,
+                          PersonalDictionary dictionary)
     {
+        this.app = app;
         this.stats = stats;
         this.history = history;
         this.dictionary = dictionary;
@@ -53,7 +65,95 @@ internal sealed class StatisticsPage : PageBase, IRefreshablePage
             new InfoCard(Loc.T("Aktivste Zeit"), PeakTime() ?? "—"),
         }, 220));
 
+        PushVoiceProfile();
+
         NotifyHeightChanged();
+    }
+
+    // MARK: „Dein Sprachprofil"
+
+    /// <summary>
+    /// Freigeschaltet ab <see cref="UnlockAt"/> Diktaten. Ohne geladenes
+    /// KI-Textmodell gibt es nichts zu erzeugen — das ist unter Windows der
+    /// Normalfall, weil die Aufbereitung standardmäßig AUS ist. Darum in diesem
+    /// Fall ein klarer Hinweis statt eines Knopfs, der nichts tut.
+    /// </summary>
+    private void PushVoiceProfile()
+    {
+        var box = new ConsoleBox { Title = Loc.T("Dein Sprachprofil") };
+        var done = stats.Data.TotalDictations;
+
+        if (done < UnlockAt)
+        {
+            box.Add(TextBlock.Body(Loc.F("Wird nach {0} weiteren Diktaten freigeschaltet.", UnlockAt - done)), 0);
+            Push(box);
+            return;
+        }
+
+        var profile = Settings.Shared.VoiceProfile;
+        box.Add(profile.Length > 0
+            ? new TextBlock(profile, Theme.Body, Theme.Gray(0.9))
+            : TextBlock.Body(Loc.T("shout. kann aus deinen Diktaten ein kurzes Profil deines Sprachstils erstellen — vollständig lokal.")), 0);
+
+        if (!app.FormatterReady && !generating)
+        {
+            box.Add(TextBlock.Footnote(
+                Loc.T("Dafür muss „Text automatisch aufräumen“ eingeschaltet sein — das lädt das KI-Textmodell.")), 10);
+            Push(box);
+            return;
+        }
+
+        if (lastAttemptFailed)
+            box.Add(TextBlock.Footnote(Loc.T("Profil konnte nicht erstellt werden.")), 10);
+
+        var button = new ConsoleButton(generating
+            ? Loc.T("Erstelle …")
+            : profile.Length > 0 ? Loc.T("Aktualisieren") : Loc.T("Profil erstellen"));
+        button.SetEnabled(!generating);
+        button.Click2 += GenerateVoiceProfile;
+        box.Add(new Cluster(new Control[] { button }), 14);
+
+        Push(box);
+    }
+
+    /// <summary>Textprobe aus dem Verlauf ans Modell geben (wie am Mac: die
+    /// letzten 25 Diktate, auf 2000 Zeichen begrenzt).</summary>
+    private void GenerateVoiceProfile()
+    {
+        if (generating) return;
+
+        var sample = string.Join("\n", history.Entries.Take(25).Select(e => e.Text));
+        if (sample.Length > 2000) sample = sample[..2000];
+        if (sample.Trim().Length == 0) return;
+
+        generating = true;
+        lastAttemptFailed = false;
+        // NICHT synchron neu aufbauen: wir stecken noch im Click-Handler des
+        // Knopfs, den TrimStack gerade disposen würde. Erst nach der
+        // Maus-Verarbeitung umbauen.
+        BeginInvoke(new Action(Rebuild));
+
+        _ = Task.Run(async () =>
+        {
+            var profile = await app.DescribeVoiceAsync(sample);
+            // Das Fenster wird beim Sprachwechsel neu gebaut — nach dem Warten
+            // kann diese Seite also schon weg sein.
+            if (IsDisposed || !IsHandleCreated) return;
+            BeginInvoke(() =>
+            {
+                generating = false;
+                if (string.IsNullOrWhiteSpace(profile))
+                {
+                    lastAttemptFailed = true;
+                }
+                else
+                {
+                    Settings.Shared.VoiceProfile = profile.Trim();
+                    Settings.Shared.Save();
+                }
+                Rebuild();
+            });
+        });
     }
 
     // MARK: Ableitungen aus dem Verlauf (gleiche Regeln wie am Mac)

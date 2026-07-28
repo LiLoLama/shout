@@ -106,6 +106,64 @@ public sealed class LlmFormatter : IDisposable
         }
     }
 
+    /// <summary>
+    /// „Dein Sprachprofil": beschreibt den Diktierstil aus einer Textprobe
+    /// (Mac: Formatter.describeVoice). Liefert null, wenn kein Modell geladen
+    /// ist oder etwas schiefgeht — die Statistik-Seite zeigt dann einen Hinweis.
+    /// Anders als FormatAsync gilt hier KEINE Mindestlänge; die Probe kommt aus
+    /// dem Verlauf und ist ohnehin lang.
+    /// </summary>
+    public async Task<string?> DescribeVoiceAsync(string sample, CancellationToken cancel = default)
+    {
+        var text = sample.Trim();
+        if (weights == null || modelParams == null) return null;
+        if (text.Length == 0) return null;
+
+        await gate.WaitAsync(cancel);
+        try
+        {
+            var executor = new StatelessExecutor(weights, modelParams);
+            var prompt =
+                "<|im_start|>system\n" + VoicePrompt() + "<|im_end|>\n" +
+                "<|im_start|>user\n" + text + "<|im_end|>\n" +
+                "<|im_start|>assistant\n";
+
+            // Wärmer als die Bereinigung (0,2): hier soll ein lesbarer Absatz
+            // entstehen, keine wortgetreue Umschrift.
+            var inference = new InferenceParams
+            {
+                MaxTokens = 260,
+                AntiPrompts = new[] { "<|im_end|>" },
+                SamplingPipeline = new DefaultSamplingPipeline { Temperature = 0.6f },
+            };
+
+            var output = new StringBuilder();
+            await foreach (var token in executor.InferAsync(prompt, inference, cancel))
+                output.Append(token);
+
+            var cleaned = StripArtifacts(output.ToString());
+            return cleaned.Length == 0 ? null : cleaned;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>Der Profiltext steht in der Oberfläche, folgt also der
+    /// Oberflächensprache — nicht der Diktier-Sprache.</summary>
+    private static string VoicePrompt() => Loc.IsGerman
+        ? """
+        Du analysierst den Sprach- und Diktierstil einer Person anhand ihrer Diktate. Beschreibe den Stil in 2–3 knappen, wohlwollenden deutschen Sätzen und sprich die Person mit „Du" an (z. B. Wortwahl, Tempo, Struktur, typische Muster). Keine Aufzählung, kein Vorwort, keine Anführungszeichen — nur die Beschreibung.
+        """
+        : """
+        You analyse how a person speaks and dictates, based on their dictations. Describe the style in 2 to 3 short, kind English sentences and address the person as "you" (for example word choice, pace, structure, recurring patterns). No list, no preamble, no quotation marks, just the description.
+        """;
+
     private static string SystemPrompt(string? termHint)
     {
         var terms = termHint != null

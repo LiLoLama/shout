@@ -71,9 +71,11 @@ see [`windows/README.md`](windows/README.md) for details.
 
 ### iOS
 
-No App Store build yet — build it yourself from this repo (see below) and run it
-on your device from Xcode. The app includes a **dictation keyboard** extension so
-you can dictate into any app; it needs “Full Access” in the keyboard settings.
+Not on the App Store, and there is no public beta. The app runs on a real device
+(tested via TestFlight on an iPhone 15 Pro Max); to use it, build it yourself from
+this repo (see below) and run it from Xcode. It includes a **dictation keyboard**
+extension so you can dictate into any app; it needs “Full Access” in the keyboard
+settings.
 
 ## Build from source
 

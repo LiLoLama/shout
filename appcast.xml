@@ -3,6 +3,19 @@
     <channel>
         <title>shout</title>
         <item>
+            <title>1.0.2</title>
+            <pubDate>Tue, 28 Jul 2026 12:19:18 +0200</pubDate>
+            <link>https://github.com/LiLoLama/shout</link>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.0.2/shout-1.0.2.dmg" length="17011318" type="application/octet-stream" sparkle:edSignature="zruRY/UW5X7kuFdzhzQJv3hTrkJQEslNZWVcoAndzYdjMljtptLAUeAgLURA/NMr/LCBcBEnfRwCchuYlKRcCA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.0.2/shout3-2.delta" sparkle:deltaFrom="2" length="1474446" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="CV07Ike+/7T820JXzbwDAQajKo8YMsuDQrgVdiXGWl/LYp85oa1EICoBsSa0RhQyvTtKBcaSvn4r/ibD9r7yAw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0.1</title>
             <pubDate>Thu, 09 Jul 2026 19:06:48 +0200</pubDate>
             <link>https://github.com/LiLoLama/shout</link>

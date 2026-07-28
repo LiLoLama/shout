@@ -171,7 +171,7 @@ struct OnboardingView: View {
             if step < stepCount - 1 {
                 Button(Loc.t("Weiter")) { step += 1 }.buttonStyle(PrimaryOnboardButton())
             } else {
-                Button(Loc.t("Los geht's")) { onFinish() }.buttonStyle(PrimaryOnboardButton())
+                Button(Loc.t("Los geht’s")) { onFinish() }.buttonStyle(PrimaryOnboardButton())
             }
         }
         .padding(.horizontal, 22).padding(.vertical, 16)

@@ -17,7 +17,7 @@ struct HomeView: View {
 
                 if case .recording = engine.state {
                     Button(role: .destructive) { engine.cancelRecording() } label: {
-                        Label("Verwerfen", systemImage: "xmark")
+                        Label(Loc.t("Verwerfen"), systemImage: "xmark")
                     }
                     .buttonStyle(.bordered)
                 }
@@ -27,7 +27,7 @@ struct HomeView: View {
                         Text(message)
                             .font(.footnote).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Button("Erneut versuchen") { engine.recover() }
+                        Button(Loc.t("Erneut versuchen")) { engine.recover() }
                             .buttonStyle(.borderedProminent)
                     }
                     .padding(.horizontal, 24)
@@ -58,24 +58,24 @@ struct HomeView: View {
             case .loadingModel:
                 VStack(spacing: 6) {
                     if let p = engine.asrProgress, p > 0.001, p < 0.999 {
-                        ProgressView(value: p) { Text("Sprachmodell wird geladen … \(Int(p * 100)) %") }
+                        ProgressView(value: p) { Text(Loc.f("Sprachmodell wird geladen … %d %%", Int(p * 100))) }
                             .font(.footnote)
                     } else {
-                        ProgressView { Text("Sprachmodell wird geladen …").font(.footnote) }
+                        ProgressView { Text(Loc.t("Sprachmodell wird geladen …")).font(.footnote) }
                     }
-                    Text("Einmalig — danach läuft alles offline.")
+                    Text(Loc.t("Einmalig — danach läuft alles offline."))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 32)
             case .idle:
-                Text(engine.lastResult == nil ? "Tippe zum Diktieren" : "Bereit")
+                Text(engine.lastResult == nil ? Loc.t("Tippe zum Diktieren") : Loc.t("Bereit"))
                     .font(.subheadline).foregroundStyle(.secondary)
             case .recording:
-                Text("Ich höre zu …").font(.subheadline).foregroundStyle(Color.shoutLive)
+                Text(Loc.t("Ich höre zu …")).font(.subheadline).foregroundStyle(Color.shoutLive)
             case .working:
-                Text("Verarbeite …").font(.subheadline).foregroundStyle(.secondary)
+                Text(Loc.t("Verarbeite …")).font(.subheadline).foregroundStyle(.secondary)
             case .failed:
-                Text("Problem").font(.subheadline).foregroundStyle(.secondary)
+                Text(Loc.t("Problem")).font(.subheadline).foregroundStyle(.secondary)
             }
         }
     }
@@ -112,7 +112,7 @@ struct HomeView: View {
         }
         .buttonStyle(.plain)
         .disabled(engine.state == .loadingModel || engine.state == .working || isFailed)
-        .accessibilityLabel(engine.state == .recording ? "Aufnahme stoppen" : "Aufnahme starten")
+        .accessibilityLabel(engine.state == .recording ? Loc.t("Aufnahme stoppen") : Loc.t("Aufnahme starten"))
     }
 
     private var isFailed: Bool { if case .failed = engine.state { return true }; return false }
@@ -124,9 +124,9 @@ struct HomeView: View {
             Image(systemName: "keyboard.badge.ellipsis")
                 .font(.title3).foregroundStyle(Color.shoutLive)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Fertig — zurück zu deiner App wischen")
+                Text(Loc.t("Fertig — zurück zu deiner App wischen"))
                     .font(.subheadline.weight(.semibold))
-                Text("Dann in der shout-Tastatur auf Einfügen tippen.")
+                Text(Loc.t("Dann in der shout-Tastatur auf Einfügen tippen."))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -142,7 +142,7 @@ struct HomeView: View {
     private func resultCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("In Zwischenablage kopiert", systemImage: "doc.on.clipboard")
+                Label(Loc.t("In Zwischenablage kopiert"), systemImage: "doc.on.clipboard")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
@@ -160,12 +160,12 @@ struct HomeView: View {
                     copied = true
                     Task { try? await Task.sleep(nanoseconds: 1_500_000_000); copied = false }
                 } label: {
-                    Label(copied ? "Kopiert ✓" : "Kopieren", systemImage: "doc.on.doc")
+                    Label(copied ? Loc.t("Kopiert ✓") : Loc.t("Kopieren"), systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.bordered)
 
                 ShareLink(item: text) {
-                    Label("Teilen", systemImage: "square.and.arrow.up")
+                    Label(Loc.t("Teilen"), systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.bordered)
             }

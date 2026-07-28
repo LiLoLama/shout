@@ -71,6 +71,11 @@ final class MobileEngine: ObservableObject {
         if d.string(forKey: "formatModel") == nil {
             d.set(ModelCatalog.recommendedFormatting(ramGB: Hardware.physicalMemoryGB).id, forKey: "formatModel")
         }
+        // Erststart: auch diktiert wird in der Systemsprache (wie Mac und Windows).
+        if d.string(forKey: "transcriptionLanguage") == nil {
+            let system = Locale.preferredLanguages.first ?? Locale.current.identifier
+            d.set(system.hasPrefix("de") ? "de" : "en", forKey: "transcriptionLanguage")
+        }
 
         recorder.onLevel = { [weak self] level in
             Task { @MainActor in
@@ -105,7 +110,7 @@ final class MobileEngine: ObservableObject {
                 if pendingAutoStart { pendingAutoStart = false; startRecording() }
             } catch {
                 NSLog("shout: Modell-Ladefehler: \(error)")
-                state = .failed("Sprachmodell konnte nicht geladen werden. Internet prüfen und erneut versuchen.")
+                state = .failed(Loc.t("Sprachmodell konnte nicht geladen werden. Internet prüfen und erneut versuchen."))
             }
             asrProgress = nil
             asrLoadingID = nil
@@ -129,7 +134,7 @@ final class MobileEngine: ObservableObject {
     /// Modellwechsel (aus den Einstellungen) — nur im Ruhezustand.
     func switchASRModel(to id: String) async {
         guard state == .idle || isFailed else {
-            modelNote = "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen wird."
+            modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen wird.")
             return
         }
         modelNote = nil
@@ -148,7 +153,7 @@ final class MobileEngine: ObservableObject {
             UserDefaults.standard.set(previous, forKey: "asrModel")
             try? await transcriber.reload()
             state = .idle
-            modelNote = "Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv."
+            modelNote = Loc.t("Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv.")
         }
         asrProgress = nil
         asrLoadingID = nil
@@ -156,7 +161,7 @@ final class MobileEngine: ObservableObject {
 
     func switchFormatModel(to id: String) async {
         guard state == .idle || isFailed else {
-            modelNote = "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen wird."
+            modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen wird.")
             return
         }
         modelNote = nil
@@ -305,17 +310,18 @@ final class MobileEngine: ObservableObject {
     func importBundle(from url: URL) -> String {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else { return "Datei nicht lesbar." }
+        guard let data = try? Data(contentsOf: url) else { return Loc.t("Datei nicht lesbar.") }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let bundle = try? decoder.decode(BackupBundle.self, from: data) else {
-            return "Ungültige Backup-Datei."
+            return Loc.t("Ungültige Backup-Datei.")
         }
         dictionary.replaceContents(bundle.dictionary)
         history.replaceEntries(bundle.history)
         stats.replaceData(bundle.stats)
         if let f = bundle.settings.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let vp = bundle.settings.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
-        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate."
+        return Loc.f("Importiert: %d Begriffe, %d Diktate.",
+                     bundle.dictionary.terms.count, bundle.history.count)
     }
 }

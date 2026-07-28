@@ -13,31 +13,31 @@ struct MobileDictionaryView: View {
             Form {
                 Section {
                     HStack {
-                        TextField("Neuer Begriff (z. B. inthezone)", text: $newTerm)
+                        TextField(Loc.t("Neuer Begriff (z. B. inthezone)"), text: $newTerm)
                             .autocorrectionDisabled()
                             .onSubmit(addTerm)
-                        Button("Hinzufügen", action: addTerm)
+                        Button(Loc.t("Hinzufügen"), action: addTerm)
                             .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     ForEach(dictionary.contents.terms, id: \.self) { term in
                         Text(term)
                             .swipeActions {
                                 Button(role: .destructive) { dictionary.removeTerm(term) } label: {
-                                    Label("Löschen", systemImage: "trash")
+                                    Label(Loc.t("Löschen"), systemImage: "trash")
                                 }
                             }
                     }
                 } header: {
-                    Text("Begriffe")
+                    Text(Loc.t("Begriffe"))
                 } footer: {
-                    Text("Eigennamen und Fachbegriffe, die shout. richtig schreiben soll.")
+                    Text(Loc.t("Eigennamen und Fachbegriffe, die shout. richtig schreiben soll."))
                 }
 
                 Section {
                     VStack(spacing: 8) {
-                        TextField("falsch", text: $newWrong).autocorrectionDisabled()
-                        TextField("richtig", text: $newRight).autocorrectionDisabled()
-                        Button("Korrektur hinzufügen", action: addCorrection)
+                        TextField(Loc.t("falsch"), text: $newWrong).autocorrectionDisabled()
+                        TextField(Loc.t("richtig"), text: $newRight).autocorrectionDisabled()
+                        Button(Loc.t("Korrektur hinzufügen"), action: addCorrection)
                             .disabled(newWrong.trimmingCharacters(in: .whitespaces).isEmpty
                                       || newRight.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
@@ -49,17 +49,17 @@ struct MobileDictionaryView: View {
                         }
                         .swipeActions {
                             Button(role: .destructive) { dictionary.removeCorrection(c) } label: {
-                                Label("Löschen", systemImage: "trash")
+                                Label(Loc.t("Löschen"), systemImage: "trash")
                             }
                         }
                     }
                 } header: {
-                    Text("Automatisch verbessert")
+                    Text(Loc.t("Automatisch verbessert"))
                 } footer: {
-                    Text("Diese Ersetzungen werden nach jeder Transkription angewendet.")
+                    Text(Loc.t("Diese Ersetzungen werden nach jeder Transkription angewendet."))
                 }
             }
-            .navigationTitle("Wörterbuch")
+            .navigationTitle(Loc.t("Wörterbuch"))
         }
     }
 

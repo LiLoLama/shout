@@ -8,9 +8,13 @@ struct MobileHistoryView: View {
         NavigationStack {
             Group {
                 if history.entries.isEmpty {
-                    ContentUnavailableView("Noch keine Diktate",
-                                           systemImage: "clock.arrow.circlepath",
-                                           description: Text("Deine Diktate erscheinen hier."))
+                    // Loc.t liefert einen String — der Titel-Initializer erwartet einen
+                    // LocalizedStringKey. Darum der label:-Initializer mit eigenem Label.
+                    ContentUnavailableView {
+                        Label(Loc.t("Noch keine Diktate"), systemImage: "clock.arrow.circlepath")
+                    } description: {
+                        Text(Loc.t("Deine Diktate erscheinen hier."))
+                    }
                 } else {
                     List {
                         ForEach(history.entries) { entry in
@@ -21,34 +25,34 @@ struct MobileHistoryView: View {
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) { history.delete(entry) } label: {
-                                    Label("Löschen", systemImage: "trash")
+                                    Label(Loc.t("Löschen"), systemImage: "trash")
                                 }
                             }
                             .swipeActions(edge: .leading) {
                                 Button {
                                     UIPasteboard.general.string = entry.text
                                 } label: {
-                                    Label("Kopieren", systemImage: "doc.on.doc")
+                                    Label(Loc.t("Kopieren"), systemImage: "doc.on.doc")
                                 }
                                 .tint(Color.shoutLive)
                             }
                             .contextMenu {
                                 Button { UIPasteboard.general.string = entry.text } label: {
-                                    Label("Kopieren", systemImage: "doc.on.doc")
+                                    Label(Loc.t("Kopieren"), systemImage: "doc.on.doc")
                                 }
-                                ShareLink(item: entry.text) { Label("Teilen", systemImage: "square.and.arrow.up") }
+                                ShareLink(item: entry.text) { Label(Loc.t("Teilen"), systemImage: "square.and.arrow.up") }
                                 Button(role: .destructive) { history.delete(entry) } label: {
-                                    Label("Löschen", systemImage: "trash")
+                                    Label(Loc.t("Löschen"), systemImage: "trash")
                                 }
                             }
                         }
                     }
                 }
             }
-            .navigationTitle("Verlauf")
+            .navigationTitle(Loc.t("Verlauf"))
             .toolbar {
                 if !history.entries.isEmpty {
-                    Button("Alle löschen", role: .destructive) { history.clear() }
+                    Button(Loc.t("Alle löschen"), role: .destructive) { history.clear() }
                 }
             }
         }

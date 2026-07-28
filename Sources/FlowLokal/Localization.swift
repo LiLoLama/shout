@@ -370,7 +370,7 @@ final class Loc: ObservableObject {
             "Tip: you can change the recording mode and key later under “Recording & text”.",
         "Zurück": "Back",
         "Weiter": "Continue",
-        "Los geht's": "Let’s go",
+        "Los geht’s": "Let’s go",
 
         // MARK: - Korrigieren und Lern-Hinweis
 
@@ -380,6 +380,101 @@ final class Loc: ObservableObject {
         "Übernehmen": "Apply",
         "Ins Wörterbuch gelernt": "Learned into the dictionary",
         "Rückgängig": "Undo",
+
+        // MARK: - iOS: Diktier-Screen
+
+        "Diktieren": "Dictate",
+        "Verwerfen": "Discard",
+        "Sprachmodell wird geladen …": "Loading speech model…",
+        "Sprachmodell wird geladen … %d %%": "Loading speech model… %d%%",
+        "Einmalig — danach läuft alles offline.": "Just once — everything runs offline afterwards.",
+        "Tippe zum Diktieren": "Tap to dictate",
+        "Bereit": "Ready",
+        "Ich höre zu …": "Listening…",
+        "Problem": "Problem",
+        // „Aufnahme starten" steht schon im Abschnitt „Aufnahme-Pille".
+        "Aufnahme stoppen": "Stop recording",
+        "Fertig — zurück zu deiner App wischen": "Done — swipe back to your app",
+        "Dann in der shout-Tastatur auf Einfügen tippen.": "Then tap Insert in the shout keyboard.",
+        "In Zwischenablage kopiert": "Copied to the clipboard",
+        "Kopiert ✓": "Copied ✓",
+        "Teilen": "Share",
+
+        // MARK: - iOS: Verlauf und Wörterbuch
+
+        "Deine Diktate erscheinen hier.": "Your dictations appear here.",
+        "Begriffe": "Terms",
+        "Eigennamen und Fachbegriffe, die shout. richtig schreiben soll.":
+            "Proper nouns and technical terms shout. should spell correctly.",
+        "Korrektur hinzufügen": "Add correction",
+        "Diese Ersetzungen werden nach jeder Transkription angewendet.":
+            "These replacements are applied after every transcription.",
+
+        // MARK: - iOS: Einstellungen
+
+        "Diktat": "Dictation",
+        "Sprache": "Language",
+        "Aufbereitungs-Modell lädt … %d %%": "Cleanup model loading… %d%%",
+        "Sprachbefehle („Komma“, „neue Zeile“ …)": "Spoken commands (“comma”, “new line”…)",
+        "Auto-Stopp bei Sprechpause": "Auto-stop on a speech pause",
+        "Sprache der Bedienoberfläche. „Wie das System“ folgt der Sprache deines iPhones.":
+            "Language of the user interface. “Match the system” follows your iPhone’s language.",
+        "Gerät": "Device",
+        "★ = Empfehlung für dein Gerät. Tippe „Laden“, um ein Modell herunterzuladen und zu aktivieren — einmalig, danach läuft alles offline.":
+            "★ = recommended for your device. Tap “Download” to fetch and activate a model — once, then everything runs offline.",
+        "Aufbereitung (KI-Textmodell)": "Cleanup (AI text model)",
+        "★ Empfohlen": "★ Recommended",
+        "Aktiv": "Active",
+        "Laden": "Download",
+        "Wird geladen … %d %%": "Downloading… %d%%",
+        "Backup exportieren (teilen)": "Export backup (share)",
+        "Backup importieren": "Import backup",
+        "Daten (Mac ↔ iPhone)": "Data (Mac ↔ iPhone)",
+        "Am Mac unter „Sync & Geräte“ exportieren, per AirDrop aufs iPhone senden und hier importieren — übernimmt Wörterbuch, Verlauf, Statistiken und Einstellungen. Achtung: Import ersetzt die aktuellen Daten.":
+            "Export on the Mac under “Sync & devices”, send it to the iPhone via AirDrop and import it here — this takes over the dictionary, history, statistics and settings. Careful: importing replaces the current data.",
+        "Wörter diktiert": "Words dictated",
+        "Serie": "Streak",
+        "%d Tage": "%d days",
+        "Entwicklung unterstützen": "Support development",
+        "shout. ist frei und quelloffen (GPL-3.0). Ich bemühe mich, die App aktuell zu halten und zu erweitern — Unterstützung ist freiwillig und hilft sehr. ❤️":
+            "shout. is free and open source (GPL-3.0). I do my best to keep it current and extend it — support is voluntary and helps a lot. ❤️",
+
+        // MARK: - iOS: Erststart
+
+        "Diktieren direkt auf deinem iPhone — die Spracherkennung läuft komplett lokal. Keine Cloud, keine Konten, nichts verlässt dein Gerät.":
+            "Dictate right on your iPhone — speech recognition runs entirely locally. No cloud, no accounts, nothing leaves your device.",
+        "Mikrofon erlaubt": "Microphone allowed",
+        "Für die Aufnahme deiner Diktate.": "To record your dictations.",
+        "Sprachmodell geladen": "Speech model loaded",
+        "Sprachmodell lädt …": "Speech model loading…",
+        "%@ · %@ — einmalig, danach offline.": "%@ · %@ — once, then offline.",
+        "Erlauben": "Allow",
+
+        // MARK: - iOS: Engine-Meldungen
+
+        "Sprachmodell konnte nicht geladen werden. Internet prüfen und erneut versuchen.":
+            "The speech model could not be loaded. Check your connection and try again.",
+        "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen wird.":
+            "You can only switch models while nothing is being recorded.",
+        "Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv.":
+            "The model could not be loaded (offline?). The previous one stays active.",
+
+        // MARK: - iOS: Diktier-Tastatur
+
+        "Für das Einfügen bitte Vollzugriff erlauben:\nEinstellungen → Allgemein → Tastatur → shout.":
+            "Please allow full access for inserting:\nSettings → General → Keyboard → shout.",
+        "Leerzeichen": "Space",
+        "Einfügen: „%@“": "Insert: “%@”",
+
+        // MARK: - Modell-Beschreibungen (iOS-Katalog)
+
+        "~150 MB · am schnellsten, einfache Sätze": "~150 MB · fastest, simple sentences",
+        "~500 MB · schnell & solide": "~500 MB · fast & solid",
+        "~600 MB · sehr genau, etwas langsamer": "~600 MB · very accurate, a bit slower",
+        "~1,5 GB · maximale Genauigkeit": "~1.5 GB · maximum accuracy",
+        "~0,7 GB · am schnellsten": "~0.7 GB · fastest",
+        "~1 GB · besser im Deutschen": "~1 GB · better at German",
+        "~2 GB · beste Qualität, etwas langsamer": "~2 GB · best quality, a bit slower",
 
         // MARK: - Tastennamen (Hotkey-Anzeige)
 

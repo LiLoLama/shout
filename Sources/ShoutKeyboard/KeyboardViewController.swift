@@ -45,16 +45,16 @@ final class KeyboardViewController: UIInputViewController {
         title.font = .systemFont(ofSize: 15, weight: .heavy)
         title.textColor = accent
 
-        let diktieren = primaryButton(title: "  Diktieren", icon: "mic.fill")
+        let diktieren = primaryButton(title: "  " + Loc.t("Diktieren"), icon: "mic.fill")
         diktieren.addTarget(self, action: #selector(diktierenTapped), for: .touchUpInside)
         diktieren.heightAnchor.constraint(equalToConstant: 64).isActive = true
 
-        einfuegenButton = secondaryButton(title: "Einfügen")
+        einfuegenButton = secondaryButton(title: Loc.t("Einfügen"))
         einfuegenButton.addTarget(self, action: #selector(einfuegenTapped), for: .touchUpInside)
         einfuegenButton.heightAnchor.constraint(equalToConstant: 48).isActive = true
         einfuegenButton.titleLabel?.lineBreakMode = .byTruncatingTail
 
-        hintLabel.text = "Für das Einfügen bitte Vollzugriff erlauben:\nEinstellungen → Allgemein → Tastatur → shout."
+        hintLabel.text = Loc.t("Für das Einfügen bitte Vollzugriff erlauben:\nEinstellungen → Allgemein → Tastatur → shout.")
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .secondaryLabel
         hintLabel.numberOfLines = 0
@@ -80,7 +80,7 @@ final class KeyboardViewController: UIInputViewController {
         let globe = iconButton("globe")
         globe.addTarget(self, action: #selector(nextKeyboardTapped), for: .touchUpInside)
 
-        let space = secondaryButton(title: "Leerzeichen")
+        let space = secondaryButton(title: Loc.t("Leerzeichen"))
         space.addTarget(self, action: #selector(spaceTapped), for: .touchUpInside)
 
         let back = iconButton("delete.left")
@@ -141,7 +141,7 @@ final class KeyboardViewController: UIInputViewController {
         if let text = pending {
             let flat = text.replacingOccurrences(of: "\n", with: " ")
             let preview = flat.count > 42 ? String(flat.prefix(42)) + "…" : flat
-            einfuegenButton.configuration?.title = "Einfügen: \u{201E}\(preview)\u{201C}"
+            einfuegenButton.configuration?.title = Loc.f("Einfügen: „%@“", preview)
             einfuegenButton.isHidden = false
         } else {
             einfuegenButton.isHidden = true

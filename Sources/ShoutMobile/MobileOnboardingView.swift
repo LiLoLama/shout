@@ -12,9 +12,9 @@ struct MobileOnboardingView: View {
     private var modelSubtitle: String {
         let id = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
         if let option = ModelCatalog.asr.first(where: { $0.id == id }) {
-            return "\(option.name) · \(option.note) — einmalig, danach offline."
+            return Loc.f("%@ · %@ — einmalig, danach offline.", option.name, Loc.t(option.note))
         }
-        return "Einmalig — danach läuft alles offline."
+        return Loc.t("Einmalig — danach läuft alles offline.")
     }
 
     var body: some View {
@@ -25,9 +25,9 @@ struct MobileOnboardingView: View {
                 .font(.system(size: 52)).foregroundStyle(Color.shoutLive)
 
             VStack(spacing: 10) {
-                Text("Willkommen bei shout.")
+                Text(Loc.t("Willkommen bei shout."))
                     .font(.title2.bold())
-                Text("Diktieren direkt auf deinem iPhone — die Spracherkennung läuft komplett lokal. Keine Cloud, keine Konten, nichts verlässt dein Gerät.")
+                Text(Loc.t("Diktieren direkt auf deinem iPhone — die Spracherkennung läuft komplett lokal. Keine Cloud, keine Konten, nichts verlässt dein Gerät."))
                     .font(.subheadline).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -35,15 +35,15 @@ struct MobileOnboardingView: View {
 
             VStack(spacing: 14) {
                 stepRow(done: micGranted,
-                        title: micGranted ? "Mikrofon erlaubt" : "Mikrofon erlauben",
-                        subtitle: "Für die Aufnahme deiner Diktate.") {
+                        title: micGranted ? Loc.t("Mikrofon erlaubt") : Loc.t("Mikrofon erlauben"),
+                        subtitle: Loc.t("Für die Aufnahme deiner Diktate.")) {
                     AVAudioApplication.requestRecordPermission { granted in
                         Task { @MainActor in micGranted = granted }
                     }
                 }
 
                 stepRow(done: engine.transcriberReady,
-                        title: engine.transcriberReady ? "Sprachmodell geladen" : "Sprachmodell lädt …",
+                        title: engine.transcriberReady ? Loc.t("Sprachmodell geladen") : Loc.t("Sprachmodell lädt …"),
                         subtitle: modelSubtitle,
                         action: nil)
                 if !engine.transcriberReady {
@@ -64,7 +64,7 @@ struct MobileOnboardingView: View {
             Button {
                 onFinish()
             } label: {
-                Text("Los geht’s")
+                Text(Loc.t("Los geht’s"))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -87,7 +87,7 @@ struct MobileOnboardingView: View {
             }
             Spacer()
             if !done, let action {
-                Button("Erlauben", action: action).buttonStyle(.bordered).controlSize(.small)
+                Button(Loc.t("Erlauben"), action: action).buttonStyle(.bordered).controlSize(.small)
             }
         }
         .padding(12)

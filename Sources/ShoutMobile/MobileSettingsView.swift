@@ -13,6 +13,8 @@ struct MobileSettingsView: View {
     @AppStorage("silenceSeconds") private var silenceSeconds = 1.5
     @AppStorage("asrModel") private var asrModel = ModelCatalog.defaultASR
     @AppStorage("formatModel") private var formatModel = ModelCatalog.defaultFormatting
+    /// Oberflächensprache — unabhängig von der Diktier-Sprache oben.
+    @AppStorage(Loc.storageKey) private var uiLanguage = "system"
     @State private var formattingOn = false
 
     @State private var importing = false
@@ -30,7 +32,7 @@ struct MobileSettingsView: View {
                 statsSection
                 supportSection
             }
-            .navigationTitle("Einstellungen")
+            .navigationTitle(Loc.t("Einstellungen"))
             .onAppear { formattingOn = engine.formattingEnabled }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
                 switch result {
@@ -45,23 +47,32 @@ struct MobileSettingsView: View {
     // MARK: - Diktat
 
     private var dictationSection: some View {
-        Section("Diktat") {
-            Picker("Sprache", selection: $language) {
-                Text("Deutsch").tag("de")
-                Text("English").tag("en")
-                Text("Automatisch").tag("auto")
+        Section(Loc.t("Diktat")) {
+            Picker(Loc.t("Sprache"), selection: $language) {
+                Text(Loc.t("Deutsch")).tag("de")
+                Text(Loc.t("English")).tag("en")
+                Text(Loc.t("Automatisch")).tag("auto")
             }
-            Toggle("Text automatisch aufräumen", isOn: $formattingOn)
+            // Die Oberflächensprache ist unabhängig von der Diktier-Sprache oben.
+            Picker(Loc.t("Oberfläche"), selection: Binding(
+                get: { uiLanguage },
+                set: { Loc.shared.apply($0) }
+            )) {
+                ForEach(Loc.languageOptions, id: \.key) { option in
+                    Text(option.label).tag(option.key)
+                }
+            }
+            Toggle(Loc.t("Text automatisch aufräumen"), isOn: $formattingOn)
                 .onChange(of: formattingOn) { _, on in engine.formattingEnabled = on }
             if formattingOn, let p = engine.formatProgress, p > 0.001, p < 0.999 {
-                ProgressView(value: p) { Text("Aufbereitungs-Modell lädt … \(Int(p * 100)) %").font(.caption) }
+                ProgressView(value: p) { Text(Loc.f("Aufbereitungs-Modell lädt … %d %%", Int(p * 100))).font(.caption) }
             }
-            Toggle("Sprachbefehle („Komma“, „neue Zeile“ …)", isOn: $speechCommands)
-            Toggle("Klang-Signale", isOn: $soundCues)
-            Toggle("Auto-Stopp bei Sprechpause", isOn: $autoStop)
+            Toggle(Loc.t("Sprachbefehle („Komma“, „neue Zeile“ …)"), isOn: $speechCommands)
+            Toggle(Loc.t("Klang-Signale"), isOn: $soundCues)
+            Toggle(Loc.t("Auto-Stopp bei Sprechpause"), isOn: $autoStop)
             if autoStop {
                 HStack {
-                    Text("Pause bis Stopp")
+                    Text(Loc.t("Pause bis Stopp"))
                     Slider(value: $silenceSeconds, in: 0.5...3.0, step: 0.1)
                     Text(String(format: "%.1f s", silenceSeconds)).font(.caption).monospacedDigit()
                 }
@@ -76,17 +87,17 @@ struct MobileSettingsView: View {
     private var modelSection: some View {
         Group {
             Section {
-                LabeledContent("Gerät", value: "\(Hardware.chip) · \(ram) GB RAM")
+                LabeledContent(Loc.t("Gerät"), value: "\(Hardware.chip) · \(ram) GB RAM")
                 if let note = engine.modelNote {
                     Text(note).font(.caption).foregroundStyle(Color.shoutLive)
                 }
             } header: {
-                Text("Modelle")
+                Text(Loc.t("Modelle"))
             } footer: {
-                Text("★ = Empfehlung für dein Gerät. Tippe „Laden“, um ein Modell herunterzuladen und zu aktivieren — einmalig, danach läuft alles offline.")
+                Text(Loc.t("★ = Empfehlung für dein Gerät. Tippe „Laden“, um ein Modell herunterzuladen und zu aktivieren — einmalig, danach läuft alles offline."))
             }
 
-            Section("Transkription (Sprache → Text)") {
+            Section(Loc.t("Transkription (Sprache → Text)")) {
                 ForEach(ModelCatalog.asr) { o in
                     modelRow(o,
                              active: asrModel == o.id,
@@ -99,7 +110,7 @@ struct MobileSettingsView: View {
             }
 
             if formattingOn {
-                Section("Aufbereitung (KI-Textmodell)") {
+                Section(Loc.t("Aufbereitung (KI-Textmodell)")) {
                     ForEach(ModelCatalog.formatting) { o in
                         modelRow(o,
                                  active: formatModel == o.id,
@@ -123,36 +134,36 @@ struct MobileSettingsView: View {
                     HStack(spacing: 6) {
                         Text(o.name).font(.subheadline.weight(.medium))
                         if recommended {
-                            Text("★ Empfohlen").font(.caption2.weight(.semibold))
+                            Text(Loc.t("★ Empfohlen")).font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(Capsule().fill(Color.shoutLive.opacity(0.15)))
                                 .foregroundStyle(Color.shoutLive)
                         }
                         if ram < o.minRAMGB {
-                            Text("Viel RAM nötig").font(.caption2)
+                            Text(Loc.t("Viel RAM nötig")).font(.caption2)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(Capsule().fill(Color.secondary.opacity(0.15)))
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    Text(o.note).font(.caption).foregroundStyle(.secondary)
+                    Text(Loc.t(o.note)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if active && !loading {
-                    Label("Aktiv", systemImage: "checkmark.circle.fill")
+                    Label(Loc.t("Aktiv"), systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.medium)).foregroundStyle(.green)
                         .labelStyle(.titleAndIcon)
                 } else if loading {
                     ProgressView().controlSize(.small)
                 } else {
-                    Button("Laden", action: action)
+                    Button(Loc.t("Laden"), action: action)
                         .buttonStyle(.bordered).controlSize(.small)
                         .disabled(anyModelLoading)
                 }
             }
             if loading, let p = progress, p > 0.001, p < 0.999 {
                 ProgressView(value: p) {
-                    Text("Wird geladen … \(Int(p * 100)) %").font(.caption2).foregroundStyle(.secondary)
+                    Text(Loc.f("Wird geladen … %d %%", Int(p * 100))).font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
@@ -166,30 +177,30 @@ struct MobileSettingsView: View {
             Button {
                 shareURL = engine.exportBundleURL()
             } label: {
-                Label("Backup exportieren (teilen)", systemImage: "square.and.arrow.up")
+                Label(Loc.t("Backup exportieren (teilen)"), systemImage: "square.and.arrow.up")
             }
             Button {
                 importing = true
             } label: {
-                Label("Backup importieren", systemImage: "square.and.arrow.down")
+                Label(Loc.t("Backup importieren"), systemImage: "square.and.arrow.down")
             }
             if let m = dataMessage {
                 Text(m).font(.caption).foregroundStyle(.secondary)
             }
         } header: {
-            Text("Daten (Mac ↔ iPhone)")
+            Text(Loc.t("Daten (Mac ↔ iPhone)"))
         } footer: {
-            Text("Am Mac unter „Sync & Geräte“ exportieren, per AirDrop aufs iPhone senden und hier importieren — übernimmt Wörterbuch, Verlauf, Statistiken und Einstellungen. Achtung: Import ersetzt die aktuellen Daten.")
+            Text(Loc.t("Am Mac unter „Sync & Geräte“ exportieren, per AirDrop aufs iPhone senden und hier importieren — übernimmt Wörterbuch, Verlauf, Statistiken und Einstellungen. Achtung: Import ersetzt die aktuellen Daten."))
         }
     }
 
     // MARK: - Statistiken
 
     private var statsSection: some View {
-        Section("Statistiken") {
-            LabeledContent("Wörter diktiert", value: "\(engine.stats.data.totalWords)")
-            LabeledContent("Diktate", value: "\(engine.stats.data.totalDictations)")
-            LabeledContent("Serie", value: "\(engine.stats.currentStreak) Tage")
+        Section(Loc.t("Statistiken")) {
+            LabeledContent(Loc.t("Wörter diktiert"), value: "\(engine.stats.data.totalWords)")
+            LabeledContent(Loc.t("Diktate"), value: "\(engine.stats.data.totalDictations)")
+            LabeledContent(Loc.t("Serie"), value: Loc.f("%d Tage", engine.stats.currentStreak))
         }
     }
 
@@ -198,15 +209,15 @@ struct MobileSettingsView: View {
     private var supportSection: some View {
         Section {
             Link(destination: URL(string: "https://ko-fi.com/lilolama")!) {
-                Label("Entwicklung unterstützen", systemImage: "cup.and.saucer.fill")
+                Label(Loc.t("Entwicklung unterstützen"), systemImage: "cup.and.saucer.fill")
             }
             Link(destination: URL(string: "https://github.com/LiLoLama/shout")!) {
-                Label("Quellcode auf GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                Label(Loc.t("Quellcode auf GitHub"), systemImage: "chevron.left.forwardslash.chevron.right")
             }
         } header: {
             Text("Open Source")
         } footer: {
-            Text("shout. ist frei und quelloffen (GPL-3.0). Ich bemühe mich, die App aktuell zu halten und zu erweitern — Unterstützung ist freiwillig und hilft sehr. ❤️")
+            Text(Loc.t("shout. ist frei und quelloffen (GPL-3.0). Ich bemühe mich, die App aktuell zu halten und zu erweitern — Unterstützung ist freiwillig und hilft sehr. ❤️"))
         }
     }
 }

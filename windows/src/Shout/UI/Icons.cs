@@ -16,6 +16,7 @@ internal static class Icons
     {
         Mic, Book, History, Chart, Chip, Sync, Heart, Check, Close, Trash, Copy,
         Insert, ArrowRight, Sparkle, Warning, Refresh, Plus, Code, Coffee, Lock, LockOpen, Branch,
+        Keyboard,
     }
 
     /// <summary>Zeichnet das Icon zentriert in <paramref name="box"/>.</summary>
@@ -52,6 +53,7 @@ internal static class Icons
             case Kind.Lock: Lock(g, r, color, closed: true); break;
             case Kind.LockOpen: Lock(g, r, color, closed: false); break;
             case Kind.Branch: Branch(g, r, color); break;
+            case Kind.Keyboard: Keyboard(g, r, color); break;
         }
         g.SmoothingMode = old;
     }
@@ -347,6 +349,29 @@ internal static class Icons
         var cy = r.Y + r.Height / 2f;
         g.DrawLine(pen, cx, r.Y + r.Height * 0.20f, cx, r.Bottom - r.Height * 0.20f);
         g.DrawLine(pen, r.X + r.Width * 0.20f, cy, r.Right - r.Width * 0.20f, cy);
+    }
+
+    /// keyboard — Rahmen mit Tastenreihen und breiter Leertaste.
+    private static void Keyboard(Graphics g, RectangleF r, Color c)
+    {
+        using var pen = Stroke(c, r.Width, 0.08f);
+        using var brush = new SolidBrush(c);
+        var body = new RectangleF(r.X + r.Width * 0.06f, r.Y + r.Height * 0.22f,
+                                  r.Width * 0.88f, r.Height * 0.56f);
+        using var path = Theme.Rounded(body, r.Width * 0.08f);
+        g.DrawPath(pen, path);
+
+        // Zwei Reihen kleiner Tasten
+        var key = r.Width * 0.09f;
+        for (var row = 0; row < 2; row++)
+        {
+            var y = body.Y + body.Height * (0.22f + row * 0.28f);
+            for (var i = 0; i < 4; i++)
+                g.FillRectangle(brush, body.X + body.Width * (0.10f + i * 0.22f), y, key, key * 0.7f);
+        }
+        // Leertaste
+        g.FillRectangle(brush, body.X + body.Width * 0.24f, body.Bottom - body.Height * 0.24f,
+                        body.Width * 0.52f, key * 0.7f);
     }
 
     /// chevron.left.forwardslash.chevron.right — Quellcode.

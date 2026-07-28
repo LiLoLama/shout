@@ -37,6 +37,15 @@ public static class TextInjector
     private const ushort VkControl = 0x11;
     private const ushort VkV = 0x56;
 
+    /// <summary>
+    /// Kennzeichen in <c>dwExtraInfo</c> für alle selbst gesendeten Tastendrücke
+    /// („SHOU"). Der Tastatur-Hook des Halten-Modus überspringt genau diese, damit
+    /// das Strg+V beim Einfügen die Aufnahme nicht erneut auslöst. Nur diese
+    /// Markierung ausschließen — und nicht alles Simulierte — hält die App mit
+    /// Makro-Tastaturen und AutoHotkey verträglich.
+    /// </summary>
+    public static readonly IntPtr InputMarker = new(0x53484F55);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, Input[] pInputs, int cbSize);
 
@@ -81,6 +90,11 @@ public static class TextInjector
     private static Input Key(ushort vk, bool down) => new()
     {
         Type = InputKeyboard,
-        Ki = new KeyboardInput { Vk = vk, Flags = down ? 0 : KeyeventfKeyup },
+        Ki = new KeyboardInput
+        {
+            Vk = vk,
+            Flags = down ? 0 : KeyeventfKeyup,
+            ExtraInfo = InputMarker,
+        },
     };
 }

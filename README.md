@@ -25,6 +25,7 @@ language.](Resources/Screenshots/App.webp)
 | Speech recognition | WhisperKit (Neural Engine) | whisper.cpp ([Whisper.net](https://github.com/sandrohanea/whisper.net)) | WhisperKit |
 | Text cleanup | MLX (Gemma) | llama.cpp ([LLamaSharp](https://github.com/SciSharp/LLamaSharp), Qwen 2.5) | MLX |
 | Insert at cursor | Accessibility paste | clipboard + simulated Ctrl+V | dictation keyboard |
+| Hotkey | Carbon hotkey / event tap | `RegisterHotKey` (toggle), keyboard hook (hold) | in-app / keyboard |
 | Auto-update | Sparkle | [Velopack](https://velopack.io) | App Store / Xcode |
 | Source | [`Sources/FlowLokal`](Sources/FlowLokal) | [`windows/`](windows/README.md) | [`Sources/ShoutMobile`](Sources/ShoutMobile) |
 
@@ -45,10 +46,16 @@ file**, so you can move them between devices (no cloud involved).
 - **Adaptive silence detection** with trimming, gentle sound cues, history & stats,
   and local file-based backup/sync.
 
-Some extras exist on macOS only for now: the onboarding assistant and importing
-terms from Contacts. The live Hugging Face model list is on both, but on Windows
-it lists Qwen models only, because llama.cpp loads a single file and the cleanup
-model’s chat template is built for that family.
+- **Onboarding assistant** on first launch — permissions or microphone check,
+  hotkey, model download and a test dictation, on all three platforms.
+- **Two recording styles**: hold the keys (push-to-talk) or press once to start
+  and again to stop.
+
+One extra exists on macOS only for now: importing terms from Contacts (Windows
+has no comparable local interface for desktop apps; it imports CSV/TXT instead).
+The live Hugging Face model list is on both, but on Windows it lists Qwen models
+only, because llama.cpp loads a single file and the cleanup model’s chat template
+is built for that family.
 
 ## Install
 
@@ -70,7 +77,10 @@ warnings. Updates arrive automatically via Sparkle.
 2. Run it — no administrator required; the .NET 8 Desktop Runtime is installed
    if missing. The installer is not code-signed yet, so SmartScreen shows a
    warning on first run (“More info” → “Run anyway”).
-3. Press **Ctrl + Alt + Space** (configurable) to dictate.
+3. On first launch an assistant walks you through the microphone check, the
+   hotkey and the one-time model download.
+4. Press **Ctrl + Alt + Space** (configurable) to dictate. If another program
+   already owns that combination, shout. picks a free one and tells you.
 
 Requires **Windows 10/11 (x64)**. Installed copies keep themselves up to date;
 see [`windows/README.md`](windows/README.md) for details.

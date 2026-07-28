@@ -16,6 +16,19 @@ public sealed class Settings
     public uint HotkeyModifiers { get; set; } = 0x0001 | 0x0002;   // MOD_ALT | MOD_CONTROL
     public uint HotkeyKey { get; set; } = 0x20;                    // VK_SPACE
 
+    /// <summary>Aufnahme-Art: "toggle" = drücken startet, nochmal drücken stoppt;
+    /// "hold" = Taste halten (Push-to-talk). Anders als am Mac ist „umschalten" der
+    /// Standard: die Windows-Kombination braucht immer einen Modifier, und
+    /// Strg+Alt+Leertaste gedrückt zu halten, während man spricht, ist unbequem.</summary>
+    public string HotkeyMode { get; set; } = "toggle";
+
+    /// <summary>Erststart-Assistent abgeschlossen. Der Standard ist ausdrücklich
+    /// <c>true</c>, damit ein vorhandenes settings.json ohne diesen Schlüssel (also
+    /// eine Installation von vor dem Assistenten) beim Update nicht plötzlich den
+    /// Assistenten zeigt; eine frische Installation setzt ihn in <see cref="Load"/>
+    /// auf false.</summary>
+    public bool OnboardingDone { get; set; } = true;
+
     /// <summary>Diktier-Sprache: "de", "en" oder "auto". Leer = beim Erststart
     /// aus der Systemsprache belegen (siehe <see cref="Load"/>).</summary>
     public string Language { get; set; } = "";
@@ -64,7 +77,10 @@ public sealed class Settings
 
     private static Settings Load()
     {
-        var s = StoreIO.Load<Settings>("settings.json") ?? new Settings();
+        var loaded = StoreIO.Load<Settings>("settings.json");
+        var s = loaded ?? new Settings();
+        // Frische Installation (noch keine settings.json): Erststart-Assistent zeigen.
+        if (loaded == null) s.OnboardingDone = false;
         // Steht in der Datei ausdrücklich "discoveredLlmModels": null, greift der
         // Initialisierer oben NICHT — und LlmById würde beim Modell-Laden werfen.
         s.DiscoveredLlmModels ??= new();
@@ -76,6 +92,11 @@ public sealed class Settings
         if (string.IsNullOrEmpty(s.Language))
             s.Language = System.Globalization.CultureInfo.CurrentUICulture
                 .TwoLetterISOLanguageName == "de" ? "de" : "en";
+        // Frische Installation: die eben ermittelten Voreinstellungen (Modelle,
+        // Sprache) gleich festschreiben, sonst entstünde die Datei erst mit der
+        // ersten Änderung. „onboardingDone" bleibt dabei false — wer den Assistenten
+        // abbricht, bekommt ihn beim nächsten Start wieder (wie am Mac).
+        if (loaded == null) s.Save();
         return s;
     }
 

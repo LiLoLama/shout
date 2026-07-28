@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Shout.App;
 using Shout.Core;
 
@@ -91,7 +90,7 @@ internal sealed class DashboardForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        UseDarkTitleBar();
+        DarkTitleBar.Apply(Handle);
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
@@ -99,23 +98,6 @@ internal sealed class DashboardForm : Form
         Application.RemoveMessageFilter(wheelFilter);
         base.OnFormClosed(e);
     }
-
-    /// <summary>Dunkle Titelleiste (Win 10 2004+/Win 11) — sonst sitzt ein weißer
-    /// Balken über dem dunklen Fenster.</summary>
-    private void UseDarkTitleBar()
-    {
-        try
-        {
-            var on = 1;
-            // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (vor Win-10-20H1: Attribut 19)
-            if (DwmSetWindowAttribute(Handle, 20, ref on, sizeof(int)) != 0)
-                DwmSetWindowAttribute(Handle, 19, ref on, sizeof(int));
-        }
-        catch (DllNotFoundException) { /* ältere Windows-Version: helle Titelleiste */ }
-    }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     /// <summary>Seite von außen anspringen (z. B. „Einstellungen bei Modelle öffnen").</summary>
     internal void SelectTab(Tab tab) => Select(tab);
@@ -180,6 +162,18 @@ internal sealed class DashboardForm : Form
             support.RefreshUpdateState();
     }
 
+    /// <summary>Hotkey-Anzeige nachziehen — nötig, wenn die App auf eine
+    /// Ausweich-Kombination gewechselt ist, weil die eingestellte belegt war.</summary>
+    public void RefreshHotkeyDisplay()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(RefreshHotkeyDisplay);
+            return;
+        }
+        (pages[Tab.Aufnahme] as RecordingPage)?.ShowCurrentHotkey();
+    }
+
     // MARK: Hotkey-Aufnahme
 
     private Action<uint, uint>? hotkeyCapture;
@@ -203,7 +197,8 @@ internal sealed class DashboardForm : Form
             if (e.KeyCode == Keys.Escape)
             {
                 hotkeyCapture = null;
-                (pages[Tab.Aufnahme] as RecordingPage)?.HotkeyCaptureEnded();
+                app.RegisterHotkeyFromSettings();   // während der Aufnahme abgemeldet
+                (pages[Tab.Aufnahme] as RecordingPage)?.ShowCurrentHotkey();
                 return;
             }
 
@@ -290,7 +285,22 @@ internal sealed class Sidebar : ThemedControl
     private int hovered = -1;
 
     public event Action<DashboardForm.Tab>? TabSelected;
-    public DashboardForm.Tab Active { get; set; } = DashboardForm.Tab.Aufnahme;
+
+    private DashboardForm.Tab active = DashboardForm.Tab.Aufnahme;
+
+    /// <summary>Hervorgehobene Zeile. Setzt zwingend ein Neuzeichnen nach — ohne das
+    /// bliebe die alte Zeile markiert, bis irgendetwas anderes die Leiste anstößt
+    /// (bei Mausbedienung der Hover-Effekt, sonst nichts).</summary>
+    public DashboardForm.Tab Active
+    {
+        get => active;
+        set
+        {
+            if (active == value) return;
+            active = value;
+            Invalidate();
+        }
+    }
 
     public Sidebar(TrayContext app)
     {
@@ -368,9 +378,9 @@ internal sealed class Sidebar : ThemedControl
         {
             var (tab, title, icon) = Items[i];
             var row = RowRect(i, Width);
-            var active = tab == Active;
+            var isActive = tab == Active;
 
-            if (active)
+            if (isActive)
             {
                 using var fill = new SolidBrush(Theme.LiveAlpha(0.18));
                 using var path = Theme.Rounded(row, 8);
@@ -383,9 +393,9 @@ internal sealed class Sidebar : ThemedControl
                 g.FillPath(fill, path);
             }
 
-            var color = active ? Color.White : Theme.Gray(0.64);
+            var color = isActive ? Color.White : Theme.Gray(0.64);
             Icons.Draw(g, icon, new RectangleF(row.X + 11, row.Y, 20, row.Height), color, 14f);
-            DrawText(g, Loc.T(title), active ? Theme.RowTitleStrong : Theme.RowTitle, color,
+            DrawText(g, Loc.T(title), isActive ? Theme.RowTitleStrong : Theme.RowTitle, color,
                      new Rectangle(row.X + 41, row.Y, row.Width - 48, row.Height),
                      TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }

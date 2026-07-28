@@ -89,6 +89,13 @@ public sealed class TrayContext : ApplicationContext
         }, null);
 
         hotkey.OnHotkey += ToggleRecording;
+        // Halten-Modus: Drücken startet, Loslassen beendet und fügt ein.
+        hotkey.OnPressed += () =>
+        {
+            if (state == State.Idle) StartRecording();
+            else if (state == State.Failed) _ = Task.Run(LoadModelsAsync);   // erneuter Versuch
+        };
+        hotkey.OnReleased += () => { if (state == State.Recording) StopAndProcess(); };
         RegisterHotkeyFromSettings();
 
         // Threadpool statt UI-Thread: WhisperFactory.FromPath liest das komplette
@@ -100,7 +107,10 @@ public sealed class TrayContext : ApplicationContext
 
         // Lauscht auf „shout.exe --settings" eines zweiten Starts.
         messageWindow = new SettingsMessageWindow(ShowSettings);
-        if (openSettings) ShowSettings();
+
+        // Erststart: Assistent statt Hauptfenster (wie am Mac).
+        if (!Settings.Shared.OnboardingDone) ShowOnboarding();
+        else if (openSettings) ShowSettings();
 
         Updates.Changed += () => ui.Post(_ => UpdateStateChanged(), null);
         // Stiller Start-Check wie Sparkle am Mac: sucht und lädt im Hintergrund,
@@ -197,14 +207,20 @@ public sealed class TrayContext : ApplicationContext
         try
         {
             await transcriber.LoadAsync(p =>
-                ui.Post(_ => statusItem.Text = p is > 0 and < 1
-                    ? Loc.F("Sprachmodell wird geladen … {0} %", (int)(p * 100))
-                    : Loc.T("Sprachmodell wird geladen …"), null));
+                ui.Post(_ =>
+                {
+                    AsrProgress = p is > 0 and < 1 ? p : null;
+                    statusItem.Text = AsrProgress is { } value
+                        ? Loc.F("Sprachmodell wird geladen … {0} %", (int)(value * 100))
+                        : Loc.T("Sprachmodell wird geladen …");
+                }, null));
             await transcriber.WarmUpAsync();
+            ui.Post(_ => AsrProgress = null, null);
             SetState(State.Idle);
         }
         catch (Exception ex)
         {
+            ui.Post(_ => AsrProgress = null, null);
             SetState(State.Failed);
             ui.Post(_ => statusItem.Text = Loc.T("Modell-Fehler — Internet prüfen, dann erneut „Diktieren“ wählen"), null);
             Log($"Modell-Ladefehler: {ex.Message}");
@@ -217,6 +233,16 @@ public sealed class TrayContext : ApplicationContext
     /// <summary>Nach Modellwechsel in den Einstellungen neu laden.</summary>
     public void ReloadModels() => _ = Task.Run(LoadModelsAsync);
 
+    /// <summary>Download-Fortschritt des Transkriptions-Modells (null = kein Download
+    /// im Gange) — der Erststart-Assistent zeigt ihn an.</summary>
+    public double? AsrProgress { get; private set; }
+
+    /// <summary>Transkriptions-Modell geladen und einsatzbereit?</summary>
+    public bool TranscriberReady => transcriber.IsReady;
+
+    /// <summary>Modell-Laden fehlgeschlagen (Assistent bietet „erneut versuchen").</summary>
+    public bool ModelFailed => state == State.Failed;
+
     /// <summary>Ist das KI-Textmodell geladen? Ohne das gibt es kein Sprachprofil
     /// (und das Modell wird nur geladen, wenn die Aufbereitung eingeschaltet ist).</summary>
     public bool FormatterReady => formatter.IsReady;
@@ -225,14 +251,54 @@ public sealed class TrayContext : ApplicationContext
     /// null = kein Modell geladen oder Erzeugung fehlgeschlagen.</summary>
     public Task<string?> DescribeVoiceAsync(string sample) => formatter.DescribeVoiceAsync(sample);
 
+    /// <summary>Aufnahme-Art aus den Einstellungen.</summary>
+    private static HotkeyManager.Mode HotkeyMode =>
+        Settings.Shared.HotkeyMode == "hold" ? HotkeyManager.Mode.Hold : HotkeyManager.Mode.Toggle;
+
+    /// <summary>
+    /// Registriert den eingestellten Hotkey. Ist er belegt (Strg+Alt+Leertaste gehört
+    /// z. B. der Claude-App), wird der Reihe nach eine Ausweich-Kombination probiert,
+    /// gespeichert und gemeldet — sonst stünde die App ohne Auslöser da und der
+    /// Nutzer müsste selbst raten, welche Kombination noch frei ist.
+    /// </summary>
     public void RegisterHotkeyFromSettings()
     {
         var s = Settings.Shared;
-        if (!hotkey.Register(s.HotkeyModifiers, s.HotkeyKey))
-            tray?.ShowBalloonTip(4000, "shout.",
-                Loc.T("Der Hotkey ist bereits belegt — bitte in den Einstellungen ändern."), ToolTipIcon.Warning);
+        if (hotkey.Register(s.HotkeyModifiers, s.HotkeyKey, HotkeyMode))
+        {
+            UpdateMenu();
+            return;
+        }
+
+        var blocked = HotkeyManager.Describe(s.HotkeyModifiers, s.HotkeyKey);
+        foreach (var (modifiers, key) in HotkeyManager.Fallbacks)
+        {
+            if (modifiers == s.HotkeyModifiers && key == s.HotkeyKey) continue;
+            if (!hotkey.Register(modifiers, key, HotkeyMode)) continue;
+
+            s.HotkeyModifiers = modifiers;
+            s.HotkeyKey = key;
+            s.Save();
+            UpdateMenu();
+            settingsForm?.RefreshHotkeyDisplay();
+            tray?.ShowBalloonTip(8000, "shout.",
+                Loc.F("{0} ist von einem anderen Programm belegt — shout. hört jetzt auf {1}. Ändern kannst du das unter „Aufnahme & Text“.",
+                      blocked, HotkeyManager.Describe(modifiers, key)), ToolTipIcon.Info);
+            return;
+        }
+
         UpdateMenu();
+        tray?.ShowBalloonTip(6000, "shout.",
+            Loc.T("Der Hotkey ist bereits belegt — bitte in den Einstellungen ändern."), ToolTipIcon.Warning);
     }
+
+    /// <summary>
+    /// Hotkey vorübergehend abmelden, solange in den Einstellungen oder im
+    /// Erststart-Assistenten eine neue Kombination aufgenommen wird — ein
+    /// registrierter Hotkey erreicht das eigene Fenster nie, die aktuelle
+    /// Kombination ließe sich sonst nicht erneut wählen.
+    /// </summary>
+    public void PauseHotkey() => hotkey.Unregister();
 
     /// <summary>„Pille immer anzeigen" wurde umgeschaltet.</summary>
     public void ApplyPersistentPill()
@@ -298,7 +364,9 @@ public sealed class TrayContext : ApplicationContext
     private void StartRecording()
     {
         var s = Settings.Shared;
-        recorder.AutoStopEnabled = s.AutoStopEnabled;
+        // Auto-Stopp nur im Umschalt-Modus sinnvoll — im Halten-Modus stoppt das
+        // Loslassen (wie am Mac).
+        recorder.AutoStopEnabled = s.AutoStopEnabled && HotkeyMode == HotkeyManager.Mode.Toggle;
         recorder.SilenceSeconds = s.SilenceSeconds;
         try
         {
@@ -400,12 +468,10 @@ public sealed class TrayContext : ApplicationContext
 
     private void UpdateMenu()
     {
-        var s = Settings.Shared;
-        var hotkeyLabel = HotkeyManager.Describe(s.HotkeyModifiers, s.HotkeyKey);
         statusItem.Text = state switch
         {
             State.LoadingModel => statusItem.Text,   // Fortschritt läuft schon
-            State.Idle => Loc.F("Bereit — {0}", hotkeyLabel),
+            State.Idle => Loc.F("Bereit — {0}", HotkeyTrigger),
             State.Recording => Loc.T("Ich höre zu …"),
             State.Working => Loc.T("Verarbeite …"),
             State.Failed => statusItem.Text,
@@ -418,6 +484,29 @@ public sealed class TrayContext : ApplicationContext
     }
 
     private DashboardForm? settingsForm;
+    private OnboardingForm? onboardingForm;
+
+    /// <summary>Erststart-Assistent: Mikrofon, Hotkey, Modell, Probediktat.</summary>
+    private void ShowOnboarding()
+    {
+        if (onboardingForm is { IsDisposed: false })
+        {
+            onboardingForm.Activate();
+            return;
+        }
+        onboardingForm = new OnboardingForm(this);
+        onboardingForm.Finished += () =>
+        {
+            Settings.Shared.OnboardingDone = true;
+            Settings.Shared.Save();
+            onboardingForm?.Close();
+            onboardingForm = null;
+            ShowSettings();
+        };
+        onboardingForm.FormClosed += (_, _) => onboardingForm = null;
+        onboardingForm.Show();
+        onboardingForm.Activate();
+    }
 
     private void ShowSettings()
     {
@@ -432,22 +521,31 @@ public sealed class TrayContext : ApplicationContext
         settingsForm.Show();
     }
 
-    /// <summary>Beschriftung für die Seitenleiste der Einstellungen.</summary>
-    public string StatusLine
+    /// <summary>„Strg + Alt + Leertaste halten" bzw. „… drücken" — je nach Aufnahme-Art.</summary>
+    public static string HotkeyTrigger
     {
         get
         {
-            var hotkeyLabel = HotkeyManager.Describe(Settings.Shared.HotkeyModifiers, Settings.Shared.HotkeyKey);
-            return state switch
-            {
-                State.LoadingModel => Loc.T("Modell wird geladen …"),
-                State.Recording => Loc.T("Ich höre zu …"),
-                State.Working => Loc.T("Verarbeite …"),
-                State.Failed => Loc.T("Modell-Fehler"),
-                _ => Loc.F("Bereit · {0} drücken", hotkeyLabel),
-            };
+            var s = Settings.Shared;
+            var label = HotkeyManager.Describe(s.HotkeyModifiers, s.HotkeyKey);
+            return HotkeyMode == HotkeyManager.Mode.Hold
+                ? Loc.F("{0} halten", label)
+                : Loc.F("{0} drücken", label);
         }
     }
+
+    /// <summary>Beschriftung für die Seitenleiste der Einstellungen. Hier steht nur
+    /// die Kombination ohne „drücken"/„halten" — in der schmalen Leiste würde genau
+    /// dieses Wort abgeschnitten.</summary>
+    public string StatusLine => state switch
+    {
+        State.LoadingModel => Loc.T("Modell wird geladen …"),
+        State.Recording => Loc.T("Ich höre zu …"),
+        State.Working => Loc.T("Verarbeite …"),
+        State.Failed => Loc.T("Modell-Fehler"),
+        _ => Loc.F("Bereit · {0}",
+                   HotkeyManager.Describe(Settings.Shared.HotkeyModifiers, Settings.Shared.HotkeyKey)),
+    };
 
     /// <summary>Läuft gerade eine Aufnahme? (Modellwechsel ist dann gesperrt.)</summary>
     public bool IsBusy => state is State.Recording or State.Working;

@@ -62,12 +62,16 @@ public static class Loc
             "Model error — check your connection, then choose “Dictate” again",
         ["Modell-Fehler"] = "Model error",
         ["Bereit — {0}"] = "Ready — {0}",
-        ["Bereit · {0} drücken"] = "Ready · press {0}",
+        ["Bereit · {0}"] = "Ready · {0}",
+        ["{0} drücken"] = "press {0}",
+        ["{0} halten"] = "hold {0}",
         ["Ich höre zu …"] = "Listening…",
         ["Verarbeite …"] = "Processing…",
         ["shout. — lokale Diktier-App"] = "shout. — local dictation app",
         ["Der Hotkey ist bereits belegt — bitte in den Einstellungen ändern."] =
             "That hotkey is already taken — please pick another one in the settings.",
+        ["{0} ist von einem anderen Programm belegt — shout. hört jetzt auf {1}. Ändern kannst du das unter „Aufnahme & Text“."] =
+            "{0} is taken by another program — shout. now listens for {1}. You can change that under “Recording & text”.",
         ["Aufnahme konnte nicht gestartet werden: {0}"] = "Could not start recording: {0}",
 
         // MARK: Seitenleiste
@@ -81,13 +85,21 @@ public static class Loc
 
         // MARK: Aufnahme & Text
         ["Aufnahme"] = "Recording",
+        ["Aufnahme-Art"] = "Recording style",
+        ["Halten"] = "Hold",
+        ["Umschalten"] = "Toggle",
+        ["Tastenkombination gedrückt halten, beim Loslassen wird eingefügt."] =
+            "Hold the key combination; the text is inserted when you let go.",
+        ["Einmal drücken zum Starten, nochmal zum Stoppen."] =
+            "Press once to start, again to stop.",
+        ["Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus)."] =
+            "Stops automatically after a short pause (in toggle mode).",
         ["So startest du"] = "How to start",
         ["Drück die Tastenkombination, mit der du diktieren willst."] =
             "Press the key combination you want to dictate with.",
         ["Ändern"] = "Change",
         ["Taste drücken …"] = "Press a key…",
         ["Von selbst aufhören"] = "Stop by itself",
-        ["Stoppt automatisch nach kurzer Sprechpause."] = "Stops automatically after a short pause.",
         ["Pause bis Stopp"] = "Pause before stopping",
         ["Pille immer anzeigen"] = "Always show the pill",
         ["Zeigt die Aufnahme-Pille dauerhaft am Bildschirmrand — per Klick starten, mit ✕/✓ abbrechen oder einfügen."] =
@@ -132,6 +144,44 @@ public static class Loc
         ["Mikrofon"] = "Microphone",
         ["Eingang"] = "Input",
         ["Systemstandard"] = "System default",
+
+        // MARK: Erststart-Assistent
+        ["Zurück"] = "Back",
+        ["Weiter"] = "Continue",
+        ["Los geht’s"] = "Let’s go",
+        ["Willkommen bei shout."] = "Welcome to shout.",
+        ["Diktieren in jede App — komplett lokal auf deinem PC. Keine Cloud, keine Konten. In vier kurzen Schritten ist alles startklar."] =
+            "Dictate into any app — entirely local on your PC. No cloud, no accounts. Four short steps and you’re set.",
+        ["shout. braucht dein Mikrofon, um Sprache lokal in Text zu verwandeln. Mach kurz die Probe — sprich, und der Balken schlägt aus."] =
+            "shout. needs your microphone to turn speech into text locally. Give it a quick try — speak, and the bar moves.",
+        ["Mikrofon prüfen"] = "Test microphone",
+        ["Läuft …"] = "Running…",
+        ["Sprich einfach los — der Balken zeigt, was ankommt."] =
+            "Just start talking — the bar shows what comes in.",
+        ["Perfekt — shout. hört dein Mikrofon."] = "Perfect — shout. can hear your microphone.",
+        ["Es kam kein Ton an. Prüf, ob oben das richtige Mikrofon steht — und ob Windows Desktop-Apps den Zugriff erlaubt."] =
+            "No sound came in. Check whether the right microphone is selected above — and whether Windows lets desktop apps use it.",
+        ["Windows meldet kein Aufnahmegerät. Schließ ein Mikrofon oder Headset an und probier es erneut."] =
+            "Windows reports no recording device. Connect a microphone or headset and try again.",
+        ["Mikrofon-Einstellungen öffnen"] = "Open microphone settings",
+        ["Tastenkombination"] = "Key combination",
+        ["Mit {0} startest du das Diktat — in jeder App. Ist die Kombination von einem anderen Programm belegt, sucht shout. sich selbst eine freie und sagt es dir."] =
+            "{0} starts a dictation — in any app. If another program already uses that combination, shout. picks a free one and tells you.",
+        ["Sprachmodell"] = "Speech model",
+        ["Das Sprachmodell ist geladen und liegt lokal auf deinem PC."] =
+            "The speech model is loaded and stored locally on your PC.",
+        ["Das Sprachmodell konnte nicht geladen werden — meist fehlt beim ersten Start die Internet-Verbindung. Prüfe die Verbindung und versuch es erneut."] =
+            "The speech model could not be loaded — usually the internet connection is missing on first start. Check the connection and try again.",
+        ["Das Sprachmodell wird geladen … {0} %. Das passiert nur dieses eine Mal, danach läuft alles offline."] =
+            "Loading the speech model… {0}%. This happens only once; everything runs offline afterwards.",
+        ["Beim ersten Start lädt shout. das Sprachmodell einmalig herunter (danach läuft alles offline). Das kann je nach Verbindung ein paar Minuten dauern."] =
+            "On first start shout. downloads the speech model once (everything runs offline afterwards). Depending on your connection this can take a few minutes.",
+        ["Erneut versuchen"] = "Try again",
+        ["Probier es aus"] = "Give it a try",
+        ["Klick ins Feld, {0} und sprich einen Satz. Dein Text erscheint direkt hier."] =
+            "Click into the field, {0} and say a sentence. Your text appears right here.",
+        ["Tipp: Aufnahme-Art und Taste kannst du später unter „Aufnahme & Text“ ändern."] =
+            "Tip: you can change the recording style and key later under “Recording & text”.",
 
         // MARK: Wörterbuch
         ["Wörter, die shout. richtig schreiben soll"] = "Words shout. should spell correctly",

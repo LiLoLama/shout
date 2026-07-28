@@ -4,9 +4,9 @@ using Shout.Core;
 namespace Shout.UI;
 
 /// <summary>
-/// „Aufnahme & Text" — Aufbau und Texte wie SettingsView.swift der Mac-App.
-/// Die Aufnahme-Art (halten/umschalten) fehlt bewusst: der Windows-Hotkey über
-/// RegisterHotKey kennt kein Loslassen, hier gilt immer „umschalten".
+/// „Aufnahme & Text" — Aufbau und Texte wie SettingsView.swift der Mac-App,
+/// einschließlich der Aufnahme-Art (halten/umschalten): den Halten-Modus trägt
+/// unter Windows ein Tastatur-Hook, siehe <see cref="HotkeyManager"/>.
 /// </summary>
 internal sealed class RecordingPage : PageBase
 {
@@ -17,6 +17,7 @@ internal sealed class RecordingPage : PageBase
     private readonly Keycap hotkeyCap;
     private readonly Keycap silenceValue;
     private readonly ConsoleButton changeHotkey;
+    private readonly ConsolePanel recording;
 
     public RecordingPage(TrayContext app, DashboardForm form)
     {
@@ -29,6 +30,27 @@ internal sealed class RecordingPage : PageBase
         hotkeyCap = new Keycap(HotkeyManager.Describe(s.HotkeyModifiers, s.HotkeyKey));
         changeHotkey = new ConsoleButton(Loc.T("Ändern"));
         changeHotkey.Click2 += BeginHotkeyCapture;
+
+        // Die Karte steht schon hier, weil der Umschalter unten auf sie zugreift.
+        recording = new ConsolePanel { Title = Loc.T("Aufnahme") };
+        var card = recording;
+
+        var mode = new ConsoleSegmented(new[]
+        {
+            ("hold", Loc.T("Halten")),
+            ("toggle", Loc.T("Umschalten")),
+        }, s.HotkeyMode == "hold" ? "hold" : "toggle");
+        mode.Changed += key =>
+        {
+            s.HotkeyMode = key;
+            s.Save();
+            // Die Aufnahme-Art entscheidet, WIE der Hotkey registriert wird
+            // (RegisterHotKey oder Tastatur-Hook) — also neu registrieren.
+            app.RegisterHotkeyFromSettings();
+            // Der Hilfetext der Zeile hängt am Modus — Höhe neu rechnen.
+            card.Relayout();
+            form.PageHeightChanged();
+        };
 
         var autoStop = new ConsoleToggle(s.AutoStopEnabled);
         autoStop.Changed += value =>
@@ -68,10 +90,18 @@ internal sealed class RecordingPage : PageBase
             app.RepositionPill();
         };
 
-        var recording = new ConsolePanel { Title = Loc.T("Aufnahme") };
+        recording.Add(new PanelRow
+        {
+            Title = Loc.T("Aufnahme-Art"),
+            HelpFor = () => Settings.Shared.HotkeyMode == "hold"
+                ? Loc.T("Tastenkombination gedrückt halten, beim Loslassen wird eingefügt.")
+                : Loc.T("Einmal drücken zum Starten, nochmal zum Stoppen."),
+            Trailing = mode,
+        });
         recording.Add(Loc.T("So startest du"), Loc.T("Drück die Tastenkombination, mit der du diktieren willst."),
                       new Cluster(new Control[] { hotkeyCap, changeHotkey }));
-        recording.Add(Loc.T("Von selbst aufhören"), Loc.T("Stoppt automatisch nach kurzer Sprechpause."), autoStop);
+        recording.Add(Loc.T("Von selbst aufhören"),
+                      Loc.T("Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus)."), autoStop);
         recording.Add(new PanelRow
         {
             Title = Loc.T("Pause bis Stopp"),
@@ -189,6 +219,10 @@ internal sealed class RecordingPage : PageBase
         if (form.IsCapturingHotkey) return;
         hotkeyCap.SetText(Loc.T("Taste drücken …"));
         changeHotkey.SetEnabled(false);
+        // Solange abmelden: ein registrierter Hotkey (bzw. der Tastatur-Hook des
+        // Halten-Modus) erreicht dieses Fenster nie — die aktuelle Kombination
+        // ließe sich sonst nicht erneut auswählen.
+        app.PauseHotkey();
         form.CaptureHotkey((mods, key) =>
         {
             var s = Settings.Shared;
@@ -202,8 +236,9 @@ internal sealed class RecordingPage : PageBase
         });
     }
 
-    /// <summary>Escape während der Aufnahme — Anzeige zurücksetzen.</summary>
-    public void HotkeyCaptureEnded()
+    /// <summary>Zeigt die aktuell gültige Kombination — nach Abbruch der Aufnahme
+    /// (Escape) und wenn die App auf eine Ausweich-Kombination gewechselt ist.</summary>
+    public void ShowCurrentHotkey()
     {
         var s = Settings.Shared;
         hotkeyCap.SetText(HotkeyManager.Describe(s.HotkeyModifiers, s.HotkeyKey));

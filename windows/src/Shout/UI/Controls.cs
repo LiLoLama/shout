@@ -121,6 +121,9 @@ internal sealed class PanelRow
 {
     public string Title = "";
     public string? Help;
+    /// <summary>Hilfetext, der sich mit dem Zustand ändert (z. B. die Aufnahme-Art:
+    /// „halten" erklärt sich anders als „umschalten"). Hat Vorrang vor <see cref="Help"/>.</summary>
+    public Func<string>? HelpFor;
     /// <summary>Bedienelement rechts (Schalter, Knopf, Dropdown …).</summary>
     public Control? Trailing;
     /// <summary>Führendes Symbol (Listen wie „In der Datei enthalten").</summary>
@@ -129,6 +132,9 @@ internal sealed class PanelRow
     public Func<bool>? VisibleWhen;
 
     public bool IsVisible => VisibleWhen?.Invoke() ?? true;
+
+    /// <summary>Der aktuell anzuzeigende Hilfetext.</summary>
+    public string? HelpText => HelpFor?.Invoke() ?? Help;
 }
 
 /// <summary>
@@ -183,8 +189,9 @@ internal sealed class ConsolePanel : ThemedControl, IAutoHeight
     {
         var textWidth = TextWidth(row, width);
         var h = MeasureText(row.Title, Theme.RowTitle, textWidth).Height;
-        if (!string.IsNullOrEmpty(row.Help))
-            h += 3 + MeasureText(row.Help!, Theme.Help, textWidth).Height;
+        var help = row.HelpText;
+        if (!string.IsNullOrEmpty(help))
+            h += 3 + MeasureText(help, Theme.Help, textWidth).Height;
         var content = Math.Max(h, row.Trailing?.Height ?? 0);
         return content + RowPaddingV * 2;
     }
@@ -260,10 +267,11 @@ internal sealed class ConsolePanel : ThemedControl, IAutoHeight
             }
 
             var textWidth = TextWidth(row, Width);
+            var help = row.HelpText;
             var titleSize = MeasureText(row.Title, Theme.RowTitle, textWidth);
-            var helpSize = string.IsNullOrEmpty(row.Help)
+            var helpSize = string.IsNullOrEmpty(help)
                 ? Size.Empty
-                : MeasureText(row.Help!, Theme.Help, textWidth);
+                : MeasureText(help, Theme.Help, textWidth);
             var blockHeight = titleSize.Height + (helpSize.Height > 0 ? 3 + helpSize.Height : 0);
             var textTop = y + (h - blockHeight) / 2;
 
@@ -271,7 +279,7 @@ internal sealed class ConsolePanel : ThemedControl, IAutoHeight
                      new Rectangle(textLeft, textTop, textWidth, titleSize.Height),
                      TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
             if (helpSize.Height > 0)
-                DrawText(g, row.Help!, Theme.Help, Theme.InkMuted,
+                DrawText(g, help!, Theme.Help, Theme.InkMuted,
                          new Rectangle(textLeft, textTop + titleSize.Height + 3, textWidth, helpSize.Height),
                          TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
 

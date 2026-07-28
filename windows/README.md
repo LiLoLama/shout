@@ -13,7 +13,8 @@ den Rechner.
 | Spracherkennung | WhisperKit (ANE) | **whisper.cpp** via [Whisper.net](https://github.com/sandrohanea/whisper.net) |
 | KI-Formatierung | MLX (Gemma) | **llama.cpp** via [LLamaSharp](https://github.com/SciSharp/LLamaSharp) (Qwen 2.5) |
 | Einfügen | CGEvent-Paste | Zwischenablage + simuliertes Strg+V |
-| Hotkey | Carbon-Hotkey | `RegisterHotKey` |
+| Hotkey (umschalten) | Carbon-Hotkey | `RegisterHotKey` |
+| Hotkey (halten) | Event-Tap | Tastatur-Hook (`WH_KEYBOARD_LL`) |
 
 Whisper-Modelle (ggml) und LLMs (GGUF) werden beim ersten Start automatisch von
 Hugging Face geladen und unter `%LOCALAPPDATA%\shout\models\` gecached.
@@ -92,16 +93,37 @@ Compile-Check) — ausführen kann es nur Windows.
 
 ## Erste Schritte
 
+Beim allerersten Start führt ein **Assistent** in fünf Schritten durch alles
+Nötige: Willkommen, Mikrofon-Probe (mit Pegelbalken und Geräteauswahl),
+Tastenkombination samt Aufnahme-Art, Sprachmodell-Download und ein Probediktat
+direkt im Fenster. Danach öffnet sich das Hauptfenster; wer den Assistenten
+schließt, bekommt ihn beim nächsten Start noch einmal.
+
 1. App starten → oranger Ring erscheint im Infobereich (System-Tray).
 2. Beim ersten Start lädt shout. das empfohlene Whisper-Modell (Empfehlung
    richtet sich nach dem Arbeitsspeicher).
 3. **Strg + Alt + Leertaste** (änderbar) startet/stoppt das Diktat. Alternativ
    Doppelklick auf das Tray-Icon.
-   > ⚠️ Die Claude-Desktop-App belegt diese Kombination systemweit — läuft sie,
-   > schlägt die Registrierung fehl (kurzer Hinweis erscheint). Dann in den
-   > Einstellungen einfach eine andere Kombination wählen (z. B. Strg+Alt+F10).
+   > Ist die Kombination belegt — die Claude-Desktop-App hält sie z. B.
+   > systemweit —, probiert shout. selbst eine Ausweich-Kombination
+   > (Strg+Umschalt+Leertaste, dann weitere), speichert sie und sagt per
+   > Hinweis, worauf es jetzt hört. Ändern lässt sich das jederzeit unter
+   > „Aufnahme & Text".
 4. Der erkannte Text wird ins aktive Fenster eingefügt und liegt zusätzlich in
    der Zwischenablage.
+
+**Aufnahme-Art** (Aufnahme & Text → Aufnahme-Art), wie am Mac:
+
+- **Umschalten** (Standard): einmal drücken startet, nochmal drücken stoppt.
+  Läuft über `RegisterHotKey` — günstig, kann aber belegt sein.
+- **Halten**: Tasten gedrückt halten, beim Loslassen wird eingefügt. Dafür
+  hängt shout. einen Tastatur-Hook ein, denn `RegisterHotKey` kennt kein
+  Loslassen. Der Hook sieht die Tasten vor allen Hotkeys anderer Programme und
+  verschluckt die eigene Kombination — im Halten-Modus gibt es also keine
+  Kollisionen. Nur die selbst gesendeten Tastendrücke (das Strg+V beim
+  Einfügen) überspringt er; Makro-Tastaturen und AutoHotkey lösen weiterhin aus.
+  „Von selbst aufhören" wirkt nur im Umschalt-Modus — beim Halten stoppt das
+  Loslassen.
 
 Während der Aufnahme erscheint die **Pille** am Bildschirmrand: eine
 pegelreaktive Wellenform zwischen ✕ (verwerfen) und ✓ (einfügen). Sie lässt sich
@@ -144,16 +166,19 @@ Karten, Schalter, Segment-Umschalter, Dropdowns, Chips, Listen).
 
 - ✅ **Auf echtem Windows getestet** (Win 11 x64): Build/Publish, Modell-Download,
   Whisper-Transkription, Sprachbefehle, Diktat per Mikrofon inklusive Einfügen,
-  Installation über das Setup und die Aktualisierungs-Prüfung.
+  Installation über das Setup und die Aktualisierungs-Prüfung. Ebenfalls geprüft:
+  Erststart-Assistent (alle fünf Schritte, deutsch und englisch), Halten- und
+  Umschalt-Modus, automatische Ausweich-Kombination, „Dein Sprachprofil" und die
+  Hugging-Face-Live-Liste.
 - Das Setup ist **nicht signiert** — Windows SmartScreen zeigt daher beim ersten
   Start eine Warnung („Weitere Informationen" → „Trotzdem ausführen"). Ein
   Code-Signing-Zertifikat würde das beheben; `release.ps1` unterstützt dafür
   `vpk`-Signierparameter.
 - Kein winget-Paket (geplant).
-- Gegenüber der Mac-App fehlen noch: Onboarding-Assistent und der
-  Kontakte-Import im Wörterbuch (Windows hat keine vergleichbare lokale
-  Schnittstelle). Die Hugging-Face-Live-Liste zeigt hier nur Qwen-Modelle als
-  Einzeldatei-GGUF — llama.cpp lädt eine Datei, und das Chat-Template des
-  Formatters ist auf Qwen abgestimmt.
+- Gegenüber der Mac-App fehlt noch der **Kontakte-Import** im Wörterbuch —
+  Windows hat für Desktop-Apps keine vergleichbare lokale Schnittstelle; der
+  Import aus CSV/TXT gibt es hier stattdessen. Die Hugging-Face-Live-Liste zeigt
+  nur Qwen-Modelle als Einzeldatei-GGUF — llama.cpp lädt eine Datei, und das
+  Chat-Template des Formatters ist auf Qwen abgestimmt.
 - Einfügen per Strg+V funktioniert nicht in Konsolen ohne Paste-Support und
   erhöht-privilegierten Fenstern (Windows-Sicherheitsgrenze).

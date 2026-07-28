@@ -68,6 +68,10 @@ internal static class Theme
     public static readonly Font Metric = new(Family, 21f, FontStyle.Bold);
     public static readonly Font MetricSmall = new(Family, 18f, FontStyle.Bold);
     public static readonly Font InfoValue = new(Family, 12.75f, FontStyle.Regular);
+    /// Überschrift eines Onboarding-Schritts (Mac: 22 pt halbfett).
+    public static readonly Font StepTitle = new(Family, 16.5f, FontStyle.Bold);
+    /// Erklärtext eines Onboarding-Schritts (Mac: 14 pt).
+    public static readonly Font StepBody = new(Family, 10.5f, FontStyle.Regular);
     public static readonly Font Keycap = new(Mono, 9.5f, FontStyle.Regular);
     public static readonly Font MonoSmall = new(Mono, 9f, FontStyle.Regular);
 
@@ -197,4 +201,26 @@ internal static class Theme
         if (string.IsNullOrEmpty(text)) return 0;
         return (int)Math.Ceiling(g.MeasureString(text, font, width, Wrap).Height);
     }
+}
+
+/// <summary>
+/// Dunkle Titelleiste (Win 10 2004+/Win 11) — ohne sie sitzt ein weißer Balken
+/// über dem dunklen Fenster. Aus <c>OnHandleCreated</c> aufrufen.
+/// </summary>
+internal static class DarkTitleBar
+{
+    public static void Apply(IntPtr handle)
+    {
+        try
+        {
+            var on = 1;
+            // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (vor Win-10-20H1: Attribut 19)
+            if (DwmSetWindowAttribute(handle, 20, ref on, sizeof(int)) != 0)
+                DwmSetWindowAttribute(handle, 19, ref on, sizeof(int));
+        }
+        catch (DllNotFoundException) { /* ältere Windows-Version: helle Titelleiste */ }
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }

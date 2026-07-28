@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import ApplicationServices
+import Combine
 import ServiceManagement
 import Sparkle
 import SwiftUI
@@ -71,11 +72,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var loginToggleItem: NSMenuItem!
     private var eventMonitors: [Any] = []
 
+    /// Sprachwechsel in den Einstellungen → Menüs neu aufbauen (die SwiftUI-Views
+    /// erledigen das über Loc.shared selbst).
+    private var languageObserver: AnyCancellable?
+
     /// Ziel-App zum Zeitpunkt des Aufnahmestarts (fürs app-abhängige Register).
     private var targetBundleID: String?
 
     /// Zuletzt aktive Fremd-App (nicht shout.) — Ziel fürs Einfügen aus dem Verlauf.
     private var lastExternalApp: NSRunningApplication?
+
+    /// „In der Zwischenablage behalten" (wie Windows). Standard AUS — die Mac-App
+    /// hat den vorherigen Inhalt bisher immer wiederhergestellt.
+    private var keepInClipboard: Bool { UserDefaults.standard.bool(forKey: "keepInClipboard") }
 
     private let formattingEnabledKey = "formattingEnabled"
     /// Einzige Quelle der Wahrheit: UserDefaults (Menü UND Dashboard steuern sie).
@@ -94,19 +103,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "shout. beenden", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let aboutItem = appMenu.addItem(withTitle: Loc.t("Über shout. …"), action: #selector(openAbout), keyEquivalent: "")
+        aboutItem.target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: Loc.t("shout. beenden"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
 
         let editItem = NSMenuItem()
         mainMenu.addItem(editItem)
-        let editMenu = NSMenu(title: "Bearbeiten")
-        editMenu.addItem(withTitle: "Widerrufen", action: Selector(("undo:")), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "Wiederholen", action: Selector(("redo:")), keyEquivalent: "Z")
+        let editMenu = NSMenu(title: Loc.t("Bearbeiten"))
+        editMenu.addItem(withTitle: Loc.t("Widerrufen"), action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: Loc.t("Wiederholen"), action: Selector(("redo:")), keyEquivalent: "Z")
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "Ausschneiden", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Kopieren", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Einsetzen", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Alles auswählen", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: Loc.t("Ausschneiden"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: Loc.t("Kopieren"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: Loc.t("Einsetzen"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: Loc.t("Alles auswählen"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = editMenu
 
         NSApp.mainMenu = mainMenu
@@ -114,6 +126,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
+        // Oberflächensprache umgestellt → Menütexte nachziehen.
+        languageObserver = Loc.shared.$language
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.applyLanguageChange() }
+            }
+        seedDictationLanguage()
         // Gespeichertes Mikrofon wiederherstellen (leer/nil = Systemstandard).
         let savedUID = UserDefaults.standard.string(forKey: micUIDKey)
         recorder.preferredDeviceUID = (savedUID?.isEmpty == false) ? savedUID : nil
@@ -239,7 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         let hosting = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hosting)
-        window.title = "shout. — Korrigieren"
+        window.title = Loc.t("shout. — Korrigieren")
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -254,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func pasteLastDictation() {
         let text = lastInsertedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        injector.paste(text)
+        injector.paste(text, keepInClipboard: keepInClipboard)
     }
 
     @objc private func externalAppActivated(_ note: Notification) {
@@ -272,7 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             app.activate()
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 250_000_000)
-                self.injector.paste(trimmed)
+                self.injector.paste(trimmed, keepInClipboard: self.keepInClipboard)
             }
         } else {
             // Kein (lebendes) Ziel bekannt → wenigstens in die Zwischenablage, aber
@@ -293,66 +312,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        buildStatusMenu()
+    }
+
+    /// Baut das Menü der Menüleiste komplett neu — auch nach einem Sprachwechsel.
+    private func buildStatusMenu() {
         let menu = NSMenu()
 
-        statusMenuItem = NSMenuItem(title: "Modell wird geladen …", action: nil, keyEquivalent: "")
+        statusMenuItem = NSMenuItem(title: Loc.t("Modell wird geladen …"), action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
 
-        retryModelItem = NSMenuItem(title: "Modell erneut laden", action: #selector(retryLoadModel), keyEquivalent: "")
+        retryModelItem = NSMenuItem(title: Loc.t("Modell erneut laden"), action: #selector(retryLoadModel), keyEquivalent: "")
         retryModelItem.target = self
         retryModelItem.isHidden = true
         menu.addItem(retryModelItem)
 
-        formatterMenuItem = NSMenuItem(title: "Formatter: suche …", action: nil, keyEquivalent: "")
+        formatterMenuItem = NSMenuItem(title: Loc.t("Formatter: suche …"), action: nil, keyEquivalent: "")
         formatterMenuItem.isEnabled = false
         menu.addItem(formatterMenuItem)
 
         menu.addItem(.separator())
 
         formattingToggleItem = NSMenuItem(
-            title: "Formatierung", action: #selector(toggleFormatting), keyEquivalent: "f"
+            title: Loc.t("Formatierung"), action: #selector(toggleFormatting), keyEquivalent: "f"
         )
         formattingToggleItem.target = self
         menu.addItem(formattingToggleItem)
 
         loginToggleItem = NSMenuItem(
-            title: "Beim Login starten", action: #selector(toggleLoginItem), keyEquivalent: ""
+            title: Loc.t("Beim Login starten"), action: #selector(toggleLoginItem), keyEquivalent: ""
         )
         loginToggleItem.target = self
         menu.addItem(loginToggleItem)
 
-        let correctItem = NSMenuItem(title: "Letztes Diktat korrigieren …", action: #selector(openCorrectionWindow), keyEquivalent: "c")
+        let correctItem = NSMenuItem(title: Loc.t("Letztes Diktat korrigieren …"), action: #selector(openCorrectionWindow), keyEquivalent: "c")
         correctItem.keyEquivalentModifierMask = [.command, .option]
         correctItem.target = self
         menu.addItem(correctItem)
 
-        let pasteLastItem = NSMenuItem(title: "Zuletzt Gesprochenes einfügen", action: #selector(pasteLastDictation), keyEquivalent: "v")
+        let pasteLastItem = NSMenuItem(title: Loc.t("Zuletzt Gesprochenes einfügen"), action: #selector(pasteLastDictation), keyEquivalent: "v")
         pasteLastItem.keyEquivalentModifierMask = [.command, .control]
         pasteLastItem.target = self
         menu.addItem(pasteLastItem)
 
-        let openItem = NSMenuItem(title: "shout. öffnen …", action: #selector(openMainWindow), keyEquivalent: ",")
+        let openItem = NSMenuItem(title: Loc.t("shout. öffnen …"), action: #selector(openMainWindow), keyEquivalent: ",")
         openItem.target = self
         menu.addItem(openItem)
 
-        let dictItem = NSMenuItem(title: "Wörterbuch …", action: #selector(openDictionaryTab), keyEquivalent: "")
+        let dictItem = NSMenuItem(title: Loc.t("Wörterbuch …"), action: #selector(openDictionaryTab), keyEquivalent: "")
         dictItem.target = self
         menu.addItem(dictItem)
 
         micMenu = NSMenu()
-        let micItem = NSMenuItem(title: "Mikrofon", action: nil, keyEquivalent: "")
+        let micItem = NSMenuItem(title: Loc.t("Mikrofon"), action: nil, keyEquivalent: "")
         micItem.submenu = micMenu
         menu.addItem(micItem)
 
         menu.addItem(.separator())
-        let updateItem = NSMenuItem(title: "Nach Updates suchen …",
+        let updateItem = NSMenuItem(title: Loc.t("Nach Aktualisierungen suchen …"),
                                     action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
                                     keyEquivalent: "")
         updateItem.target = updaterController
         menu.addItem(updateItem)
 
-        let quitItem = NSMenuItem(title: "Beenden", action: #selector(quit), keyEquivalent: "q")
+        let aboutItem = NSMenuItem(title: Loc.t("Über shout. …"), action: #selector(openAbout), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
+        let quitItem = NSMenuItem(title: Loc.t("Beenden"), action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -362,6 +390,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         updateFormatterMenu()
         updateLoginMenu()
         rebuildMicMenu()
+    }
+
+    /// Erststart: die Diktier-Sprache aus der Systemsprache belegen statt fest
+    /// „de" (wie die Windows-App). „auto" kann der Nutzer jederzeit wählen.
+    private func seedDictationLanguage() {
+        let key = "transcriptionLanguage"
+        guard UserDefaults.standard.string(forKey: key) == nil else { return }
+        let system = Locale.preferredLanguages.first ?? Locale.current.identifier
+        UserDefaults.standard.set(system.hasPrefix("de") ? "de" : "en", forKey: key)
+    }
+
+    /// Menüs nach einem Wechsel der Oberflächensprache neu beschriften.
+    private func applyLanguageChange() {
+        setupMainMenu()
+        buildStatusMenu()
     }
 
     // MARK: - Mikrofon-Auswahl
@@ -379,7 +422,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         micMenu.removeAllItems()
         let selectedUID = UserDefaults.standard.string(forKey: micUIDKey)
 
-        let systemItem = NSMenuItem(title: "Systemstandard", action: #selector(selectMic(_:)), keyEquivalent: "")
+        let systemItem = NSMenuItem(title: Loc.t("Systemstandard"), action: #selector(selectMic(_:)), keyEquivalent: "")
         systemItem.target = self
         systemItem.representedObject = ""   // "" = Systemstandard
         systemItem.state = (selectedUID == nil || selectedUID == "") ? .on : .off
@@ -426,20 +469,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         switch state {
         case .loadingModel:
             button.title = "⏳"
-            statusMenuItem?.title = "Modell wird geladen …"
+            statusMenuItem?.title = Loc.t("Modell wird geladen …")
         case .idle:
             button.title = "🎙️"
-            let verb = settings.mode == .hold ? "halten" : "drücken"
-            statusMenuItem?.title = "Bereit — \(settings.hotkeyDescription) \(verb)"
+            let trigger = settings.mode == .hold
+                ? Loc.f("%@ halten", settings.hotkeyDescription)
+                : Loc.f("%@ drücken", settings.hotkeyDescription)
+            statusMenuItem?.title = Loc.f("Bereit — %@", trigger)
         case .recording:
             button.title = "🔴"
-            statusMenuItem?.title = "Aufnahme läuft …"
+            statusMenuItem?.title = Loc.t("Aufnahme läuft …")
         case .working:
             button.title = "✍️"
-            statusMenuItem?.title = "Verarbeite …"
+            statusMenuItem?.title = Loc.t("Verarbeite …")
         case .failed:
             button.title = "⚠️"
-            statusMenuItem?.title = "Modell nicht geladen — „Modell erneut laden“"
+            statusMenuItem?.title = Loc.t("Modell nicht geladen — „Modell erneut laden“")
         }
         retryModelItem?.isHidden = (state != .failed)
     }
@@ -452,11 +497,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let loading = await formatter.isLoading
             let name = await formatter.activeModelName
             if ready {
-                formatterMenuItem?.title = "Formatter: \(name)"
+                formatterMenuItem?.title = Loc.f("Formatter: %@", name)
             } else if loading {
-                formatterMenuItem?.title = "Formatter: Modell wird geladen …"
+                formatterMenuItem?.title = Loc.t("Formatter: Modell wird geladen …")
             } else {
-                formatterMenuItem?.title = "Formatter: nicht geladen (Rohtext)"
+                formatterMenuItem?.title = Loc.t("Formatter: nicht geladen (Rohtext)")
             }
         }
     }
@@ -477,6 +522,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func openMainWindow() { openDashboard(.aufnahme) }
     @objc private func openDictionaryTab() { openDashboard(.woerterbuch) }
 
+    /// „Über shout." — dasselbe Popover, das auch der Klick auf die Wortmarke öffnet.
+    @objc private func openAbout() {
+        openDashboard(dashboardModel.tab)
+        dashboardModel.showAbout = true
+    }
+
+    /// Reicht den Sparkle-Updater als Closures an die Views weiter (kein Sparkle-Import dort).
+    private var updateBridge: UpdateBridge {
+        let updater = updaterController.updater
+        return UpdateBridge(
+            check: { updater.checkForUpdates() },
+            lastCheck: { updater.lastUpdateCheckDate },
+            automatic: { updater.automaticallyChecksForUpdates },
+            setAutomatic: { updater.automaticallyChecksForUpdates = $0 }
+        )
+    }
+
     private func openDashboard(_ tab: DashboardModel.Tab) {
         dashboardModel.tab = tab
         if dashboardWindow == nil {
@@ -491,7 +553,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onSelectASR: { [weak self] id in await self?.switchASRModel(to: id) },
                 onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) },
                 onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
-                onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() }
+                onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
+                updates: updateBridge
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."
@@ -530,14 +593,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
         encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(bundle) else { return "Export fehlgeschlagen." }
+        guard let data = try? encoder.encode(bundle) else { return Loc.t("Export fehlgeschlagen.") }
 
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "shout-backup.json"
         panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url else { return "Export abgebrochen." }
-        do { try data.write(to: url, options: .atomic); return "Exportiert nach \(url.lastPathComponent)." }
-        catch { return "Export fehlgeschlagen: \(error.localizedDescription)" }
+        guard panel.runModal() == .OK, let url = panel.url else { return Loc.t("Export abgebrochen.") }
+        do {
+            try data.write(to: url, options: .atomic)
+            return Loc.f("Exportiert nach %@.", url.lastPathComponent)
+        } catch {
+            return Loc.f("Export fehlgeschlagen: %@", error.localizedDescription)
+        }
     }
 
     private func importData() -> String {
@@ -545,15 +612,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.allowedContentTypes = [.json]
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return "Import abgebrochen." }
-        guard let data = try? Data(contentsOf: url) else { return "Datei nicht lesbar." }
+        guard panel.runModal() == .OK, let url = panel.url else { return Loc.t("Import abgebrochen.") }
+        guard let data = try? Data(contentsOf: url) else { return Loc.t("Datei nicht lesbar.") }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let bundle = try? decoder.decode(BackupBundle.self, from: data) else {
-            return "Ungültige Backup-Datei."
+            return Loc.t("Ungültige Backup-Datei.")
         }
         guard bundle.version <= BackupBundle.currentVersion else {
-            return "Dieses Backup stammt aus einer neueren Version von shout. Bitte zuerst die App aktualisieren."
+            return Loc.t("Dieses Backup stammt aus einer neueren Version von shout. Bitte zuerst die App aktualisieren.")
         }
 
         dictionary.replaceContents(bundle.dictionary)
@@ -580,7 +647,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let vp = s.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
         updateStatusItem()
 
-        return "Importiert: \(bundle.dictionary.terms.count) Begriffe, \(bundle.history.count) Diktate."
+        return Loc.f("Importiert: %d Begriffe, %d Diktate.",
+                     bundle.dictionary.terms.count, bundle.history.count)
     }
 
     /// Klick aufs Dock-/Launchpad-Icon öffnet das Hauptfenster wieder.
@@ -659,7 +727,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 state = .failed
                 // NACH state=.failed: das didSet ruft updateStatusItem() und würde
                 // einen zuvor gesetzten Titel sofort überschreiben.
-                statusMenuItem?.title = "Modell-Ladefehler: \(error.localizedDescription)"
+                statusMenuItem?.title = Loc.f("Modell-Ladefehler: %@", error.localizedDescription)
             }
             dashboardModel.asrLoadingID = nil
             dashboardModel.asrProgress = nil
@@ -672,7 +740,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // serialisiert zwar, aber wir sparen die redundante Runde).
         guard dashboardModel.formatLoadingID == nil else { return }
         // Ladezustand sofort sichtbar machen (load() ist asynchron und kann dauern).
-        formatterMenuItem?.title = "Formatter: Modell wird geladen …"
+        formatterMenuItem?.title = Loc.t("Formatter: Modell wird geladen …")
         dashboardModel.formatLoadingID = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
         dashboardModel.formatProgress = 0
         Task {
@@ -690,7 +758,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Auch aus dem Fehlerzustand heraus erlaubt — so kann der Nutzer sich mit
         // einem kleineren Modell aus einem fehlgeschlagenen Erst-Download befreien.
         guard state == .idle || state == .failed else {
-            dashboardModel.modelNote = "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird."
+            dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
             return
         }
         dashboardModel.modelNote = nil
@@ -709,7 +777,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             UserDefaults.standard.set(previous, forKey: "asrModel")
             try? await transcriber.reload(onProgress: asrProgressHandler())
             dashboardModel.activeASR = previous
-            dashboardModel.modelNote = "Modell konnte nicht geladen werden (offline?). Vorheriges Modell bleibt aktiv."
+            dashboardModel.modelNote = Loc.t("Modell konnte nicht geladen werden (offline?). Vorheriges Modell bleibt aktiv.")
         }
         dashboardModel.asrLoadingID = nil
         dashboardModel.asrProgress = nil
@@ -730,7 +798,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // laufende Formatierung das alte LLM, während das neue lädt → zwei Multi-GB-
         // Modelle gleichzeitig im Unified Memory (Memory-Pressure auf kleinen Macs).
         guard state == .idle || state == .failed else {
-            dashboardModel.modelNote = "Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird."
+            dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
             return
         }
         dashboardModel.modelNote = nil
@@ -750,7 +818,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             UserDefaults.standard.set(previous, forKey: "formatModel")
             await formatter.reload(onProgress: formatProgressHandler())
             dashboardModel.activeFormat = previous
-            dashboardModel.modelNote = "Aufbereitungs-Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv."
+            dashboardModel.modelNote = Loc.t("Aufbereitungs-Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv.")
         }
         dashboardModel.formatLoadingID = nil
         dashboardModel.formatProgress = nil
@@ -804,7 +872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // Taste danach in JEDER App das Diktat auslösen (jedes getippte „a“).
             // Funktionstasten (F1–F12) sind als eigenständiger Hotkey ok.
             guard !realMods.isEmpty || Self.isFunctionKey(event.keyCode) else {
-                settings.captureHint = "Mit ⌘/⌥/⌃/⇧ kombinieren (oder F-Taste)"
+                settings.captureHint = Loc.t("Mit ⌘/⌥/⌃/⇧ kombinieren (oder F-Taste)")
                 return
             }
             captureKeyDownSeen = true
@@ -954,7 +1022,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }
-                injector.paste(final)
+                injector.paste(final, keepInClipboard: keepInClipboard)
                 sounds.play(.done)
                 lastInsertedText = final
                 history.add(final)

@@ -28,7 +28,7 @@ struct ModelsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Modelle").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
+                Text(Loc.t("Modelle")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
 
                 if let note = model.modelNote {
                     HStack(spacing: 8) {
@@ -42,7 +42,7 @@ struct ModelsView: View {
 
                 hardwarePanel
 
-                ConsolePanel(title: "Transkription (Sprache → Text)") {
+                ConsolePanel(title: Loc.t("Transkription (Sprache → Text)")) {
                     VStack(spacing: 0) {
                         ForEach(ModelCatalog.asr.indices, id: \.self) { i in
                             let o = ModelCatalog.asr[i]
@@ -54,7 +54,7 @@ struct ModelsView: View {
                     }
                 }
 
-                ConsolePanel(title: "Aufbereitung & Formatierung (KI-Textmodell)") {
+                ConsolePanel(title: Loc.t("Aufbereitung & Formatierung (KI-Textmodell)")) {
                     VStack(spacing: 0) {
                         ForEach(ModelCatalog.formatting.indices, id: \.self) { i in
                             let o = ModelCatalog.formatting[i]
@@ -68,7 +68,7 @@ struct ModelsView: View {
 
                 remotePanel
 
-                Text("Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Mac.")
+                Text(Loc.t("Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Mac."))
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -91,7 +91,7 @@ struct ModelsView: View {
     private var remotePanel: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Text("AKTUELLE MODELLE · HUGGING FACE")
+                Text(Loc.t("AKTUELLE MODELLE · HUGGING FACE"))
                     .font(.system(size: 11, weight: .semibold)).tracking(0.8)
                     .foregroundStyle(Color(white: 0.45)).padding(.leading, 4)
                 Spacer()
@@ -99,7 +99,7 @@ struct ModelsView: View {
                     HStack(spacing: 5) {
                         if remoteLoading { ProgressView().controlSize(.small).tint(Color.shoutLive) }
                         else { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)) }
-                        Text(remoteLoading ? "Lädt …" : "Aktualisieren")
+                        Text(remoteLoading ? Loc.t("Lädt …") : Loc.t("Aktualisieren"))
                     }
                 }
                 .buttonStyle(ConsoleButtonStyle())
@@ -108,11 +108,11 @@ struct ModelsView: View {
 
             VStack(spacing: 0) {
                 if let remoteError {
-                    infoLine("Keine Verbindung zu Hugging Face. \(remoteError)")
+                    infoLine(Loc.f("Keine Verbindung zu Hugging Face. %@", remoteError))
                 } else if remote.isEmpty && remoteLoading {
-                    infoLine("Suche aktuelle Modelle …")
+                    infoLine(Loc.t("Suche aktuelle Modelle …"))
                 } else if remote.isEmpty {
-                    infoLine("Keine Modelle gefunden.")
+                    infoLine(Loc.t("Keine Modelle gefunden."))
                 } else {
                     ForEach(Array(remote.enumerated()), id: \.element.id) { i, m in
                         remoteRow(m, selected: formatID == m.id,
@@ -126,7 +126,7 @@ struct ModelsView: View {
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(white: 0.165)))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.07)))
 
-            Text("Live aus der Hugging-Face-Bibliothek „mlx-community“ (Instruct-Modelle, 4-bit). Größe geschätzt — für die Aufbereitung; die Transkription bleibt bei den geprüften Whisper-Modellen oben.")
+            Text(Loc.t("Live aus der Hugging-Face-Bibliothek „mlx-community“ (Instruct-Modelle, 4-bit). Größe geschätzt — für die Aufbereitung; die Transkription bleibt bei den geprüften Whisper-Modellen oben."))
                 .font(.system(size: 11)).foregroundStyle(Color(white: 0.42))
                 .fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
         }
@@ -150,9 +150,9 @@ struct ModelsView: View {
                     HStack(spacing: 7) {
                         Text(m.shortName).font(.system(size: 13, weight: .medium)).foregroundStyle(Color(white: 0.9))
                             .lineLimit(1).truncationMode(.middle)
-                        if recommended { tag("Aktuell beliebt", color: .shoutLive) }
-                        if tooBig { tag("Viel RAM nötig", color: Color(white: 0.55)) }
-                        else if !known { tag("Größe unbekannt", color: Color(white: 0.55)) }
+                        if recommended { tag(Loc.t("Aktuell beliebt"), color: .shoutLive) }
+                        if tooBig { tag(Loc.t("Viel RAM nötig"), color: Color(white: 0.55)) }
+                        else if !known { tag(Loc.t("Größe unbekannt"), color: Color(white: 0.55)) }
                     }
                     Text(remoteSubtitle(m)).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                 }
@@ -200,14 +200,18 @@ struct ModelsView: View {
                     Image(systemName: "cpu").font(.system(size: 26)).foregroundStyle(Color.shoutLive)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(Hardware.chip).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.95))
-                        Text("\(ram) GB Arbeitsspeicher").font(.system(size: 12)).foregroundStyle(Color(white: 0.58))
+                        Text(Loc.f("%d GB Arbeitsspeicher · %d Kerne", ram, Hardware.coreCount))
+                            .font(.system(size: 12)).foregroundStyle(Color(white: 0.58))
                     }
                     Spacer()
                 }
                 ConsoleDivider().padding(.horizontal, -15)
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles").font(.system(size: 12)).foregroundStyle(Color.shoutLive)
-                    Text("Empfohlen für deinen Mac: **\(recASR.name)** zum Transkribieren, **\(recFormat.name)** zum Aufbereiten.")
+                    // .init(…) macht daraus eine LocalizedStringKey — SwiftUI parst
+                    // das Markdown (**fett**) weiterhin.
+                    Text(.init(Loc.f("Empfohlen für deinen Mac: **%@** zum Transkribieren, **%@** zum Aufbereiten.",
+                                     recASR.name, recFormat.name)))
                         .font(.system(size: 12)).foregroundStyle(Color(white: 0.7))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -230,10 +234,10 @@ struct ModelsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 7) {
                         Text(o.name).font(.system(size: 13.5, weight: .medium)).foregroundStyle(Color(white: 0.9))
-                        if recommended { tag("Empfohlen", color: .shoutLive) }
-                        if tooBig { tag("Viel RAM nötig", color: Color(white: 0.55)) }
+                        if recommended { tag(Loc.t("Empfohlen"), color: .shoutLive) }
+                        if tooBig { tag(Loc.t("Viel RAM nötig"), color: Color(white: 0.55)) }
                     }
-                    Text(o.note).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
+                    Text(Loc.t(o.note)).font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                 }
                 Spacer(minLength: 8)
                 if loading { loadingIndicator(progress) }

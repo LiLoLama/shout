@@ -10,10 +10,10 @@ struct HistoryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
-                    Text("Verlauf").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
+                    Text(Loc.t("Verlauf")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
                     Spacer()
                     if !history.entries.isEmpty {
-                        Button("Alle löschen") { history.clear() }.buttonStyle(ConsoleButtonStyle())
+                        Button(Loc.t("Alle löschen")) { history.clear() }.buttonStyle(ConsoleButtonStyle())
                     }
                 }
 
@@ -48,11 +48,11 @@ struct HistoryView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
                 Button { onInsert(entry.text) } label: { Image(systemName: "arrow.down.doc") }
-                    .help("Am Cursor einfügen (in der zuletzt aktiven App)")
+                    .help(Loc.t("Am Cursor einfügen (in der zuletzt aktiven App)"))
                 Button { copy(entry.text) } label: { Image(systemName: "doc.on.doc") }
-                    .help("In die Zwischenablage kopieren")
+                    .help(Loc.t("In die Zwischenablage kopieren"))
                 Button { history.delete(entry) } label: { Image(systemName: "trash") }
-                    .help("Löschen")
+                    .help(Loc.t("Löschen"))
             }
             .buttonStyle(.borderless).foregroundStyle(Color(white: 0.5)).font(.system(size: 12))
         }
@@ -65,8 +65,8 @@ struct HistoryView: View {
         VStack(spacing: 12) {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 40, weight: .light)).foregroundStyle(Color(white: 0.4))
-            Text("Noch keine Diktate").font(.system(size: 15, weight: .medium)).foregroundStyle(Color(white: 0.75))
-            Text("Was du diktierst, erscheint hier — zum Nachlesen und erneut Kopieren.")
+            Text(Loc.t("Noch keine Diktate")).font(.system(size: 15, weight: .medium)).foregroundStyle(Color(white: 0.75))
+            Text(Loc.t("Was du diktierst, erscheint hier — zum Nachlesen und erneut Kopieren."))
                 .font(.system(size: 12)).foregroundStyle(Color(white: 0.55))
                 .multilineTextAlignment(.center).frame(maxWidth: 320)
         }
@@ -89,10 +89,11 @@ struct HistoryView: View {
         return order.map { Group(label: Self.dayLabel($0), items: map[$0] ?? []) }
     }
 
+    @MainActor
     private static func dayLabel(_ day: Date) -> String {
         let cal = Calendar.current
-        if cal.isDateInToday(day) { return "Heute" }
-        if cal.isDateInYesterday(day) { return "Gestern" }
+        if cal.isDateInToday(day) { return Loc.t("Heute") }
+        if cal.isDateInYesterday(day) { return Loc.t("Gestern") }
         return dateFmt.string(from: day)
     }
 
@@ -104,8 +105,11 @@ struct HistoryView: View {
     private static let time: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
     }()
-    private static let dateFmt: DateFormatter = {
+    /// Berechnet, damit ein Sprachwechsel sofort greift (statt beim ersten
+    /// Zugriff einzufrieren wie ein `static let`).
+    @MainActor
+    private static var dateFmt: DateFormatter {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none
-        f.locale = Locale(identifier: "de_DE"); return f
-    }()
+        f.locale = Locale(identifier: Loc.isGerman ? "de_DE" : "en_US"); return f
+    }
 }

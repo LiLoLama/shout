@@ -223,14 +223,14 @@ private struct RecordingPill: View {
                 .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
         }
         .buttonStyle(.plain)
-        .help("Aufnahme starten")
+        .help(Loc.t("Aufnahme starten"))
     }
 
     // Aufnahme: X · Wellenform · ✓.
     private var recordingPill: some View {
         HStack(spacing: 8) {
             circleButton(system: "xmark", tint: Color(white: 0.75), action: model.onCancel)
-                .help("Abbrechen")
+                .help(Loc.t("Abbrechen"))
             HStack(spacing: 2.5) {
                 ForEach(weights.indices, id: \.self) { i in
                     Capsule().fill(Color.shoutLive)
@@ -239,7 +239,7 @@ private struct RecordingPill: View {
                 }
             }
             circleButton(system: "checkmark", tint: Color.shoutLive, filled: true, action: model.onSubmit)
-                .help("Einfügen")
+                .help(Loc.t("Einfügen"))
         }
         .padding(.horizontal, 8)
         .frame(height: 34)

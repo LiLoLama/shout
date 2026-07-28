@@ -6,6 +6,9 @@ enum Hardware {
         Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
     }
 
+    /// Kerne — wie in der Windows-App neben dem Arbeitsspeicher gezeigt.
+    static var coreCount: Int { ProcessInfo.processInfo.processorCount }
+
     static var chip: String {
         #if os(iOS)
         // iOS kennt kein machdep.cpu.brand_string → Geräte-Identifier (z. B. "iPhone17,1").

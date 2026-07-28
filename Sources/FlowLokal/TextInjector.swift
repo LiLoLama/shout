@@ -25,8 +25,28 @@ final class TextInjector {
     private var restoreWorkItem: DispatchWorkItem?
     private var restorePending = false
 
-    func paste(_ text: String) {
+    /// Fügt `text` am Cursor ein. Mit `keepInClipboard` bleibt das Diktat danach
+    /// in der Zwischenablage (wie die Windows-Option „In der Zwischenablage
+    /// behalten"); sonst wird der vorherige Inhalt wiederhergestellt und das
+    /// Diktat als vertraulich/transient markiert.
+    func paste(_ text: String, keepInClipboard: Bool = false) {
         let pasteboard = NSPasteboard.general
+
+        if keepInClipboard {
+            // Eine noch geplante Wiederherstellung würde den gerade gewünschten
+            // Inhalt 0,41 s später wieder überschreiben.
+            restoreWorkItem?.cancel()
+            restoreWorkItem = nil
+            savedItems = nil
+            restorePending = false
+
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
+                self?.postCommandV()
+            }
+            return
+        }
 
         if !restorePending {
             // Erstes Einfügen einer Serie → den ECHTEN Nutzer-Inhalt vollständig sichern

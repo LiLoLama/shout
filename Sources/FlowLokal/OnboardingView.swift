@@ -72,8 +72,8 @@ struct OnboardingView: View {
     }
 
     private var welcomeStep: some View {
-        stepBody(icon: "mic.fill", title: "Willkommen bei shout.",
-                 text: "Diktieren in jede App — komplett lokal auf deinem Mac. Keine Cloud, keine Konten. In vier kurzen Schritten ist alles startklar.") {
+        stepBody(icon: "mic.fill", title: Loc.t("Willkommen bei shout."),
+                 text: Loc.t("Diktieren in jede App — komplett lokal auf deinem Mac. Keine Cloud, keine Konten. In vier kurzen Schritten ist alles startklar.")) {
             EmptyView()
         }
     }
@@ -82,17 +82,17 @@ struct OnboardingView: View {
         let granted = micStatus == .authorized
         return stepBody(icon: granted ? "checkmark.circle.fill" : "mic.circle.fill",
                         iconColor: granted ? .green : Color.shoutLive,
-                        title: "Mikrofon",
+                        title: Loc.t("Mikrofon"),
                         text: granted
-                            ? "Perfekt — shout. darf dein Mikrofon nutzen."
-                            : "shout. braucht Zugriff auf dein Mikrofon, um deine Sprache lokal in Text umzuwandeln.") {
+                            ? Loc.t("Perfekt — shout. darf dein Mikrofon nutzen.")
+                            : Loc.t("shout. braucht Zugriff auf dein Mikrofon, um deine Sprache lokal in Text umzuwandeln.")) {
             if !granted {
                 if micStatus == .denied || micStatus == .restricted {
-                    Button("In Systemeinstellungen öffnen") {
+                    Button(Loc.t("In Systemeinstellungen öffnen")) {
                         openSettings("Privacy_Microphone")
                     }.buttonStyle(PrimaryOnboardButton())
                 } else {
-                    Button("Mikrofon erlauben") {
+                    Button(Loc.t("Mikrofon erlauben")) {
                         AVCaptureDevice.requestAccess(for: .audio) { ok in
                             DispatchQueue.main.async { micStatus = ok ? .authorized : .denied }
                         }
@@ -105,12 +105,12 @@ struct OnboardingView: View {
     private var accessibilityStep: some View {
         stepBody(icon: axTrusted ? "checkmark.circle.fill" : "hand.raised.circle.fill",
                  iconColor: axTrusted ? .green : Color.shoutLive,
-                 title: "Bedienungshilfen",
+                 title: Loc.t("Bedienungshilfen"),
                  text: axTrusted
-                    ? "Alles bereit — shout. kann Text an der Cursor-Position einfügen."
-                    : "Damit shout. den fertigen Text an der Cursor-Position einfügen kann, aktiviere es unter „Bedienungshilfen“. Danach erkennt shout. die Freigabe automatisch.") {
+                    ? Loc.t("Alles bereit — shout. kann Text an der Cursor-Position einfügen.")
+                    : Loc.t("Damit shout. den fertigen Text an der Cursor-Position einfügen kann, aktiviere es unter „Bedienungshilfen“. Danach erkennt shout. die Freigabe automatisch.")) {
             if !axTrusted {
-                Button("Bedienungshilfen öffnen") {
+                Button(Loc.t("Bedienungshilfen öffnen")) {
                     let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
                     _ = AXIsProcessTrustedWithOptions(opts)
                     openSettings("Privacy_Accessibility")
@@ -124,28 +124,28 @@ struct OnboardingView: View {
         let failed = dashboard.asrLoadFailed
         let icon = ready ? "checkmark.circle.fill" : (failed ? "exclamationmark.triangle.fill" : "arrow.down.circle.fill")
         let text: String = {
-            if ready { return "Das Sprachmodell ist geladen und liegt lokal auf deinem Mac." }
-            if failed { return "Das Sprachmodell konnte nicht geladen werden — meist fehlt beim ersten Start die Internet-Verbindung. Prüfe die Verbindung und versuch es erneut." }
-            return "Beim ersten Start lädt shout. das Sprachmodell einmalig herunter (danach läuft alles offline). Das kann je nach Verbindung ein paar Minuten dauern."
+            if ready { return Loc.t("Das Sprachmodell ist geladen und liegt lokal auf deinem Mac.") }
+            if failed { return Loc.t("Das Sprachmodell konnte nicht geladen werden — meist fehlt beim ersten Start die Internet-Verbindung. Prüfe die Verbindung und versuch es erneut.") }
+            return Loc.t("Beim ersten Start lädt shout. das Sprachmodell einmalig herunter (danach läuft alles offline). Das kann je nach Verbindung ein paar Minuten dauern.")
         }()
         return stepBody(icon: icon,
                         iconColor: ready ? .green : Color.shoutLive,
-                        title: "Sprachmodell",
+                        title: Loc.t("Sprachmodell"),
                         text: text) {
             if failed {
-                Button("Erneut versuchen") { onRetryModel() }.buttonStyle(PrimaryOnboardButton())
+                Button(Loc.t("Erneut versuchen")) { onRetryModel() }.buttonStyle(PrimaryOnboardButton())
             } else if !ready {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small).tint(Color.shoutLive)
-                    Text("Modell wird geladen …").font(.system(size: 12)).foregroundStyle(Color(white: 0.6))
+                    Text(Loc.t("Modell wird geladen …")).font(.system(size: 12)).foregroundStyle(Color(white: 0.6))
                 }
             }
         }
     }
 
     private var testStep: some View {
-        stepBody(icon: "keyboard.fill", title: "Probier es aus",
-                 text: "Klick ins Feld, halte \(settings.hotkeyDescription) und sprich einen Satz. Dein Text erscheint direkt hier.") {
+        stepBody(icon: "keyboard.fill", title: Loc.t("Probier es aus"),
+                 text: Loc.f("Klick ins Feld, halte %@ und sprich einen Satz. Dein Text erscheint direkt hier.", settings.hotkeyDescription)) {
             VStack(alignment: .leading, spacing: 8) {
                 TextEditor(text: $testText)
                     .font(.system(size: 13))
@@ -154,7 +154,7 @@ struct OnboardingView: View {
                     .frame(height: 90)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.11)))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.08)))
-                Text("Tipp: Aufnahme-Art und Taste kannst du später unter „Aufnahme & Text“ ändern.")
+                Text(Loc.t("Tipp: Aufnahme-Art und Taste kannst du später unter „Aufnahme & Text“ ändern."))
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.45))
             }
         }
@@ -165,13 +165,13 @@ struct OnboardingView: View {
     private var footer: some View {
         HStack {
             if step > 0 {
-                Button("Zurück") { step -= 1 }.buttonStyle(ConsoleButtonStyle())
+                Button(Loc.t("Zurück")) { step -= 1 }.buttonStyle(ConsoleButtonStyle())
             }
             Spacer()
             if step < stepCount - 1 {
-                Button("Weiter") { step += 1 }.buttonStyle(PrimaryOnboardButton())
+                Button(Loc.t("Weiter")) { step += 1 }.buttonStyle(PrimaryOnboardButton())
             } else {
-                Button("Los geht's") { onFinish() }.buttonStyle(PrimaryOnboardButton())
+                Button(Loc.t("Los geht's")) { onFinish() }.buttonStyle(PrimaryOnboardButton())
             }
         }
         .padding(.horizontal, 22).padding(.vertical, 16)

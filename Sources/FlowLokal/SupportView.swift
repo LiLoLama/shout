@@ -8,29 +8,31 @@ struct SupportView: View {
     private let donateURL = "https://ko-fi.com/lilolama"
     private let githubURL = "https://github.com/LiLoLama/shout"
 
-    private let points = [
-        ("lock.open.fill", "Frei & quelloffen", "Der komplette Quellcode ist öffentlich — nutzen, anpassen, weitergeben."),
-        ("lock.fill", "Lokal & privat", "Keine Cloud, keine Konten, keine Datenweitergabe. Alles bleibt auf deinem Mac."),
-        ("arrow.triangle.branch", "Aktiv gepflegt", "Ich bemühe mich, shout. aktuell zu halten, zu verbessern und zu erweitern."),
-    ]
+    private var points: [(String, String, String)] {
+        [
+            ("lock.open.fill", Loc.t("Frei & quelloffen"), Loc.t("Der komplette Quellcode ist öffentlich — nutzen, anpassen, weitergeben.")),
+            ("lock.fill", Loc.t("Lokal & privat"), Loc.t("Keine Cloud, keine Konten, keine Datenweitergabe. Alles bleibt auf deinem Mac.")),
+            ("arrow.triangle.branch", Loc.t("Aktiv gepflegt"), Loc.t("Ich bemühe mich, shout. aktuell zu halten, zu verbessern und zu erweitern.")),
+        ]
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Unterstützen").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
+                Text(Loc.t("Unterstützen")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
 
                 ConsolePanel {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 12) {
                             Image(systemName: "heart.fill").font(.system(size: 30)).foregroundStyle(Color.shoutLive)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("shout. ist Open Source").font(.system(size: 19, weight: .semibold)).foregroundStyle(Color(white: 0.95))
-                                Text("Kostenlos, quelloffen und komplett lokal.").font(.system(size: 12)).foregroundStyle(Color(white: 0.58))
+                                Text(Loc.t("shout. ist Open Source")).font(.system(size: 19, weight: .semibold)).foregroundStyle(Color(white: 0.95))
+                                Text(Loc.t("Kostenlos, quelloffen und komplett lokal.")).font(.system(size: 12)).foregroundStyle(Color(white: 0.58))
                             }
                             Spacer()
                         }
 
-                        Text("Ich entwickle shout. in meiner freien Zeit und bemühe mich, die App aktuell zu halten, zu verbessern und zu erweitern. Wenn dir shout. hilft und du die Weiterentwicklung unterstützen möchtest, freue ich mich riesig — freiwillig, ohne Verpflichtung.")
+                        Text(Loc.t("Ich entwickle shout. in meiner freien Zeit und bemühe mich, die App aktuell zu halten, zu verbessern und zu erweitern. Wenn dir shout. hilft und du die Weiterentwicklung unterstützen möchtest, freue ich mich riesig — freiwillig, ohne Verpflichtung."))
                             .font(.system(size: 13)).foregroundStyle(Color(white: 0.62))
                             .fixedSize(horizontal: false, vertical: true)
                             .lineSpacing(3)
@@ -39,14 +41,14 @@ struct SupportView: View {
                             Button {
                                 if let url = URL(string: donateURL) { NSWorkspace.shared.open(url) }
                             } label: {
-                                Label("Unterstützen", systemImage: "cup.and.saucer.fill").fontWeight(.semibold)
+                                Label(Loc.t("Unterstützen"), systemImage: "cup.and.saucer.fill").fontWeight(.semibold)
                             }
                             .buttonStyle(DonateButtonStyle())
 
                             Button {
                                 if let url = URL(string: githubURL) { NSWorkspace.shared.open(url) }
                             } label: {
-                                Label("Quellcode auf GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                                Label(Loc.t("Quellcode auf GitHub"), systemImage: "chevron.left.forwardslash.chevron.right")
                             }
                             .buttonStyle(ConsoleButtonStyle())
                         }
@@ -54,7 +56,7 @@ struct SupportView: View {
                     .padding(16)
                 }
 
-                ConsolePanel(title: "Was shout. ausmacht") {
+                ConsolePanel(title: Loc.t("Was shout. ausmacht")) {
                     VStack(spacing: 0) {
                         ForEach(points.indices, id: \.self) { i in
                             let p = points[i]
@@ -72,7 +74,7 @@ struct SupportView: View {
                     }
                 }
 
-                Text("Fehler gefunden oder eine Idee? Auf GitHub freue ich mich über Issues und Pull Requests.")
+                Text(Loc.t("Fehler gefunden oder eine Idee? Auf GitHub freue ich mich über Issues und Pull Requests."))
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }

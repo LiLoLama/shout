@@ -64,13 +64,13 @@ private struct LearnedToastView: View {
                 .foregroundStyle(.green)
                 .font(.title3)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Ins Wörterbuch gelernt")
+                Text(Loc.t("Ins Wörterbuch gelernt"))
                     .font(.caption).foregroundStyle(.secondary)
                 Text("\(wrong)  →  \(right)")
                     .font(.callout).fontWeight(.semibold)
                     .lineLimit(1)
             }
-            Button("Rückgängig", action: onUndo)
+            Button(Loc.t("Rückgängig"), action: onUndo)
                 .buttonStyle(.borderless)
                 .foregroundStyle(.blue)
         }

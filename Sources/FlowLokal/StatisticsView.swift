@@ -16,20 +16,20 @@ struct StatisticsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Statistiken").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
+                Text(Loc.t("Statistiken")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(white: 0.92))
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
-                    statCard(value: stats.data.totalWords.formatted(), label: "Wörter gesamt")
-                    statCard(value: "\(stats.averageWPM)", label: "Ø Wörter/Minute")
-                    statCard(value: "\(stats.data.totalDictations)", label: "Diktate")
-                    statCard(value: "\(dictionary.contents.corrections.count)", label: "Korrekturen gelernt")
+                    statCard(value: stats.data.totalWords.formatted(), label: Loc.t("Wörter gesamt"))
+                    statCard(value: "\(stats.averageWPM)", label: Loc.t("Ø Wörter/Minute"))
+                    statCard(value: "\(stats.data.totalDictations)", label: Loc.t("Diktate"))
+                    statCard(value: "\(dictionary.contents.corrections.count)", label: Loc.t("Korrekturen gelernt"))
                 }
 
-                ConsolePanel(title: "Streak") {
+                ConsolePanel(title: Loc.t("Streak")) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .firstTextBaseline, spacing: 16) {
-                            metric("\(stats.currentStreak)", "Tage aktuell")
-                            metric("\(stats.longestStreak)", "längster")
+                            metric("\(stats.currentStreak)", Loc.t("Tage aktuell"))
+                            metric("\(stats.longestStreak)", Loc.t("längster"))
                         }
                         Heatmap(stats: stats)
                     }
@@ -37,8 +37,8 @@ struct StatisticsView: View {
                 }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    infoCard(title: "Meistgenutztes Wort", value: mostUsedWord ?? "—")
-                    infoCard(title: "Aktivste Zeit", value: peakTime ?? "—")
+                    infoCard(title: Loc.t("Meistgenutztes Wort"), value: mostUsedWord ?? "—")
+                    infoCard(title: Loc.t("Aktivste Zeit"), value: peakTime ?? "—")
                 }
 
                 voiceSection
@@ -85,18 +85,18 @@ struct StatisticsView: View {
     // MARK: - Sprachprofil
 
     @ViewBuilder private var voiceSection: some View {
-        ConsolePanel(title: "Dein Sprachprofil") {
+        ConsolePanel(title: Loc.t("Dein Sprachprofil")) {
             VStack(alignment: .leading, spacing: 12) {
                 if stats.data.totalDictations < unlockAt {
                     let remaining = unlockAt - stats.data.totalDictations
                     HStack(spacing: 10) {
                         Image(systemName: "lock.fill").foregroundStyle(Color(white: 0.5))
-                        Text("Wird nach \(remaining) weiteren Diktaten freigeschaltet.")
+                        Text(Loc.f("Wird nach %d weiteren Diktaten freigeschaltet.", remaining))
                             .font(.system(size: 13)).foregroundStyle(Color(white: 0.6))
                     }
                 } else {
                     if voiceProfile.isEmpty {
-                        Text("shout. kann aus deinen Diktaten ein kurzes Profil deines Sprachstils erstellen — vollständig lokal.")
+                        Text(Loc.t("shout. kann aus deinen Diktaten ein kurzes Profil deines Sprachstils erstellen — vollständig lokal."))
                             .font(.system(size: 13)).foregroundStyle(Color(white: 0.6))
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
@@ -109,7 +109,8 @@ struct StatisticsView: View {
                     } label: {
                         HStack(spacing: 6) {
                             if generating { ProgressView().controlSize(.small) }
-                            Text(generating ? "Erstelle …" : (voiceProfile.isEmpty ? "Profil erstellen" : "Aktualisieren"))
+                            Text(generating ? Loc.t("Erstelle …")
+                                            : (voiceProfile.isEmpty ? Loc.t("Profil erstellen") : Loc.t("Aktualisieren")))
                         }
                     }
                     .buttonStyle(ConsoleButtonStyle())
@@ -150,11 +151,11 @@ struct StatisticsView: View {
         for e in history.entries { buckets[cal.component(.hour, from: e.date), default: 0] += 1 }
         guard let hour = buckets.max(by: { $0.value < $1.value })?.key else { return nil }
         switch hour {
-        case 5..<11: return "Vormittags"
-        case 11..<14: return "Mittags"
-        case 14..<18: return "Nachmittags"
-        case 18..<23: return "Abends"
-        default: return "Nachts"
+        case 5..<11: return Loc.t("Vormittags")
+        case 11..<14: return Loc.t("Mittags")
+        case 14..<18: return Loc.t("Nachmittags")
+        case 18..<23: return Loc.t("Abends")
+        default: return Loc.t("Nachts")
         }
     }
 

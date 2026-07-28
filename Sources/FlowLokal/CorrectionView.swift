@@ -19,8 +19,8 @@ struct CorrectionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Letztes Diktat korrigieren").font(.headline)
-            Text("Bessere falsch erkannte Wörter aus. shout. lernt die Korrekturen fürs nächste Mal — in jeder App.")
+            Text(Loc.t("Letztes Diktat korrigieren")).font(.headline)
+            Text(Loc.t("Bessere falsch erkannte Wörter aus. shout. lernt die Korrekturen fürs nächste Mal — in jeder App."))
                 .font(.caption).foregroundStyle(.secondary)
 
             TextEditor(text: $edited)
@@ -30,9 +30,9 @@ struct CorrectionView: View {
 
             HStack {
                 Spacer()
-                Button("Abbrechen", action: onCancel)
+                Button(Loc.t("Abbrechen"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Übernehmen") { onApply(edited) }
+                Button(Loc.t("Übernehmen")) { onApply(edited) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(edited == original)
             }

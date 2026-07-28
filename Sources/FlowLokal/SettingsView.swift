@@ -9,7 +9,9 @@ struct SettingsView: View {
 
     @AppStorage("formattingEnabled") private var formattingEnabled = true
     @AppStorage("speechCommandsEnabled") private var speechCommands = false
+    @AppStorage("keepInClipboard") private var keepInClipboard = false
     @AppStorage("transcriptionLanguage") private var language = "de"
+    @AppStorage(Loc.storageKey) private var uiLanguage = "system"
     @AppStorage("soundCuesEnabled") private var soundCues = true
     @AppStorage("persistentPill") private var persistentPill = false
     @AppStorage("pillAnchor") private var pillAnchor = "bottomCenter"
@@ -20,32 +22,32 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                ConsolePanel(title: "Aufnahme") {
-                    FieldRow(title: "Aufnahme-Art",
+                ConsolePanel(title: Loc.t("Aufnahme")) {
+                    FieldRow(title: Loc.t("Aufnahme-Art"),
                              help: settings.mode == .hold
-                                ? "Taste gedrückt halten, beim Loslassen wird eingefügt."
-                                : "Einmal drücken zum Starten, nochmal zum Stoppen.") {
+                                ? Loc.t("Taste gedrückt halten, beim Loslassen wird eingefügt.")
+                                : Loc.t("Einmal drücken zum Starten, nochmal zum Stoppen.")) {
                         ConsoleSegmented(selection: $settings.mode,
-                                         options: [(.hold, "Halten"), (.toggle, "Umschalten")])
+                                         options: [(.hold, Loc.t("Halten")), (.toggle, Loc.t("Umschalten"))])
                     }
                     ConsoleDivider()
-                    FieldRow(title: "So startest du",
-                             help: "Drück die Taste, mit der du diktieren willst.") {
+                    FieldRow(title: Loc.t("So startest du"),
+                             help: Loc.t("Drück die Taste, mit der du diktieren willst.")) {
                         HStack(spacing: 10) {
-                            Keycap(text: settings.isCapturing ? (settings.captureHint ?? "Taste drücken …") : settings.hotkeyDescription)
-                            Button("Ändern", action: onRecordHotkey)
+                            Keycap(text: settings.isCapturing ? (settings.captureHint ?? Loc.t("Taste drücken …")) : settings.hotkeyDescription)
+                            Button(Loc.t("Ändern"), action: onRecordHotkey)
                                 .buttonStyle(ConsoleButtonStyle())
                                 .disabled(settings.isCapturing)
                         }
                     }
                     ConsoleDivider()
-                    FieldRow(title: "Von selbst aufhören",
-                             help: "Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus).") {
+                    FieldRow(title: Loc.t("Von selbst aufhören"),
+                             help: Loc.t("Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus).")) {
                         Toggle("", isOn: $settings.autoStop).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                     if settings.autoStop {
                         ConsoleDivider()
-                        FieldRow(title: "Pause bis Stopp") {
+                        FieldRow(title: Loc.t("Pause bis Stopp")) {
                             HStack(spacing: 12) {
                                 Slider(value: $settings.silenceSeconds, in: 0.5...3.0, step: 0.1)
                                     .frame(width: 130).tint(Color.shoutLive)
@@ -54,15 +56,15 @@ struct SettingsView: View {
                         }
                     }
                     ConsoleDivider()
-                    FieldRow(title: "Pille immer anzeigen",
-                             help: "Zeigt die Aufnahme-Pille dauerhaft am Bildschirmrand — per Klick starten, mit ✕/✓ abbrechen oder einfügen.") {
+                    FieldRow(title: Loc.t("Pille immer anzeigen"),
+                             help: Loc.t("Zeigt die Aufnahme-Pille dauerhaft am Bildschirmrand — per Klick starten, mit ✕/✓ abbrechen oder einfügen.")) {
                         Toggle("", isOn: $persistentPill).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                     ConsoleDivider()
-                    FieldRow(title: "Position der Pille",
+                    FieldRow(title: Loc.t("Position der Pille"),
                              help: pillCustom
-                                ? "Frei platziert. Du kannst die Pille jederzeit mit der Maus verschieben oder hier wieder eine feste Ecke wählen."
-                                : "Wähle eine Ecke — oder zieh die Pille einfach mit der Maus an eine beliebige Stelle.") {
+                                ? Loc.t("Frei platziert. Du kannst die Pille jederzeit mit der Maus verschieben oder hier wieder eine feste Ecke wählen.")
+                                : Loc.t("Wähle eine Ecke — oder zieh die Pille einfach mit der Maus an eine beliebige Stelle.")) {
                         Picker("", selection: Binding(
                             get: { pillCustom ? "custom" : pillAnchor },
                             set: { newValue in
@@ -72,51 +74,70 @@ struct SettingsView: View {
                                 onPillPositionChanged()
                             }
                         )) {
-                            Text("Unten Mitte").tag("bottomCenter")
-                            Text("Unten links").tag("bottomLeft")
-                            Text("Unten rechts").tag("bottomRight")
-                            Text("Oben Mitte").tag("topCenter")
-                            Text("Oben links").tag("topLeft")
-                            Text("Oben rechts").tag("topRight")
-                            if pillCustom { Text("Frei verschoben").tag("custom") }
+                            Text(Loc.t("Unten Mitte")).tag("bottomCenter")
+                            Text(Loc.t("Unten links")).tag("bottomLeft")
+                            Text(Loc.t("Unten rechts")).tag("bottomRight")
+                            Text(Loc.t("Oben Mitte")).tag("topCenter")
+                            Text(Loc.t("Oben links")).tag("topLeft")
+                            Text(Loc.t("Oben rechts")).tag("topRight")
+                            if pillCustom { Text(Loc.t("Frei verschoben")).tag("custom") }
                         }
                         .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 160)
                     }
                 }
 
-                ConsolePanel(title: "Text") {
-                    FieldRow(title: "Text automatisch aufräumen",
-                             help: "Füllwörter raus, Satzzeichen und Aufzählungen setzen.") {
+                ConsolePanel(title: Loc.t("Text")) {
+                    FieldRow(title: Loc.t("Text automatisch aufräumen"),
+                             help: Loc.t("Füllwörter raus, Satzzeichen und Aufzählungen setzen.")) {
                         Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                     ConsoleDivider()
-                    FieldRow(title: "Sprachbefehle",
-                             help: "‚Komma', ‚Punkt', ‚Fragezeichen', ‚neue Zeile', ‚neuer Absatz' werden zu echten Satzzeichen/Umbrüchen.") {
+                    FieldRow(title: Loc.t("Sprachbefehle"),
+                             help: Loc.t("‚Komma', ‚Punkt', ‚Fragezeichen', ‚neue Zeile', ‚neuer Absatz' werden zu echten Satzzeichen/Umbrüchen.")) {
                         Toggle("", isOn: $speechCommands).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: Loc.t("In der Zwischenablage behalten"),
+                             help: Loc.t("Das Diktat bleibt zusätzlich in der Zwischenablage — sonst wird der vorherige Inhalt wiederhergestellt.")) {
+                        Toggle("", isOn: $keepInClipboard).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                 }
 
-                ConsolePanel(title: "Sprache & Ton") {
-                    FieldRow(title: "Diktier-Sprache",
-                             help: "Sprache der Transkription. „Automatisch“ erkennt sie pro Aufnahme selbst.") {
+                ConsolePanel(title: Loc.t("Sprache & Ton")) {
+                    FieldRow(title: Loc.t("Diktier-Sprache"),
+                             help: Loc.t("Sprache der Transkription. „Automatisch“ erkennt sie pro Aufnahme selbst.")) {
                         Picker("", selection: $language) {
-                            Text("Deutsch").tag("de")
-                            Text("English").tag("en")
-                            Text("Automatisch").tag("auto")
+                            Text(Loc.t("Deutsch")).tag("de")
+                            Text(Loc.t("English")).tag("en")
+                            Text(Loc.t("Automatisch")).tag("auto")
                         }
                         .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 160)
                     }
                     ConsoleDivider()
-                    FieldRow(title: "Klang-Signale",
-                             help: "Dezente Töne beim Start der Aufnahme und wenn der Text eingefügt ist.") {
+                    // Oberflächensprache — unabhängig von der Diktier-Sprache.
+                    FieldRow(title: Loc.t("Oberfläche"),
+                             help: Loc.t("Sprache der Bedienoberfläche. „Wie das System“ folgt der Sprache von macOS.")) {
+                        Picker("", selection: Binding(
+                            get: { uiLanguage },
+                            set: { Loc.shared.apply($0) }   // schreibt UserDefaults und baut die UI neu auf
+                        )) {
+                            ForEach(Loc.languageOptions, id: \.key) { option in
+                                Text(option.label).tag(option.key)
+                            }
+                        }
+                        .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 160)
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: Loc.t("Klang-Signale"),
+                             help: Loc.t("Dezente Töne beim Start der Aufnahme und wenn der Text eingefügt ist.")) {
                         Toggle("", isOn: $soundCues).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                 }
 
-                ConsolePanel(title: "Mikrofon") {
-                    FieldRow(title: "Eingang") {
+                ConsolePanel(title: Loc.t("Mikrofon")) {
+                    FieldRow(title: Loc.t("Eingang")) {
                         Picker("", selection: $micUID) {
-                            Text("Systemstandard").tag("")
+                            Text(Loc.t("Systemstandard")).tag("")
                             ForEach(devices) { device in Text(device.name).tag(device.uid) }
                         }
                         .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 220)

@@ -111,10 +111,11 @@ update feed) and the design notes.
 The **dictation language** — German, English or auto-detect — is set in the app
 on every platform.
 
-The **interface language** is available in German and English on **Windows**: it
-follows the Windows display language by default and can be switched under
-*Recording & text → Language & sound → Interface*. The macOS and iOS apps are
-still German-only; localizing them is on the [to-do list](OFFEN.md).
+The **interface language** is available in German and English on **Windows and
+macOS**, independently of the dictation language: it follows the system display
+language by default and can be switched under *Recording & text → Language &
+sound → Interface*. Switching takes effect immediately — no restart. The iOS app
+is still German-only; localizing it is on the [to-do list](OFFEN.md).
 
 ## Privacy
 

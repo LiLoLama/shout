@@ -109,22 +109,22 @@ final class RecordingSettings: ObservableObject {
 
     static func modifierName(forKeyCode kc: UInt16) -> String {
         switch kc {
-        case 55: return "linke ⌘"
-        case 54: return "rechte ⌘"
-        case 56: return "linke ⇧"
-        case 60: return "rechte ⇧"
-        case 58: return "linke ⌥"
-        case 61: return "rechte ⌥"
-        case 59: return "linke ⌃"
-        case 62: return "rechte ⌃"
+        case 55: return Loc.t("linke ⌘")
+        case 54: return Loc.t("rechte ⌘")
+        case 56: return Loc.t("linke ⇧")
+        case 60: return Loc.t("rechte ⇧")
+        case 58: return Loc.t("linke ⌥")
+        case 61: return Loc.t("rechte ⌥")
+        case 59: return Loc.t("linke ⌃")
+        case 62: return Loc.t("rechte ⌃")
         case 63: return "fn"
-        default: return "Taste \(kc)"
+        default: return Loc.f("Taste %d", Int(kc))
         }
     }
 
     static func keyName(forKeyCode kc: UInt16) -> String {
         let map: [UInt16: String] = [
-            49: "Leertaste", 36: "⏎", 48: "⇥", 53: "esc",
+            49: Loc.t("Leertaste"), 36: "⏎", 48: "⇥", 53: "esc",
             122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
             98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
             0: "A", 11: "B", 8: "C", 2: "D", 14: "E", 3: "F", 5: "G", 4: "H",
@@ -132,6 +132,6 @@ final class RecordingSettings: ObservableObject {
             12: "Q", 15: "R", 1: "S", 17: "T", 32: "U", 9: "V", 13: "W", 7: "X",
             16: "Y", 6: "Z"
         ]
-        return map[kc] ?? "Taste \(kc)"
+        return map[kc] ?? Loc.f("Taste %d", Int(kc))
     }
 }

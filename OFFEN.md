@@ -14,7 +14,7 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 ## 🟠 Verteilung / Auslieferung
 - [x] **Signierung + Notarisierung + DMG** — Pipeline steht und ist verifiziert (`release.sh`, notarisiertes shout-0.1.0.dmg erzeugt).
 - [ ] **Auf einem fremden Mac testen** (sauberer Rechner, Modelle nicht gecacht, andere macOS-Version).
-- [ ] **Sparkle-Auto-Update** (EdDSA-signierter Appcast) — auch für OSS sinnvoll; Alternative: schlichter Update-Hinweis, der das neueste GitHub-Release prüft.
+- [x] **Sparkle-Auto-Update** (EdDSA-signierter Appcast) — `appcast.xml` + `SPUStandardUpdaterController`; prüft beim Start automatisch und ist in der Oberfläche über „Über shout." (Klick auf die Wortmarke), das Programm-Menü und das Menü der Menüleiste erreichbar.
 
 ## 🟡 Audio / Sound
 - [ ] **Sound-Cues final abstimmen** (aktuell bei Codex): kurzes, sanftes, warmes „Klopf"-Geräusch — kein Ton, kein Metall. Datei: `SoundCues.swift`.
@@ -28,6 +28,12 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Streaming-Transkription** (#13) — Live-Text während des Sprechens (großer „Wow"-Faktor, L-Aufwand).
 - [ ] **Übersetzungs-Modus** (#14) — deutsch sprechen, englisch einfügen.
 - [ ] **Barrierefreiheit** (#15) — VoiceOver-Labels, Menüleisten-Template-Icons (Sound-Feedback ist erledigt).
+
+## 🖥️ Mac — Gleichstand mit Windows
+- [x] **„Über shout."** — Klick auf die Wortmarke in der Seitenleiste öffnet ein Popover mit App-Icon, Version + Build (per Klick kopierbar), Aktualisierungs-Prüfung (Sparkle), Schalter für die automatische Prüfung, Zeitpunkt der letzten Prüfung und Verweisen auf Quellcode, Issues, Lizenz und Unterstützen. Auch über das Programm-Menü und das Menü der Menüleiste erreichbar (`AboutView.swift`).
+- [x] **„In der Zwischenablage behalten"** — die Windows-Option gibt es jetzt auch am Mac (`TextInjector.paste(_:keepInClipboard:)`). Standard AUS, weil der Mac den vorherigen Inhalt bisher immer wiederhergestellt und das Diktat als vertraulich/transient markiert hat; Windows hat die Option standardmäßig AN.
+- [x] **Hardware-Karte** zeigt zusätzlich die Kernzahl (wie Windows).
+- [ ] **Umgekehrt fehlt Windows** noch: „Dein Sprachprofil", Hugging-Face-Live-Liste, Onboarding-Assistent, Kontakte-Import, Halten-Modus (siehe unten).
 
 ## 🪟 Windows (`windows/`)
 - [x] **Erste Version gebaut** — C#/.NET-8-Tray-App: Hotkey → NAudio-Aufnahme (VAD-Port) → whisper.cpp (Whisper.net) → Sprachbefehle → optional llama.cpp (LLamaSharp, Qwen 2.5) → Wörterbuch-Korrekturen → Einfügen per Strg+V. Backup-Format kompatibel zu Mac/iOS.
@@ -44,14 +50,10 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Noch nicht portiert**: „Dein Sprachprofil" (KI-Text auf der Statistik-Seite), Hugging-Face-Live-Liste in „Modelle", Onboarding-Assistent, Kontakte-Import im Wörterbuch (Windows hat keine entsprechende lokale Schnittstelle).
 - [ ] **Später**: winget-Paket, GPU-Backends (CUDA/Vulkan) als Option.
 
-## 🌍 Mehrsprachigkeit Mac + iOS (offen)
-Die Windows-Version ist deutsch/englisch und folgt der Systemsprache. Für Mac und iOS steht das noch aus — bewusst nicht blind erledigt, weil sich Swift auf dem Windows-Rechner nicht kompilieren lässt und ein Fehler beide Apps unbaubar machen würde.
-
-Der Weg, wenn es am Mac gemacht wird:
-- [ ] **Kein automatischer SwiftUI-Mechanismus nutzbar**: `Text("…")` würde als `LocalizedStringKey` selbst übersetzen, aber die Titel und Hilfetexte laufen fast überall als `String`-Parameter durch (`FieldRow(title:help:)`, `navRow(_:_:_:)`, `ConsolePanel(title:)` …) — und `Text(String)` übersetzt NICHT. Es braucht also echte Änderungen an den Aufrufstellen.
-- [ ] **Risikoarmer Weg**: eine globale Funktion `L(_ key: String) -> String` (gleiche Idee wie `Loc.T` unter Windows, deutscher Text als Schlüssel) plus die Übersetzungstabelle — dann an den Aufrufstellen `"Text"` → `L("Text")`. Keine Signaturänderung, also kein Typfehler-Risiko; die Tabelle aus `windows/src/Shout/Core/Localization.cs` deckt den Großteil der Texte schon ab.
-- [ ] **Sprachauswahl**: „Wie das System / Deutsch / English" analog zu Windows; Umschalten über `AppleLanguages` in den UserDefaults wirkt erst nach einem Neustart — Hinweis in der Oberfläche einplanen.
-- [ ] **Diktier-Sprache** beim Erststart aus `Locale.current` belegen statt fest „de" (Windows macht das jetzt so).
+## 🌍 Mehrsprachigkeit
+- [x] **Mac zweisprachig (Deutsch/Englisch)** — `Sources/FlowLokal/Localization.swift`: dieselbe Idee wie unter Windows, der deutsche Text ist der Schlüssel und ein fehlender Eintrag fällt harmlos auf Deutsch zurück. `Loc` ist ein `ObservableObject`; das Dashboard hängt per `.id(loc.language)` daran und baut sich beim Umschalten sofort neu auf, der AppDelegate beschriftet Menüleiste und Menü der Menüleiste neu — kein Neustart, kein Umweg über `AppleLanguages`. Umschaltbar unter „Aufnahme & Text → Sprache & Ton → Oberfläche", Standard ist die macOS-Anzeigesprache.
+- [x] **Diktier-Sprache** wird am Mac beim Erststart aus der Systemsprache belegt statt fest „de" (wie Windows).
+- [ ] **iOS** steht noch aus: `Localization.swift` ist plattformneutral und liegt bereit, muss aber in `project.yml` in die `includes`-Liste des `ShoutMobile`-Targets aufgenommen und in den Mobile-Views verdrahtet werden. Die Modell-Beschreibungen des `#if os(iOS)`-Katalogs fehlen noch in der Tabelle.
 
 ## 📱 iOS
 - [x] **Native iOS-App** (`ShoutMobile`) — gleiche lokale Pipeline (WhisperKit + MLX), mobile UI, Modell-Empfehler, Onboarding, Verlauf/Wörterbuch/Statistik, Daten-Sync Mac↔iPhone.

@@ -15,23 +15,23 @@ struct DictionaryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                ConsolePanel(title: "Wörter, die shout. richtig schreiben soll") {
+                ConsolePanel(title: Loc.t("Wörter, die shout. richtig schreiben soll")) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 8) {
-                            consoleField("Neuer Begriff (z. B. inthezone)", text: $newTerm) { addTerm() }
-                            Button("Hinzufügen", action: addTerm)
+                            consoleField(Loc.t("Neuer Begriff (z. B. inthezone)"), text: $newTerm) { addTerm() }
+                            Button(Loc.t("Hinzufügen"), action: addTerm)
                                 .buttonStyle(ConsoleButtonStyle())
                                 .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                         HStack(spacing: 8) {
-                            Button("Aus Datei (CSV/TXT) …", action: importFromFile).buttonStyle(ConsoleButtonStyle())
-                            Button("Aus Kontakten …", action: importFromContacts).buttonStyle(ConsoleButtonStyle())
+                            Button(Loc.t("Aus Datei (CSV/TXT) …"), action: importFromFile).buttonStyle(ConsoleButtonStyle())
+                            Button(Loc.t("Aus Kontakten …"), action: importFromContacts).buttonStyle(ConsoleButtonStyle())
                             if !importStatus.isEmpty {
                                 Text(importStatus).font(.system(size: 11)).foregroundStyle(Color.shoutLive)
                             }
                         }
                         if dictionary.contents.terms.isEmpty {
-                            Text("Noch keine Begriffe.").font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
+                            Text(Loc.t("Noch keine Begriffe.")).font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
                         } else {
                             FlowChips(terms: dictionary.contents.terms) { dictionary.removeTerm($0) }
                         }
@@ -39,19 +39,19 @@ struct DictionaryView: View {
                     .padding(16)
                 }
 
-                ConsolePanel(title: "Automatisch verbessert") {
+                ConsolePanel(title: Loc.t("Automatisch verbessert")) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 8) {
-                            consoleField("falsch", text: $newWrong) {}
+                            consoleField(Loc.t("falsch"), text: $newWrong) {}
                             Image(systemName: "arrow.right").font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
-                            consoleField("richtig", text: $newRight) { addCorrection() }
-                            Button("Hinzufügen", action: addCorrection)
+                            consoleField(Loc.t("richtig"), text: $newRight) { addCorrection() }
+                            Button(Loc.t("Hinzufügen"), action: addCorrection)
                                 .buttonStyle(ConsoleButtonStyle())
                                 .disabled(newWrong.trimmingCharacters(in: .whitespaces).isEmpty
                                           || newRight.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                         if dictionary.contents.corrections.isEmpty {
-                            Text("Noch keine Korrekturen — shout. lernt sie auch automatisch, wenn du ein Wort ausbesserst.")
+                            Text(Loc.t("Noch keine Korrekturen — shout. lernt sie auch automatisch, wenn du ein Wort ausbesserst."))
                                 .font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {
@@ -115,7 +115,7 @@ struct DictionaryView: View {
             let term = field.trimmingCharacters(in: CharacterSet(charactersIn: " \t\"'"))
             if !term.isEmpty { dictionary.addTerm(term) }
         }
-        importStatus = "\(dictionary.contents.terms.count - before) neue Begriffe."
+        importStatus = Loc.f("%d neue Begriffe.", dictionary.contents.terms.count - before)
     }
 
     /// Importiert Vor-/Nachnamen und Firmen aus den lokalen Kontakten (bleiben on-device).
@@ -123,7 +123,7 @@ struct DictionaryView: View {
         let store = CNContactStore()
         store.requestAccess(for: .contacts) { granted, _ in
             guard granted else {
-                Task { @MainActor in importStatus = "Kein Zugriff auf Kontakte." }
+                Task { @MainActor in importStatus = Loc.t("Kein Zugriff auf Kontakte.") }
                 return
             }
             let keys = [CNContactGivenNameKey, CNContactFamilyNameKey,
@@ -139,7 +139,7 @@ struct DictionaryView: View {
             Task { @MainActor in
                 let before = dictionary.contents.terms.count
                 for n in names { dictionary.addTerm(n) }
-                importStatus = "\(dictionary.contents.terms.count - before) Namen aus Kontakten."
+                importStatus = Loc.f("%d Namen aus Kontakten.", dictionary.contents.terms.count - before)
             }
         }
     }

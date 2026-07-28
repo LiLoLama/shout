@@ -18,6 +18,9 @@ final class DashboardModel: ObservableObject {
     @Published var transcriberReady = false   // Transkriptions-Modell geladen (fürs Onboarding)
     @Published var asrLoadFailed = false      // Laden des ASR-Modells fehlgeschlagen (Onboarding zeigt Wiederholen)
 
+    /// „Über shout." — vom Klick auf die Wortmarke und vom Menüpunkt gesteuert.
+    @Published var showAbout = false
+
     var isSwitchingModel: Bool { asrLoadingID != nil || formatLoadingID != nil }
 }
 
@@ -38,6 +41,12 @@ struct DashboardView: View {
     let onSelectFormat: (String) async -> Void
     var onPersistentPillChanged: (Bool) -> Void = { _ in }
     var onPillPositionChanged: () -> Void = {}
+    var updates: UpdateBridge = .disabled
+
+    /// Sprachwechsel: die Texte stecken in den fertig gebauten Views, daher baut
+    /// `.id(loc.language)` den Baum nach dem Umschalten komplett neu auf (wie die
+    /// Windows-App das Fenster neu aufbaut).
+    @ObservedObject private var loc = Loc.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -49,6 +58,7 @@ struct DashboardView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.shoutWindow)
         }
+        .id(loc.language)
         .frame(minWidth: 780, minHeight: 580)
         .tint(Color.shoutLive)
         .preferredColorScheme(.dark)
@@ -58,39 +68,50 @@ struct DashboardView: View {
     // MARK: - Seitenleiste
 
     private var statusText: String {
-        let verb = settings.mode == .hold ? "halten" : "drücken"
-        return "\(settings.hotkeyDescription) \(verb)"
+        settings.mode == .hold
+            ? Loc.f("%@ halten", settings.hotkeyDescription)
+            : Loc.f("%@ drücken", settings.hotkeyDescription)
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Kopfbereich: Wortmarke + Status
+            // Kopfbereich: Wortmarke (öffnet „Über shout.") + Status
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    HStack(spacing: 0) {
-                        Text("shout").font(.system(size: 23, weight: .bold))
-                        Text(".").font(.system(size: 23, weight: .bold)).foregroundStyle(Color.shoutLive)
+                Button { model.showAbout.toggle() } label: {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 0) {
+                            Text("shout").font(.system(size: 23, weight: .bold))
+                            Text(".").font(.system(size: 23, weight: .bold)).foregroundStyle(Color.shoutLive)
+                        }
+                        .foregroundStyle(Color.white)
+                        Text("Open Source")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Capsule().fill(Color.shoutLive.opacity(0.20)))
+                            .foregroundStyle(Color.shoutLive)
                     }
-                    Text("Open Source")
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.shoutLive.opacity(0.20)))
-                        .foregroundStyle(Color.shoutLive)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(Loc.t("Über shout."))
+                .popover(isPresented: $model.showAbout, arrowEdge: .bottom) {
+                    AboutView(updates: updates)
                 }
                 HStack(spacing: 6) {
                     Circle().fill(Color.shoutLive).frame(width: 6, height: 6)
-                    Text("Bereit · \(statusText)").font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
+                    Text(Loc.f("Bereit · %@", statusText))
+                        .font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                 }
             }
             .padding(.horizontal, 18).padding(.top, 42).padding(.bottom, 20)
 
-            navRow(.aufnahme, "Aufnahme & Text", "mic.fill")
-            navRow(.woerterbuch, "Wörterbuch", "text.book.closed.fill")
-            navRow(.verlauf, "Verlauf", "clock.arrow.circlepath")
-            navRow(.statistik, "Statistiken", "chart.bar.xaxis")
-            navRow(.modelle, "Modelle", "cpu")
-            navRow(.sync, "Sync & Geräte", "arrow.triangle.2.circlepath")
-            navRow(.unterstuetzen, "Unterstützen", "heart.fill")
+            navRow(.aufnahme, Loc.t("Aufnahme & Text"), "mic.fill")
+            navRow(.woerterbuch, Loc.t("Wörterbuch"), "text.book.closed.fill")
+            navRow(.verlauf, Loc.t("Verlauf"), "clock.arrow.circlepath")
+            navRow(.statistik, Loc.t("Statistiken"), "chart.bar.xaxis")
+            navRow(.modelle, Loc.t("Modelle"), "cpu")
+            navRow(.sync, Loc.t("Sync & Geräte"), "arrow.triangle.2.circlepath")
+            navRow(.unterstuetzen, Loc.t("Unterstützen"), "heart.fill")
 
             Spacer()
         }
@@ -105,7 +126,7 @@ struct DashboardView: View {
                 Text(title).font(.system(size: 13, weight: active ? .semibold : .regular))
                 Spacer(minLength: 4)
                 if soon {
-                    Text("Bald").font(.system(size: 10, weight: .semibold))
+                    Text(Loc.t("Bald")).font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Capsule().fill(Color.white.opacity(0.10)))
                         .foregroundStyle(Color(white: 0.5))

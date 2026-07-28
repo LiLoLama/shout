@@ -11,7 +11,12 @@ Hotkey → record → Whisper (speech → text) → optional local LLM cleans th
        → pasted at the cursor
 ```
 
-<!-- TODO: Screenshots einfügen (Dashboard, schwebende Pille, Onboarding) -->
+![The shout. window on macOS, showing the recording and text settings: how to
+record, the dictation hotkey, automatic text cleanup, and the language settings
+with separate pickers for the dictation language and the interface
+language.](Resources/Screenshots/App.webp)
+
+<!-- TODO: noch ergänzen — schwebende Pille beim Diktieren (am besten als GIF), Onboarding -->
 
 ## Platforms
 

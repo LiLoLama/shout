@@ -131,6 +131,37 @@ actor Formatter {
         }
     }
 
+    /// Bereitet einen langen Text abschnittsweise auf (Datei-Transkription).
+    ///
+    /// Der ganze Text auf einmal würde das Kontextfenster des kleinen quantisierten
+    /// Modells sprengen. Angenehmer Nebeneffekt der Teilung: Der Kürzungs-Schutz in
+    /// `format` greift pro Abschnitt und rettet damit nur den betroffenen Abschnitt
+    /// statt den ganzen Text zu verwerfen.
+    ///
+    /// `bundleID` ist `nil` — bei einer Datei gibt es keine Ziel-App, deren Tonfall
+    /// man treffen könnte.
+    func formatLong(_ raw: String, termHint: String? = nil,
+                    onProgress: (@Sendable (Double) -> Void)? = nil) async -> String {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isReady, !text.isEmpty else { return text }
+
+        let parts = TextChunker.chunks(of: text)
+        guard parts.count > 1 else {
+            onProgress?(1)
+            return await format(text, bundleID: nil, termHint: termHint)
+        }
+
+        var out: [String] = []
+        out.reserveCapacity(parts.count)
+        for (i, part) in parts.enumerated() {
+            out.append(await format(part, bundleID: nil, termHint: termHint))
+            onProgress?(Double(i + 1) / Double(parts.count))
+        }
+        // Absatz je Abschnitt: Ein einstündiges Transkript als eine Textwand ist
+        // unlesbar, und geteilt wurde ohnehin an einer Satzgrenze.
+        return out.joined(separator: "\n\n")
+    }
+
     // MARK: - Sprachprofil („Your Voice")
 
     /// Lässt Gemma den Sprach-/Diktierstil in 2–3 knappen deutschen Sätzen beschreiben.

@@ -136,6 +136,10 @@ targets:
           - Localization.swift
           - Transcriber.swift
           - Formatter.swift
+          # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
+          # beide sind plattformneutral und ziehen nichts weiter nach.
+          - TranscriptSegment.swift
+          - TextChunker.swift
           - AudioRecorder.swift
           - PersonalDictionary.swift
           - DictationHistory.swift

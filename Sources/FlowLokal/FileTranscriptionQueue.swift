@@ -48,6 +48,16 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
         case .queued, .transcribing, .formatting: return false
         }
     }
+
+    /// Bricht den Auftrag ab und verwirft das Teilergebnis. Ein halbes Transkript
+    /// anzuzeigen wäre eine Falle: Es sieht aus wie ein fertiges und ließe sich
+    /// genauso sichern.
+    func markCancelled() {
+        segments = []
+        rawText = ""
+        formattedText = ""
+        state = .cancelled
+    }
 }
 
 /// Arbeitet Datei-Aufträge nacheinander ab.
@@ -94,7 +104,7 @@ final class FileTranscriptionQueue: ObservableObject {
     func cancel(_ job: FileTranscriptionJob) {
         cancelled.insert(job.id)
         // Wartende Aufträge sofort abräumen; der laufende merkt es beim nächsten Block.
-        if case .queued = job.state { job.state = .cancelled }
+        if case .queued = job.state { job.markCancelled() }
     }
 
     func cancelAll() {
@@ -104,7 +114,9 @@ final class FileTranscriptionQueue: ObservableObject {
     func remove(_ job: FileTranscriptionJob) {
         cancel(job)
         jobs.removeAll { $0.id == job.id }
-        if selectedJobID == job.id { selectedJobID = jobs.first(where: \.isFinished)?.id }
+        // Nachrücken auf einen Auftrag MIT Ergebnis — sonst zeigt die Seite nach dem
+        // Entfernen auf einen abgebrochenen und der Ergebnisbereich verschwindet.
+        if selectedJobID == job.id { selectedJobID = jobs.first { $0.state == .done }?.id }
     }
 
     // MARK: - Abarbeitung
@@ -124,7 +136,7 @@ final class FileTranscriptionQueue: ObservableObject {
     }
 
     private func process(_ job: FileTranscriptionJob) async {
-        guard !cancelled.contains(job.id) else { job.state = .cancelled; return }
+        guard !cancelled.contains(job.id) else { job.markCancelled(); return }
 
         let useCommands = UserDefaults.standard.bool(forKey: "fileSpeechCommandsEnabled")
         let useFormatting = UserDefaults.standard.object(forKey: "fileFormattingEnabled") as? Bool ?? true
@@ -139,7 +151,7 @@ final class FileTranscriptionQueue: ObservableObject {
             job.duration = duration
 
             while let block = try await decoder.next() {
-                if cancelled.contains(job.id) { job.state = .cancelled; return }
+                if cancelled.contains(job.id) { job.markCancelled(); return }
 
                 let raw = try await transcriber.transcribeSegments(block.samples, biasTerms: bias)
                 for segment in raw {
@@ -168,7 +180,7 @@ final class FileTranscriptionQueue: ObservableObject {
             return
         }
 
-        if cancelled.contains(job.id) { job.state = .cancelled; return }
+        if cancelled.contains(job.id) { job.markCancelled(); return }
 
         guard !job.rawText.isEmpty else {
             job.state = .done
@@ -184,7 +196,7 @@ final class FileTranscriptionQueue: ObservableObject {
                     if case .formatting = jobRef.state { jobRef.state = .formatting(progress: fraction) }
                 }
             }
-            if cancelled.contains(job.id) { job.state = .cancelled; return }
+            if cancelled.contains(job.id) { job.markCancelled(); return }
             job.formattedText = cleaned
         }
 

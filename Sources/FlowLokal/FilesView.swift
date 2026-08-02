@@ -17,8 +17,11 @@ struct FilesView: View {
     @State private var isTargeted = false
     @State private var status = ""
 
+    /// Nur ein wirklich fertiger Auftrag zeigt ein Ergebnis. Abgebrochene und
+    /// fehlgeschlagene erklären sich in ihrer Zeile — ein Ergebnisfeld dazu wäre
+    /// bestenfalls leer und schlimmstenfalls irreführend.
     private var selectedJob: FileTranscriptionJob? {
-        queue.jobs.first { $0.id == queue.selectedJobID && $0.isFinished }
+        queue.jobs.first { $0.id == queue.selectedJobID && $0.state == .done }
     }
 
     var body: some View {
@@ -104,7 +107,7 @@ struct FilesView: View {
                 ForEach(Array(queue.jobs.enumerated()), id: \.element.id) { index, job in
                     JobRow(job: job,
                            selected: job.id == queue.selectedJobID,
-                           onSelect: { if job.isFinished { queue.selectedJobID = job.id } },
+                           onSelect: { queue.selectedJobID = job.id },
                            onCancel: { queue.cancel(job) },
                            onRemove: { queue.remove(job) })
                     if index < queue.jobs.count - 1 { ConsoleDivider() }

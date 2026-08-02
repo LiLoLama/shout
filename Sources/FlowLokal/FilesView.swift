@@ -109,6 +109,17 @@ struct FilesView: View {
                            onRemove: { queue.remove(job) })
                     if index < queue.jobs.count - 1 { ConsoleDivider() }
                 }
+                // „Alle abbrechen" erst ab zwei offenen Aufträgen — bei einem einzigen
+                // ist das Kreuz in der Zeile der kürzere Weg.
+                if queue.jobs.filter({ !$0.isFinished }).count > 1 {
+                    ConsoleDivider()
+                    HStack {
+                        Spacer()
+                        Button(Loc.t("Alle abbrechen")) { queue.cancelAll() }
+                            .buttonStyle(ConsoleButtonStyle())
+                    }
+                    .padding(.horizontal, 15).padding(.vertical, 10)
+                }
             }
         }
     }
@@ -260,14 +271,27 @@ private struct JobRow: View {
         }
     }
 
+    /// Zustand, davor die Länge der Datei, sobald sie bekannt ist (sie steht erst
+    /// nach dem Öffnen fest, deshalb nicht schon im Zustand „Wartet").
     private var subtitle: String {
+        let state: String
         switch job.state {
-        case .queued: return Loc.t("Wartet")
-        case .transcribing: return Loc.t("Wird transkribiert …")
-        case .formatting: return Loc.t("Text wird aufbereitet …")
-        case .done: return Loc.f("Fertig · %d Wörter", job.wordCount)
+        case .queued: state = Loc.t("Wartet")
+        case .transcribing: state = Loc.t("Wird transkribiert …")
+        case .formatting: state = Loc.t("Text wird aufbereitet …")
+        case .done: state = Loc.f("Fertig · %d Wörter", job.wordCount)
         case .failed(let reason): return reason
-        case .cancelled: return Loc.t("Abgebrochen")
+        case .cancelled: state = Loc.t("Abgebrochen")
         }
+        guard job.duration > 0 else { return state }
+        return "\(Self.length(job.duration)) · \(state)"
+    }
+
+    /// Länge als „3:07" bzw. „1:02:44" — kurz genug für die Zeile.
+    private static func length(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return total >= 3600
+            ? String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+            : String(format: "%d:%02d", total / 60, total % 60)
     }
 }

@@ -513,6 +513,7 @@ final class Loc: ObservableObject {
         "Gesichert: %@": "Saved: %@",
         "Sichern fehlgeschlagen: %@": "Saving failed: %@",
         "Aus der Liste entfernen": "Remove from list",
+        "Alle abbrechen": "Cancel all",
         "Wartet": "Waiting",
         "Wird transkribiert …": "Transcribing…",
         "Text wird aufbereitet …": "Cleaning up text…",

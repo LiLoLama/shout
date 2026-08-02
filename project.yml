@@ -18,6 +18,14 @@ schemes:
       config: Debug
     archive:
       config: Release
+  ShoutTests:
+    build:
+      targets:
+        ShoutTests: [test]
+    test:
+      config: Debug
+      targets:
+        - ShoutTests
 
 packages:
   argmax:
@@ -218,3 +226,25 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: G5FFT759WM
         SWIFT_VERSION: "5.10"
+
+  # Reine Logik-Tests: kompiliert NUR die abhängigkeitsfreien Dateien mit, damit
+  # die Tests ohne WhisperKit/MLX in Sekunden laufen (und ohne Host-App).
+  ShoutTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/ShoutTests
+      - path: Sources/FlowLokal/TranscriptSegment.swift
+      - path: Sources/FlowLokal/SubtitleWriter.swift
+      - path: Sources/FlowLokal/TextChunker.swift
+      - path: Sources/FlowLokal/MediaDecoder.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests
+        PRODUCT_NAME: ShoutTests
+        GENERATE_INFOPLIST_FILE: YES
+        ARCHS: arm64
+        ONLY_ACTIVE_ARCH: NO
+        SWIFT_VERSION: "5.10"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual

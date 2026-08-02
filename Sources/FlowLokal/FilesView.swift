@@ -8,6 +8,9 @@ struct FilesView: View {
     /// Ist das Transkriptions-Modell geladen? Ohne Modell wäre jeder Knopf hier
     /// eine Lüge, deshalb steht dann nur ein Hinweis da.
     let modelReady: Bool
+    /// Ist das Formatierungs-Modell geladen? Ohne das gibt `Formatter.format` still
+    /// den Rohtext zurück — der Schalter würde also nichts tun und wird ausgegraut.
+    let formatterReady: Bool
 
     @AppStorage("fileFormattingEnabled") private var formattingEnabled = true
     @AppStorage("fileSpeechCommandsEnabled") private var speechCommands = false
@@ -79,8 +82,11 @@ struct FilesView: View {
     private var optionsPanel: some View {
         ConsolePanel(title: Loc.t("Verarbeitung")) {
             FieldRow(title: Loc.t("Text aufbereiten"),
-                     help: Loc.t("Füllwörter entfernen, Satzzeichen setzen — abschnittsweise durch das lokale Sprachmodell.")) {
-                Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
+                     help: formatterReady
+                        ? Loc.t("Füllwörter entfernen, Satzzeichen setzen — abschnittsweise durch das lokale Sprachmodell.")
+                        : Loc.t("Das Modell zum Aufbereiten ist noch nicht geladen. Sobald es bereit ist, lässt sich der Schalter umlegen — bis dahin kommt das Rohtranskript.")) {
+                Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(.switch)
+                    .tint(Color.shoutLive).disabled(!formatterReady)
             }
             ConsoleDivider()
             FieldRow(title: Loc.t("Sprachbefehle anwenden"),

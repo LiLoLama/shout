@@ -500,6 +500,7 @@ final class Loc: ObservableObject {
         "Verarbeitung": "Processing",
         "Text aufbereiten": "Clean up text",
         "Füllwörter entfernen, Satzzeichen setzen — abschnittsweise durch das lokale Sprachmodell.": "Remove filler words, add punctuation — section by section through the local language model.",
+        "Das Modell zum Aufbereiten ist noch nicht geladen. Sobald es bereit ist, lässt sich der Schalter umlegen — bis dahin kommt das Rohtranskript.": "The clean-up model is not loaded yet. Once it is ready the switch works — until then you get the raw transcript.",
         "Sprachbefehle anwenden": "Apply spoken commands",
         "Standardmäßig aus: In einer Aufzeichnung ist „Punkt“ meist ein normales Wort und kein Satzzeichen.": "Off by default: in a recording, “period” is usually just a word, not punctuation.",
         "Aufträge": "Jobs",

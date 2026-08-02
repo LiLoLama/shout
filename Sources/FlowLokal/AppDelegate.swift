@@ -768,6 +768,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             await formatter.load(onProgress: formatProgressHandler())
             dashboardModel.formatLoadingID = nil
             dashboardModel.formatProgress = nil
+            dashboardModel.formatterReady = await formatter.isReady
             updateFormatterMenu()
         }
     }
@@ -855,6 +856,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         dashboardModel.formatLoadingID = nil
         dashboardModel.formatProgress = nil
+        dashboardModel.formatterReady = await formatter.isReady
         updateFormatterMenu()
     }
 

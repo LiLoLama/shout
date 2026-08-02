@@ -16,6 +16,10 @@ final class DashboardModel: ObservableObject {
     @Published var formatProgress: Double?
     @Published var modelNote: String?         // z. B. Hinweis „Wechsel während Aufnahme nicht möglich"
     @Published var transcriberReady = false   // Transkriptions-Modell geladen (fürs Onboarding)
+    /// Formatierungs-Modell geladen. Die Datei-Seite graut den Schalter „Text
+    /// aufbereiten" sonst aus — er würde still nichts tun, weil `Formatter.format`
+    /// ohne geladenes Modell den Rohtext zurückgibt.
+    @Published var formatterReady = false
     @Published var asrLoadFailed = false      // Laden des ASR-Modells fehlgeschlagen (Onboarding zeigt Wiederholen)
 
     /// „Über shout." — vom Klick auf die Wortmarke und vom Menüpunkt gesteuert.
@@ -154,7 +158,8 @@ struct DashboardView: View {
                          onPersistentPillChanged: onPersistentPillChanged,
                          onPillPositionChanged: onPillPositionChanged)
         case .dateien:
-            FilesView(queue: files, modelReady: model.transcriberReady)
+            FilesView(queue: files, modelReady: model.transcriberReady,
+                      formatterReady: model.formatterReady)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:

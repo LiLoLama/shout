@@ -43,6 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let recIndicator = RecordingIndicator()
     private let sounds = SoundCues()
 
+    /// Datei-Transkription: eigene Warteschlange, teilt sich Modelle und Wörterbuch
+    /// mit dem Diktat. Serialisiert wird über den Transcriber-actor.
+    private lazy var fileQueue = FileTranscriptionQueue(
+        transcriber: transcriber, formatter: formatter, dictionary: dictionary)
+
     /// Sparkle-Auto-Update: prüft beim Start (SUEnableAutomaticChecks) und per
     /// Menüpunkt gegen den Appcast; installiert EdDSA-signierte Updates per Klick.
     private let updaterController = SPUStandardUpdaterController(
@@ -554,6 +559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) },
                 onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
                 onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
+                files: fileQueue,
                 updates: updateBridge
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -675,7 +681,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    /// Läuft noch ein Datei-Auftrag, wird nachgefragt — sonst ist die Arbeit von
+    /// vielleicht einer halben Stunde stillschweigend weg.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard fileQueue.hasUnfinishedJobs else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = Loc.t("Es läuft noch eine Datei-Transkription.")
+        alert.informativeText = Loc.t("Wirklich beenden? Der laufende Auftrag geht verloren.")
+        alert.addButton(withTitle: Loc.t("Trotzdem beenden"))
+        alert.addButton(withTitle: Loc.t("Abbrechen"))
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        fileQueue.cancelAll()
         correctionWatcher.stop()    // AXObserver + Timer sauber abbauen
         for m in eventMonitors { NSEvent.removeMonitor(m) }
         eventMonitors.removeAll()
@@ -761,6 +782,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
             return
         }
+        // Ein Wechsel mitten in einer Datei-Transkription würde das Modell unter dem
+        // laufenden Auftrag wegziehen.
+        guard !fileQueue.isRunning else {
+            dashboardModel.modelNote = Loc.t("Transkription läuft — Modellwechsel ist erst danach möglich.")
+            return
+        }
         dashboardModel.modelNote = nil
         let previous = UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
         UserDefaults.standard.set(id, forKey: "asrModel")
@@ -799,6 +826,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Modelle gleichzeitig im Unified Memory (Memory-Pressure auf kleinen Macs).
         guard state == .idle || state == .failed else {
             dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
+            return
+        }
+        // Ein Wechsel mitten in einer Datei-Transkription würde das Modell unter dem
+        // laufenden Auftrag wegziehen.
+        guard !fileQueue.isRunning else {
+            dashboardModel.modelNote = Loc.t("Transkription läuft — Modellwechsel ist erst danach möglich.")
             return
         }
         dashboardModel.modelNote = nil

@@ -22,6 +22,9 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Download-Fortschritt auch für ASR-Modelle** (aktuell nur Formatierungsmodelle; ASR zeigt nur Spinner).
 
 ## 🟢 Features (aus der Ideenliste, noch offen)
+- [x] **Datei-Transkription am Mac** — Seite „Dateien": Audio und Video per Drag & Drop oder Auswahl, serielle Warteschlange, Ergebnis als Text, `.txt` oder `.srt`. Blockweises Lesen über `AVAssetReader` (2-Minuten-Blöcke, Schnitt an der leisesten Stelle), damit der Speicher gedeckelt bleibt und ein Diktat per Hotkey höchstens einen Block warten muss. Untertitel entstehen immer aus dem Rohtranskript, weil die Zeitmarken sonst nicht zum aufbereiteten Wortlaut passen. Sprachbefehle sind hier standardmäßig AUS (in einer Aufzeichnung ist „Punkt" ein normales Wort). Verlauf und Statistiken bleiben unberührt. Erstes Test-Target im Projekt (`Tests/ShoutTests`, 24 Tests, läuft ohne WhisperKit/MLX in unter einer Sekunde) — **die Prüfliste in der laufenden App steht noch aus**, siehe `docs/superpowers/plans/2026-08-02-datei-transkription.md`.
+- [ ] **Datei-Transkription auf Windows nachziehen** — die Kette ist identisch (`TranscribeAsync(float[])` steht), neu sind Dekoder und Oberfläche. Für Video braucht es dort FFmpeg oder die Media Foundation; NAudio liest keine Videocontainer.
+- [ ] **Datei-Transkription auf iOS nachziehen** — Auswahl über `UIDocumentPicker`; offen ist weniger die Technik als Laufzeit, Hintergrund-Ausführung und Wärme bei langen Dateien.
 - [ ] **Diktat-Undo per Hotkey** (#9) — letzte Einfügung rückgängig.
 - [ ] **Text-Snippets & Sprachbefehle erweitern** (#10) — z. B. „meine Signatur", eigene Bausteine.
 - [ ] **Editierbare App-Profile / Diktier-Modi** (#11) — App→Modus→Prompt-Zusatz nutzerpflegbar.

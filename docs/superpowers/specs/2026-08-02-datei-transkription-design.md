@@ -78,10 +78,11 @@ Damit Blockgrenzen keine Sätze zerschneiden, sucht der Dekoder in den **letzten
 30 Sekunden** eines vollen Blocks das 0,5-Sekunden-Fenster mit der geringsten
 Energie (RMS) und schneidet in dessen Mitte. Der Rest wandert als Anfang in den
 nächsten Block. Die Energie-Berechnung entspricht der aus
-`AudioRecorder.trimSilence` und wird nicht neu erfunden. Findet sich kein
-brauchbares Minimum (durchgehend laut), wird hart bei 120 Sekunden geschnitten —
-ein Fehler alle zwei Minuten an einer zufälligen Stelle ist hinnehmbar und
-betrifft höchstens ein Wort.
+`AudioRecorder.trimSilence` und wird nicht neu erfunden. Bei durchgehend gleichem
+Pegel gewinnt schlicht das erste Fenster des Suchbereichs — dann ist eine Stelle
+so gut wie die andere, und ein Fehler alle zwei Minuten betrifft höchstens ein
+Wort. Hart bei 120 Sekunden geschnitten wird nur, wenn der Suchbereich kleiner
+ist als ein Fenster (sehr kurze Blöcke, wie in den Tests).
 
 ### Untertitel entstehen immer aus dem Rohtranskript
 
@@ -123,7 +124,8 @@ Alle unter `Sources/FlowLokal/`.
 
 | Datei | Verantwortung | Abhängig von |
 |---|---|---|
-| `MediaDecoder.swift` | `AVAssetReader` → Folge von Blöcken (`samples: [Float]`, `startTime: Double`). Kennt nur Dekodieren. | AVFoundation |
+| `TranscriptSegment.swift` | Wertetyp: Text + Start/Ende in Sekunden. Eigener Typ statt WhisperKits `TranscriptionSegment` — nur so kommen `SubtitleWriter` und die Tests ohne den Modell-Stack aus. | Foundation |
+| `MediaDecoder.swift` | `actor`: `AVAssetReader` → Folge von Blöcken (`samples: [Float]`, `startTime: Double`). Pull-Schnittstelle: `open()` liefert die Dauer, `next()` den nächsten Block, `nil` am Ende. Als actor läuft die Arbeit garantiert außerhalb des Main-Actors, ohne Closures über Actor-Grenzen zu reichen. | AVFoundation |
 | `SubtitleWriter.swift` | Segmente → SRT-Text. Reine Funktion. | Foundation |
 | `TextChunker.swift` | Text an Satzgrenzen in Abschnitte teilen. Reine Funktion. | Foundation |
 
@@ -140,9 +142,7 @@ keine solche Stelle, wird am Zielmaß hart geteilt.
 ### Änderungen an bestehenden Dateien
 
 - **`Transcriber.swift`** — neue Methode
-  `transcribeSegments(_ samples: [Float], biasTerms: [String]) async throws -> [Segment]`
-  mit `struct Segment: Sendable { let text: String; let start: Double; let end: Double }`
-  (`Sendable`, weil die Werte den Actor verlassen).
+  `transcribeSegments(_ samples: [Float], biasTerms: [String]) async throws -> [TranscriptSegment]`.
   Sie kapselt den WhisperKit-Aufruf und liefert `TranscriptionSegment.start/.end`
   (Sekunden, `Float` → `Double`) durch. Das bestehende `transcribe(_:biasTerms:)`
   bleibt in Signatur und Verhalten unverändert — inklusive der

@@ -28,6 +28,81 @@ final class MediaDecoderTests: XCTestCase {
         return url
     }
 
+    /// Schreibt eine echte Videodatei (.mov) mit Bild- UND Tonspur. Damit ist geprüft,
+    /// dass `AVAssetReader` die Tonspur aus einem Videocontainer zieht — der Grund,
+    /// warum der Dekoder nicht auf `AVAudioFile` aufsetzt.
+    private func writeMovieWithAudio(seconds: Double) async throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mediadecoder-\(UUID().uuidString).mov")
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+
+        let sampleRate = 44_100.0
+        let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderBitRateKey: 64_000,
+        ])
+        audioInput.expectsMediaDataInRealTime = false
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 160,
+            AVVideoHeightKey: 120,
+        ])
+        videoInput.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: videoInput,
+            sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String:
+                                            kCVPixelFormatType_32ARGB])
+        writer.add(audioInput)
+        writer.add(videoInput)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        // Bildspur: ein schwarzes Bild pro Sekunde reicht — geprüft wird der Ton.
+        var pool: CVPixelBuffer?
+        CVPixelBufferCreate(nil, 160, 120, kCVPixelFormatType_32ARGB, nil, &pool)
+        if let pixelBuffer = pool {
+            for second in 0..<Int(seconds) {
+                while !videoInput.isReadyForMoreMediaData { await Task.yield() }
+                adaptor.append(pixelBuffer, withPresentationTime: CMTime(value: CMTimeValue(second), timescale: 1))
+            }
+        }
+        videoInput.markAsFinished()
+
+        // Tonspur: aus einer WAV-Datei einlesen und durchreichen — so entstehen die
+        // CMSampleBuffer, die der Writer erwartet, ohne Handarbeit an CMBlockBuffern.
+        let wav = try writeWAV(seconds: seconds, sampleRate: sampleRate)
+        defer { try? FileManager.default.removeItem(at: wav) }
+        let source = AVURLAsset(url: wav)
+        let sourceTracks = try await source.loadTracks(withMediaType: .audio)
+        let reader = try AVAssetReader(asset: source)
+        let readerOutput = AVAssetReaderTrackOutput(track: sourceTracks[0], outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ])
+        reader.add(readerOutput)
+        reader.startReading()
+        while let sampleBuffer = readerOutput.copyNextSampleBuffer() {
+            while !audioInput.isReadyForMoreMediaData { await Task.yield() }
+            audioInput.append(sampleBuffer)
+        }
+        audioInput.markAsFinished()
+
+        await writer.finishWriting()
+        guard writer.status == .completed else {
+            throw NSError(domain: "test", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey:
+                                        writer.error?.localizedDescription ?? "Schreiben fehlgeschlagen"])
+        }
+        return url
+    }
+
     // MARK: - Schnitt an der leisesten Stelle
 
     func testSchnittLandetInDerStilleLuecke() {
@@ -87,6 +162,20 @@ final class MediaDecoderTests: XCTestCase {
             XCTAssertEqual(block.startTime, expected, accuracy: 0.001)
             expected += Double(block.samples.count) / MediaDecoder.sampleRate
         }
+    }
+
+    /// Der eigentliche Grund für AVAssetReader: die Tonspur aus einem Video.
+    func testVideodateiWirdGelesen() async throws {
+        let url = try await writeMovieWithAudio(seconds: 3)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let decoder = MediaDecoder(url: url, blockSeconds: 10, searchSeconds: 1)
+        let duration = try await decoder.open()
+        XCTAssertEqual(duration, 3, accuracy: 0.3)
+
+        var total = 0
+        while let block = try await decoder.next() { total += block.samples.count }
+        XCTAssertEqual(Double(total) / MediaDecoder.sampleRate, 3, accuracy: 0.3)
     }
 
     func testDateiOhneTonspurWirftFehler() async throws {

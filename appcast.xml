@@ -3,6 +3,16 @@
     <channel>
         <title>shout</title>
         <item>
+            <title>1.4.4</title>
+            <pubDate>Mon, 10 Aug 2026 17:06:51 +0200</pubDate>
+            <link>https://github.com/LiLoLama/shout</link>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>1.4.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.4.4/shout-1.4.4.dmg" length="17523779" type="application/octet-stream" sparkle:edSignature="gnhLegdKE/c40m9KZ4uEARJBwYeC3xcXTltITpsB4uOgozy4ObPHigaTFNA4m0AHqjncZCaRKN4erbmowE1EAw=="/>
+        </item>
+        <item>
             <title>1.0.2</title>
             <pubDate>Tue, 28 Jul 2026 12:19:18 +0200</pubDate>
             <link>https://github.com/LiLoLama/shout</link>

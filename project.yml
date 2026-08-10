@@ -140,6 +140,7 @@ targets:
           # beide sind plattformneutral und ziehen nichts weiter nach.
           - TranscriptSegment.swift
           - TranscriptLayout.swift
+          - TranscriptMinutes.swift
           - TextChunker.swift
           - AudioRecorder.swift
           - PersonalDictionary.swift
@@ -244,6 +245,7 @@ targets:
       - path: Sources/FlowLokal/TextChunker.swift
       - path: Sources/FlowLokal/TranscriptExport.swift
       - path: Sources/FlowLokal/TranscriptLayout.swift
+      - path: Sources/FlowLokal/TranscriptMinutes.swift
       - path: Sources/FlowLokal/MediaDecoder.swift
     settings:
       base:

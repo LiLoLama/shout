@@ -70,4 +70,33 @@ final class TranscriptLayoutTests: XCTestCase {
         let segments = [seg("<|0.00|> Mit Marke<|4.00|>", 0, 4), seg("Ohne", 4, 8)]
         XCTAssertEqual(TranscriptLayout.rawText(from: segments), "Mit Marke\nOhne")
     }
+
+    // MARK: - Zeitmarken
+
+    func testZeitmarkeStehtAmAbsatzanfang() {
+        let segments = [seg("Erste Zeile", 0, 4), seg("Zweite Zeile", 4, 8)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, timestamps: true),
+                       "[0:00] Erste Zeile\nZweite Zeile")
+    }
+
+    /// Jeder Absatz bekommt seine eigene Zeit — das ist der Sinn der Sache: eine
+    /// Stelle im Text wiederfinden zu können.
+    func testJederAbsatzBekommtEineZeitmarke() {
+        let segments = [seg("Vor der Pause", 0, 4), seg("Nach der Pause", 124, 128)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, timestamps: true),
+                       "[0:00] Vor der Pause\n\n[2:04] Nach der Pause")
+    }
+
+    func testZeitmarkeUeberEineStunde() {
+        let segments = [seg("Spät dran", 3725, 3729)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, timestamps: true),
+                       "[1:02:05] Spät dran")
+    }
+
+    /// Der Eingang fürs Sprachmodell braucht keine Zeitmarken — die würden dort nur
+    /// Kontext kosten und im Protokoll wieder auftauchen.
+    func testOhneZeitmarkenUnveraendert() {
+        let segments = [seg("Eins", 0, 4), seg("Zwei", 4, 8)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, timestamps: false), "Eins\nZwei")
+    }
 }

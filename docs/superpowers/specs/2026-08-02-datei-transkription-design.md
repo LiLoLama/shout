@@ -1,6 +1,6 @@
 # Datei-Transkription (macOS)
 
-Stand: 2026-08-02 · Status: entworfen, noch nicht umgesetzt
+Stand: 2026-08-10 · Status: umgesetzt (macOS); Prüfliste in der laufenden App offen
 
 ## Ziel
 
@@ -24,9 +24,9 @@ und LLM-Aufbereitung existieren unverändert weiter.
 - Warteschlange: mehrere Dateien auswählen oder per Drag & Drop ablegen, serielle
   Abarbeitung, Abbrechen einzeln und gesamt.
 - Audio **und** Video (Tonspur wird gezogen).
-- Ausgabe: Text im Fenster (kopierbar), Speichern als `.txt`, Speichern als `.srt`
-  mit Zeitmarken.
-- LLM-Aufbereitung abschnittsweise, per Schalter abschaltbar.
+- Ausgabe in einem eigenen Fenster: Rohtext und Protokoll getrennt, bearbeitbar,
+  Speichern als `.txt` und als `.srt`.
+- Protokoll aus dem Transkript (Zusammenfassung, Kernpunkte, gegliederter Text), per Schalter abschaltbar.
 - Zweisprachig (Deutsch/Englisch) über den bestehenden `Loc`-Mechanismus.
 
 **Bewusst nicht enthalten**
@@ -37,8 +37,15 @@ und LLM-Aufbereitung existieren unverändert weiter.
 - **Einfügen an der Cursor-Position.** Bei einer Stunde Transkript unbrauchbar;
   Kopieren und Speichern decken den Fall ab.
 - **Verlauf und Statistiken.** Begründung unten unter „Bewusste Auslassungen".
-- **Sprecher-Trennung (Diarisierung).** Weder WhisperKit noch das Formatierungs-
-  Modell können das; ein eigenes Modell dafür ist ein eigenes Vorhaben.
+- **Sprecher-Trennung (Diarisierung) — vorerst.** Anders als hier ursprünglich
+  behauptet ist sie sehr wohl möglich: Dasselbe Paket bringt neben WhisperKit ein
+  `SpeakerKit` mit (Pyannote, CoreML), das auf denselben 16-kHz-Samples arbeitet
+  und Sprecher-Labels an die Transkript-Segmente heften kann. Sie ist als eigene
+  Runde vorgesehen, weil sie zwei Dinge verlangt, die den jetzigen Aufbau
+  berühren: einen zusätzlichen Modell-Download und die **ganze Datei am Stück** —
+  blockweise vergebene Sprechernummern wären über Blockgrenzen hinweg
+  bedeutungslos, und das öffentliche API gibt keine Stimm-Merkmale heraus, mit
+  denen sich das zusammenführen ließe.
 - **Finder-Integration** („Öffnen mit", Dienste-Menü, Drop aufs Dock-Icon). Lässt
   sich später ergänzen, ohne am Kern etwas zu ändern.
 
@@ -108,6 +115,12 @@ Pause** liegen. Die Pausen im Gesprochenen sind die einzige Gliederung, die im
 Rohmaterial ehrlich vorhanden ist — alles Weitere wäre geraten und ist Aufgabe der
 LLM-Aufbereitung.
 
+Jeder Absatz beginnt zudem mit seiner **Zeitmarke** (`[12:04]`), damit sich eine
+Stelle im Audio wiederfinden lässt. Vor jeder Zeile wäre es genauer, läse sich
+aber wie eine Tabelle. Der Eingang ins Sprachmodell bekommt den Text **ohne**
+Zeitmarken (`timestamps: false`) — dort kosten sie nur Kontext und tauchten sonst
+mitten im Protokoll wieder auf.
+
 ### Untertitel entstehen immer aus dem Rohtranskript
 
 Sobald das LLM Füllwörter entfernt und Sätze umbaut, passt der Wortlaut nicht
@@ -130,7 +143,39 @@ auf aus und ist unabhängig von der Diktat-Einstellung
 (`speechCommandsEnabled` bleibt unangetastet; die Datei-Seite bekommt den
 eigenen Schlüssel `fileSpeechCommandsEnabled`).
 
-### Abschnittsweise LLM-Aufbereitung
+### „Protokoll" statt Diktat-Bereinigung
+
+Der erste Anlauf hat für Dateien den Diktat-Prompt wiederverwendet. Der ist
+ausdrücklich darauf getrimmt, nichts zu kürzen und nichts umzustellen („Behalte
+Wortwahl, Bedeutung und Sprache exakt bei"). Auf ein Whisper-Transkript
+losgelassen — das ohnehin interpunktiert und weitgehend füllwortfrei ist —
+kommt fast unverändert die Eingabe heraus: **Rohtext und „aufbereitet" waren im
+Gebrauch identisch.** Verschärfend kam der Kürzungs-Schutz in `format` dazu, der
+jede Ausgabe unter 55 % der Eingabewörter verwirft — er hätte jede Zusammenfassung
+per Konstruktion abgelehnt.
+
+Die Datei-Aufbereitung ist deshalb eine andere Aufgabe mit eigenem Weg
+(`Formatter.minutes`), zweistufig:
+
+1. **Je Abschnitt** (~3000 Zeichen, größer als beim Diktat, weil hier gegliedert
+   und nicht Wort für Wort geputzt wird): Überschrift, ein bis vier Kernpunkte,
+   geglätteter Text. Antwortformat `TITEL:` / `PUNKTE:` / `TEXT:`.
+2. **Über alles**: aus Überschriften und Kernpunkten eine Zusammenfassung in drei
+   bis fünf Sätzen. Nur die Punkte gehen hinein, nicht der Volltext — sonst platzt
+   das Kontextfenster wieder.
+
+`TranscriptMinutes` setzt daraus das Dokument zusammen: Zusammenfassung,
+Kernpunkte, darunter der gegliederte Volltext. Das Zerlegen der Modellantwort ist
+bewusst nachsichtig — kleine quantisierte Modelle halten sich nicht zuverlässig an
+ein Ausgabeformat; was nicht erkannt wird, landet unstrukturiert als Text im
+Protokoll statt verloren zu gehen.
+
+**`minutes` liefert `nil` statt des Rohtexts**, wenn kein Modell geladen ist oder
+nichts Brauchbares herauskam. Der Auftrag setzt `formattedText` dann gar nicht,
+und das Fenster zeigt nur den Rohtext. Der frühere Rückfall auf den Rohtext war
+genau die Ursache für den Eindruck „beide Fassungen sind gleich".
+
+### Abschnittsweise Verarbeitung
 
 Der Rohtext wird an Satzgrenzen in Abschnitte von rund 1500 Zeichen geteilt und
 jeder Abschnitt einzeln durch das bestehende `Formatter.format` geschickt. Der
@@ -153,7 +198,8 @@ Alle unter `Sources/FlowLokal/`.
 | `SubtitleWriter.swift` | Segmente → SRT-Text. Reine Funktion. | Foundation |
 | `TextChunker.swift` | Text an Satzgrenzen in Abschnitte teilen. Reine Funktion. | Foundation |
 | `TranscriptExport.swift` | Vorgeschlagene Dateinamen für den Sichern-Dialog. Reine Funktion. | Foundation |
-| `TranscriptLayout.swift` | Steuermarken entfernen und Segmente zu lesbarem Rohtext gliedern. Reine Funktionen. | Foundation |
+| `TranscriptLayout.swift` | Steuermarken entfernen, Segmente zu lesbarem Rohtext gliedern, Zeitmarken setzen. Reine Funktionen. | Foundation |
+| `TranscriptMinutes.swift` | Modellantworten zerlegen und zum Protokoll zusammensetzen. Reine Funktionen. | Foundation |
 | `FileTranscriptionQueue.swift` | `FileTranscriptionJob` (ein Auftrag: Zustand, Fortschritt, Ergebnis) und `FileTranscriptionQueue`, die sie seriell abarbeitet. Beide zusammen in einer Datei, weil sie nur miteinander Sinn ergeben. | Transcriber, Formatter, PersonalDictionary |
 | `FilesView.swift` | Die Seite. | SwiftUI, FileTranscriptionQueue |
 | `TranscriptWindowView.swift` | Inhalt des Ergebnisfensters. | SwiftUI, FileTranscriptionJob |
@@ -174,13 +220,10 @@ sich keine solche Stelle, wird am Zielmaß hart geteilt.
   Plausibilitätsprüfung gegen den Bias-Prompt, die nur für Diktate sinnvoll ist
   (kurze Aufnahme, ein Durchgang) und für Dateien deshalb nicht gilt.
 - **`Formatter.swift`** — neue Methode
-  `formatLong(_ raw: String, termHint: String?) async -> String`: teilt über
-  `TextChunker`, ruft je Abschnitt `format(_:bundleID: nil, termHint:)` auf,
-  fügt mit `\n\n` zusammen. `bundleID` ist `nil`, weil es bei einer Datei keine
-  Ziel-App gibt, deren Tonfall man treffen könnte. Der Absatzumbruch an der
-  Abschnittsgrenze ist gewollt: ein einstündiges Transkript als eine einzige
-  Textwand ist unlesbar, und alle 1500 Zeichen ein Absatz an einer Satzgrenze
-  trifft es näher als gar keine Gliederung.
+  `minutes(from:termHint:onProgress:) async -> String?` (zweistufig, siehe
+  „Protokoll statt Diktat-Bereinigung"). Sie umgeht bewusst den Kürzungs-Schutz
+  aus `format`, der fürs Diktat richtig ist und hier jede Zusammenfassung
+  verwerfen würde. `format` selbst bleibt für das Diktat unverändert.
 - **`DashboardView.swift`** — `Tab.dateien` im Enum, Zeile in der Seitenleiste
   (Symbol `doc.text.below.ecg`), Verzweigung im `detail`-Block.
 - **`AppDelegate.swift`** — hält die `FileTranscriptionQueue`, reicht sie ans
@@ -206,7 +249,7 @@ Datei
   │
   ├─ Rohsegmente verbunden ⇒ Rohtranskript
   │
-  └─ optional: Formatter.formatLong(Rohtranskript) ⇒ aufbereiteter Text
+  └─ optional: Formatter.minutes(Rohtext OHNE Zeitmarken) ⇒ Protokoll
 ```
 
 Sprachbefehle und Wörterbuch-Korrekturen werden **pro Segment** angewandt, nicht
@@ -371,7 +414,13 @@ in Sekunden. `Package.swift` bleibt unverändert, weil der echte Build ohnehin
 - `TranscriptLayout`: Steuermarken am Anfang und zwischen Wörtern, Segment aus
   reinen Steuermarken wird leer, normaler Text bleibt unverändert, doppelte
   Leerzeichen werden zusammengezogen; eine Zeile je Segment, Absatz ab 1,5 s
-  Pause, leere Segmente erzwingen keinen Absatz.
+  Pause, leere Segmente erzwingen keinen Absatz; Zeitmarke je Absatz, über eine
+  Stunde mit Stundenteil, abschaltbar.
+- `TranscriptMinutes`: vollständige Modellantwort zerlegen, Antwort ohne Marker
+  wird komplett zum Text, fehlende Teile, verschiedene Aufzählungszeichen,
+  Marker unabhängig von der Groß-/Kleinschreibung; Dokument mit allen Teilen,
+  leere Teile fallen weg, Abschnitte ohne Text fallen weg; Kernpunkte einsammeln
+  und entdoppeln.
 
 **Von Hand in der laufenden App** (aus `/Applications`, kein Debug-Build)
 

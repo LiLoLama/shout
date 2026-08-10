@@ -131,35 +131,116 @@ actor Formatter {
         }
     }
 
-    /// Bereitet einen langen Text abschnittsweise auf (Datei-Transkription).
+    // MARK: - Protokoll aus einem Transkript
+
+    /// Macht aus einem Datei-Transkript ein Protokoll: Zusammenfassung, Kernpunkte,
+    /// darunter der gegliederte Volltext. Gibt `nil` zurück, wenn kein Modell geladen
+    /// ist oder nichts Brauchbares herauskam.
     ///
-    /// Der ganze Text auf einmal würde das Kontextfenster des kleinen quantisierten
-    /// Modells sprengen. Angenehmer Nebeneffekt der Teilung: Der Kürzungs-Schutz in
-    /// `format` greift pro Abschnitt und rettet damit nur den betroffenen Abschnitt
-    /// statt den ganzen Text zu verwerfen.
+    /// `nil` statt des Rohtexts ist Absicht: Wer den Rohtext zurückbekommt, sieht in
+    /// der Oberfläche zwei identische Fassungen und hält das für ein kaputtes
+    /// Protokoll. Ohne Modell gibt es eben nur den Rohtext, und die Oberfläche sagt das.
     ///
-    /// `bundleID` ist `nil` — bei einer Datei gibt es keine Ziel-App, deren Tonfall
-    /// man treffen könnte.
-    func formatLong(_ raw: String, termHint: String? = nil,
-                    onProgress: (@Sendable (Double) -> Void)? = nil) async -> String {
+    /// Zwei Stufen, weil eine Stunde Transkript in kein Kontextfenster passt:
+    /// 1. Je Abschnitt: Überschrift, ein paar Kernpunkte, geglätteter Text.
+    /// 2. Aus allen Kernpunkten und Überschriften eine Zusammenfassung.
+    func minutes(from raw: String, termHint: String? = nil,
+                 onProgress: (@Sendable (Double) -> Void)? = nil) async -> String? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isReady, !text.isEmpty else { return text }
+        guard isReady, container != nil, !text.isEmpty else { return nil }
 
-        let parts = TextChunker.chunks(of: text)
-        guard parts.count > 1 else {
-            onProgress?(1)
-            return await format(text, bundleID: nil, termHint: termHint)
-        }
+        // Größere Abschnitte als beim Diktat: Das Modell soll hier gliedern und
+        // verdichten, nicht Wort für Wort putzen — und jeder Aufruf kostet Zeit.
+        let parts = TextChunker.chunks(of: text, targetLength: 3000, minLength: 2000)
+        guard !parts.isEmpty else { return nil }
 
-        var out: [String] = []
-        out.reserveCapacity(parts.count)
+        // Stufe 1 macht den Löwenanteil der Arbeit — 90 % des Fortschritts.
+        var sections: [TranscriptMinutes.Section] = []
         for (i, part) in parts.enumerated() {
-            out.append(await format(part, bundleID: nil, termHint: termHint))
-            onProgress?(Double(i + 1) / Double(parts.count))
+            guard let answer = await respond(system: sectionPrompt(termHint: termHint),
+                                             user: part, temperature: 0.3) else { continue }
+            var section = TranscriptMinutes.parseSection(answer)
+            // Hat das Modell den Text verschluckt, ist der Abschnitt des Transkripts
+            // besser als gar nichts.
+            if section.text.isEmpty { section.text = part }
+            sections.append(section)
+            onProgress?(Double(i + 1) / Double(parts.count) * 0.9)
         }
-        // Absatz je Abschnitt: Ein einstündiges Transkript als eine Textwand ist
-        // unlesbar, und geteilt wurde ohnehin an einer Satzgrenze.
-        return out.joined(separator: "\n\n")
+        guard !sections.isEmpty else { return nil }
+
+        let points = TranscriptMinutes.collectPoints(from: sections)
+        let summary = await summarize(sections: sections, points: points) ?? ""
+        onProgress?(1)
+
+        let document = TranscriptMinutes.assemble(
+            summary: summary, points: points, sections: sections,
+            headings: await Self.headings())
+        return document.isEmpty ? nil : document
+    }
+
+    /// Stufe 2: aus Überschriften und Kernpunkten eine kurze Zusammenfassung.
+    /// Nur die Punkte, nicht der Volltext — sonst platzt das Kontextfenster wieder.
+    private func summarize(sections: [TranscriptMinutes.Section], points: [String]) async -> String? {
+        let overview = sections.compactMap(\.title).map { "- \($0)" }.joined(separator: "\n")
+            + "\n" + points.map { "- \($0)" }.joined(separator: "\n")
+        guard overview.count > 20 else { return nil }
+        let system = """
+        Du fasst ein Besprechungs- oder Gesprächsprotokoll zusammen. Du bekommst die \
+        Themen und Kernpunkte, nicht den Volltext.
+        Regeln:
+        - Antworte in derselben Sprache wie die Eingabe.
+        - Drei bis fünf Sätze Fließtext, keine Aufzählung, keine Überschrift.
+        - Nur zusammenfassen, was dasteht. Nichts hinzuerfinden, nicht bewerten.
+        Gib AUSSCHLIESSLICH die Zusammenfassung aus.
+        """
+        return await respond(system: system, user: overview, temperature: 0.3)
+    }
+
+    private func sectionPrompt(termHint: String?) -> String {
+        let terms = termHint.map {
+            "\n- Eigennamen/Fachbegriffe EXAKT so schreiben: \($0)."
+        } ?? ""
+        return """
+        Du machst aus einem automatisch erstellten Transkript ein lesbares Protokoll. \
+        Du bekommst einen Abschnitt des Transkripts.
+
+        Regeln:\(terms)
+        - Antworte in exakt derselben Sprache wie die Eingabe.
+        - Erfinde nichts dazu. Was nicht im Abschnitt steht, kommt nicht ins Protokoll.
+        - Entferne Füllwörter, Wiederholungen, Versprecher und Erkennungsfehler-Reste.
+        - Fasse zusammengehörende Sätze zu Absätzen zusammen und formuliere sie flüssig.
+        - Kürze Geplauder ohne Inhalt weg.
+
+        Antworte GENAU in diesem Format:
+        TITEL: <kurze Überschrift für diesen Abschnitt, höchstens sieben Wörter>
+        PUNKTE:
+        - <die wichtigsten Aussagen, Entscheidungen oder Aufgaben, ein bis vier Stichpunkte>
+        TEXT:
+        <der aufbereitete Abschnitt in Absätzen>
+        """
+    }
+
+    /// Ein Aufruf ans Modell. Ohne den Kürzungs-Schutz aus `format` — der ist fürs
+    /// Diktat gedacht und würde hier JEDE Zusammenfassung verwerfen, weil sie
+    /// naturgemäß deutlich kürzer ist als die Eingabe.
+    private func respond(system: String, user: String, temperature: Float) async -> String? {
+        guard let container else { return nil }
+        do {
+            let session = ChatSession(container, instructions: system,
+                                      generateParameters: GenerateParameters(temperature: temperature))
+            let out = stripArtifacts(try await session.respond(to: user))
+            return out.isEmpty ? nil : out
+        } catch {
+            NSLog("shout: Protokoll-Aufruf fehlgeschlagen: \(error)")
+            return nil
+        }
+    }
+
+    @MainActor
+    private static func headings() -> TranscriptMinutes.Headings {
+        TranscriptMinutes.Headings(summary: Loc.t("Zusammenfassung"),
+                                   points: Loc.t("Kernpunkte"),
+                                   body: Loc.t("Protokoll"))
     }
 
     // MARK: - Sprachprofil („Your Voice")

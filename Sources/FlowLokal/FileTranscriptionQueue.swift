@@ -139,7 +139,7 @@ final class FileTranscriptionQueue: ObservableObject {
         guard !cancelled.contains(job.id) else { job.markCancelled(); return }
 
         let useCommands = UserDefaults.standard.bool(forKey: "fileSpeechCommandsEnabled")
-        let useFormatting = UserDefaults.standard.object(forKey: "fileFormattingEnabled") as? Bool ?? true
+        let useMinutes = UserDefaults.standard.object(forKey: "fileFormattingEnabled") as? Bool ?? true
         let bias = dictionary.contents.terms
 
         job.state = .transcribing(progress: 0)
@@ -168,7 +168,7 @@ final class FileTranscriptionQueue: ObservableObject {
                 }
 
                 job.segments = collected
-                job.rawText = TranscriptLayout.rawText(from: collected)
+                job.rawText = TranscriptLayout.rawText(from: collected, timestamps: true)
                 let processed = block.startTime + Double(block.samples.count) / MediaDecoder.sampleRate
                 job.state = .transcribing(progress: duration > 0 ? min(1, processed / duration) : 0)
             }
@@ -187,17 +187,23 @@ final class FileTranscriptionQueue: ObservableObject {
             return
         }
 
-        if useFormatting {
+        if useMinutes {
             job.state = .formatting(progress: 0)
             let hint = dictionary.termHint
             let jobRef = job
-            let cleaned = await formatter.formatLong(job.rawText, termHint: hint) { fraction in
+            // Das Modell bekommt den Text OHNE Zeitmarken — die kosten dort nur
+            // Kontext und tauchten sonst mitten im Protokoll wieder auf.
+            let input = TranscriptLayout.rawText(from: collected, timestamps: false)
+            let document = await formatter.minutes(from: input, termHint: hint) { fraction in
                 Task { @MainActor in
                     if case .formatting = jobRef.state { jobRef.state = .formatting(progress: fraction) }
                 }
             }
             if cancelled.contains(job.id) { job.markCancelled(); return }
-            job.formattedText = cleaned
+            // Nur setzen, wenn wirklich ein Protokoll herauskam. Sonst stünden im
+            // Fenster zwei identische Fassungen — genau der Eindruck, der beim
+            // ersten Anlauf entstanden ist.
+            if let document { job.formattedText = document }
         }
 
         job.state = .done

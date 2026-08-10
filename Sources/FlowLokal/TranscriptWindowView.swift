@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 struct TranscriptWindowView: View {
 
     /// Welche Fassung gerade die aktive ist.
-    private enum Fassung: Hashable { case aufbereitet, roh }
+    private enum Fassung: Hashable { case protokoll, roh }
 
     @ObservedObject var job: FileTranscriptionJob
     @ObservedObject private var loc = Loc.shared
@@ -23,26 +23,26 @@ struct TranscriptWindowView: View {
     init(job: FileTranscriptionJob) {
         self.job = job
         // Ohne Aufbereitung gibt es nur den Rohtext — dann ist er auch die aktive Fassung.
-        _active = State(initialValue: job.formattedText.isEmpty ? .roh : .aufbereitet)
+        _active = State(initialValue: job.formattedText.isEmpty ? .roh : .protokoll)
     }
 
     /// Nur wenn beide Fassungen existieren, ergeben Umschalter und Vergleich Sinn.
     private var hasBoth: Bool { !job.formattedText.isEmpty && !job.rawText.isEmpty }
 
     private var activeText: Binding<String> {
-        active == .aufbereitet ? $job.formattedText : $job.rawText
+        active == .protokoll ? $job.formattedText : $job.rawText
     }
 
     private var otherText: String {
-        active == .aufbereitet ? job.rawText : job.formattedText
+        active == .protokoll ? job.rawText : job.formattedText
     }
 
     private var activeTitle: String {
-        active == .aufbereitet ? Loc.t("Aufbereitet") : Loc.t("Rohtext")
+        active == .protokoll ? Loc.t("Protokoll") : Loc.t("Rohtext")
     }
 
     private var otherTitle: String {
-        active == .aufbereitet ? Loc.t("Rohtext") : Loc.t("Aufbereitet")
+        active == .protokoll ? Loc.t("Rohtext") : Loc.t("Protokoll")
     }
 
     var body: some View {
@@ -77,7 +77,7 @@ struct TranscriptWindowView: View {
             Spacer(minLength: 12)
             if hasBoth {
                 ConsoleSegmented(selection: $active,
-                                 options: [(.aufbereitet, Loc.t("Aufbereitet")),
+                                 options: [(.protokoll, Loc.t("Protokoll")),
                                            (.roh, Loc.t("Rohtext"))])
                 Button(comparing ? Loc.t("Vergleich ausblenden") : Loc.t("Vergleichen")) {
                     comparing.toggle()

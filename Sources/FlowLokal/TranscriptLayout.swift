@@ -26,13 +26,18 @@ enum TranscriptLayout {
     }
 
     /// Baut das Rohtranskript: eine Zeile je Segment, Leerzeile bei einer längeren
-    /// Sprechpause.
+    /// Sprechpause, auf Wunsch eine Zeitmarke am Anfang jedes Absatzes.
     ///
     /// Alles in einen Absatz zu hängen ist die naheliegende, aber schlechteste
     /// Variante — bei einer Stunde Audio steht dann eine Wand aus Text da. Die
     /// Segmentgrenzen sind ohnehin da, und die Pausen im Gesprochenen sind die
     /// ehrlichste verfügbare Gliederung.
-    static func rawText(from segments: [TranscriptSegment], paragraphGap: Double = paragraphGap) -> String {
+    ///
+    /// `timestamps` ist beim Anzeigen an und für den Eingang ins Sprachmodell aus:
+    /// Dort kosteten die Marken nur Kontext und tauchten am Ende im Protokoll wieder auf.
+    static func rawText(from segments: [TranscriptSegment],
+                        paragraphGap: Double = paragraphGap,
+                        timestamps: Bool = false) -> String {
         var lines: [String] = []
         var previousEnd: Double?
 
@@ -41,12 +46,19 @@ enum TranscriptLayout {
             guard !text.isEmpty else { continue }
             // Absatz nur zwischen zwei ECHTEN Zeilen — der Vergleich läuft gegen das
             // letzte übernommene Segment, nicht gegen ein übersprungenes leeres.
-            if let end = previousEnd, segment.start - end >= paragraphGap {
-                lines.append("")
-            }
-            lines.append(text)
+            let newParagraph = previousEnd.map { segment.start - $0 >= paragraphGap } ?? true
+            if newParagraph, previousEnd != nil { lines.append("") }
+            lines.append(newParagraph && timestamps ? "[\(timecode(segment.start))] \(text)" : text)
             previousEnd = segment.end
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// „2:04" bzw. „1:02:05" — kurz genug, um vor jedem Absatz zu stehen.
+    static func timecode(_ seconds: Double) -> String {
+        let total = Int(max(0, seconds))
+        return total >= 3600
+            ? String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+            : String(format: "%d:%02d", total / 60, total % 60)
     }
 }

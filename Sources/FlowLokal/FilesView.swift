@@ -81,9 +81,9 @@ struct FilesView: View {
 
     private var optionsPanel: some View {
         ConsolePanel(title: Loc.t("Verarbeitung")) {
-            FieldRow(title: Loc.t("Text aufbereiten"),
+            FieldRow(title: Loc.t("Protokoll erstellen"),
                      help: formatterReady
-                        ? Loc.t("Füllwörter entfernen, Satzzeichen setzen — abschnittsweise durch das lokale Sprachmodell.")
+                        ? Loc.t("Zusätzlich zum Rohtext ein Protokoll: Zusammenfassung, Kernpunkte und der gegliederte Text. Dauert bei langen Dateien deutlich länger.")
                         : Loc.t("Das Modell zum Aufbereiten ist noch nicht geladen. Sobald es bereit ist, lässt sich der Schalter umlegen — bis dahin kommt das Rohtranskript.")) {
                 Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(.switch)
                     .tint(Color.shoutLive).disabled(!formatterReady)

@@ -241,6 +241,7 @@ targets:
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift
       - path: Sources/FlowLokal/TextChunker.swift
+      - path: Sources/FlowLokal/TranscriptExport.swift
       - path: Sources/FlowLokal/MediaDecoder.swift
     settings:
       base:

@@ -84,6 +84,30 @@ so gut wie die andere, und ein Fehler alle zwei Minuten betrifft höchstens ein
 Wort. Hart bei 120 Sekunden geschnitten wird nur, wenn der Suchbereich kleiner
 ist als ein Fenster (sehr kurze Blöcke, wie in den Tests).
 
+### Segmenttext ist nicht der saubere Text
+
+WhisperKits `TranscriptionResult.text` filtert die Steuermarken des Modells heraus
+(`finalizeTranscriptionResult`), `TranscriptionSegment.text` **nicht** —
+`DecodingOptions.skipSpecialTokens` steht standardmäßig auf `false`. Weil das
+Diktat mit `result.text` arbeitet und die Datei-Transkription mit den Segmenten,
+fiel das erst im Gebrauch auf: Im Rohtranskript standen `<|startoftranscript|>`,
+`<|de|>`, `<|0.00|>`, `<|endoftext|>` — und in den Untertiteln ebenso.
+
+Deshalb zweifach abgesichert: `options.skipSpecialTokens = true` in
+`Transcriber.runResults`, und zusätzlich entfernt
+`TranscriptLayout.stripSpecialTokens` jedes verbliebene `<|…|>`. Die zweite Stufe
+ist kein Misstrauen gegen die erste, sondern die Stelle, an der sich das Verhalten
+ohne geladenes Modell testen lässt.
+
+### Rohtext wird gegliedert, nicht aneinandergehängt
+
+Die Segmente mit `" "` zu verbinden ergibt bei einer Stunde Audio eine einzige
+Textwand. Stattdessen baut `TranscriptLayout.rawText` **eine Zeile je Segment** und
+setzt eine **Leerzeile, wenn zwischen zwei Segmenten mindestens 1,5 Sekunden
+Pause** liegen. Die Pausen im Gesprochenen sind die einzige Gliederung, die im
+Rohmaterial ehrlich vorhanden ist — alles Weitere wäre geraten und ist Aufgabe der
+LLM-Aufbereitung.
+
 ### Untertitel entstehen immer aus dem Rohtranskript
 
 Sobald das LLM Füllwörter entfernt und Sätze umbaut, passt der Wortlaut nicht
@@ -129,6 +153,7 @@ Alle unter `Sources/FlowLokal/`.
 | `SubtitleWriter.swift` | Segmente → SRT-Text. Reine Funktion. | Foundation |
 | `TextChunker.swift` | Text an Satzgrenzen in Abschnitte teilen. Reine Funktion. | Foundation |
 | `TranscriptExport.swift` | Vorgeschlagene Dateinamen für den Sichern-Dialog. Reine Funktion. | Foundation |
+| `TranscriptLayout.swift` | Steuermarken entfernen und Segmente zu lesbarem Rohtext gliedern. Reine Funktionen. | Foundation |
 | `FileTranscriptionQueue.swift` | `FileTranscriptionJob` (ein Auftrag: Zustand, Fortschritt, Ergebnis) und `FileTranscriptionQueue`, die sie seriell abarbeitet. Beide zusammen in einer Datei, weil sie nur miteinander Sinn ergeben. | Transcriber, Formatter, PersonalDictionary |
 | `FilesView.swift` | Die Seite. | SwiftUI, FileTranscriptionQueue |
 | `TranscriptWindowView.swift` | Inhalt des Ergebnisfensters. | SwiftUI, FileTranscriptionJob |
@@ -343,6 +368,10 @@ in Sekunden. `Package.swift` bleibt unverändert, weil der echte Build ohnehin
   AAC-Tonspur, Datei ohne Tonspur wirft.
 - `TranscriptExport`: Name mit und ohne Rohtext-Zusatz, Quelldatei ohne Endung,
   Quelldatei mit Punkten im Namen, Untertitel-Endung.
+- `TranscriptLayout`: Steuermarken am Anfang und zwischen Wörtern, Segment aus
+  reinen Steuermarken wird leer, normaler Text bleibt unverändert, doppelte
+  Leerzeichen werden zusammengezogen; eine Zeile je Segment, Absatz ab 1,5 s
+  Pause, leere Segmente erzwingen keinen Absatz.
 
 **Von Hand in der laufenden App** (aus `/Applications`, kein Debug-Build)
 

@@ -168,7 +168,7 @@ final class FileTranscriptionQueue: ObservableObject {
                 }
 
                 job.segments = collected
-                job.rawText = collected.map(\.text).joined(separator: " ")
+                job.rawText = TranscriptLayout.rawText(from: collected)
                 let processed = block.startTime + Double(block.samples.count) / MediaDecoder.sampleRate
                 job.state = .transcribing(progress: duration > 0 ? min(1, processed / duration) : 0)
             }

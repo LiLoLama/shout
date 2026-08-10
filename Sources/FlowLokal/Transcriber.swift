@@ -101,7 +101,7 @@ actor Transcriber {
         guard pipe != nil else { throw TranscriberError.notLoaded }
         let results = try await runResults(samples: samples, biasTerms: biasTerms)
         return results.flatMap(\.segments).map {
-            TranscriptSegment(text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            TranscriptSegment(text: TranscriptLayout.stripSpecialTokens($0.text),
                               start: Double($0.start),
                               end: Double($0.end))
         }
@@ -122,6 +122,11 @@ actor Transcriber {
         // Kein Prefill-Cache: verhindert, dass Decoder-Zustand über Aufnahmen
         // hinweg „hängen bleibt" (Ursache für leere Folge-Transkriptionen).
         options.usePrefillCache = false
+        // WhisperKit dekodiert die Steuermarken sonst in den SEGMENT-Text hinein
+        // („<|de|>", „<|0.00|>", „<|endoftext|>"). Beim Diktat fiel das nie auf, weil
+        // `TranscriptionResult.text` sie ohnehin herausfiltert — die Datei-
+        // Transkription arbeitet aber mit den Segmenten und bekam sie voll ab.
+        options.skipSpecialTokens = true
 
         // Wörterbuch-Begriffe als Konditionierungs-Prompt → Whisper erkennt
         // Eigennamen/Fachbegriffe schon beim Transkribieren besser.

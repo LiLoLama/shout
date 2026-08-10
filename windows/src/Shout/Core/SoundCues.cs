@@ -23,7 +23,11 @@ public sealed class SoundCues : IDisposable
     /// <summary>Obergrenze für den Spitzenwert (≈ −12 dBFS).</summary>
     private const float MaxPeak = 0.25f;
 
-    private static readonly WaveFormat Format = WaveFormat.CreateIeeeFloatWaveFormat(44_100, 2);
+    /// <summary>Format der Wiedergabe. Wird aus der ersten geladenen Datei
+    /// übernommen, statt fest auf 44,1 kHz zu stehen: Die Klänge liegen in 48 kHz
+    /// vor, und sie vorab umzurechnen klingt hörbar schlechter (krummes Verhältnis).
+    /// Die Umrechnung auf die Hardware-Rate macht die Audio-Ausgabe von Windows.</summary>
+    private WaveFormat? format;
 
     private readonly Dictionary<Cue, float[]> samples = new();
     private WaveOutEvent? output;
@@ -42,6 +46,7 @@ public sealed class SoundCues : IDisposable
     public void Play(Cue cue)
     {
         if (!Settings.Shared.SoundCuesEnabled) return;
+        if (format == null) return;
         if (!samples.TryGetValue(cue, out var data) || data.Length == 0) return;
 
         try
@@ -50,7 +55,7 @@ public sealed class SoundCues : IDisposable
             {
                 if (output == null)
                 {
-                    buffer = new BufferedWaveProvider(Format)
+                    buffer = new BufferedWaveProvider(format!)
                     {
                         BufferDuration = TimeSpan.FromSeconds(5),
                         DiscardOnBufferOverflow = true,
@@ -87,10 +92,16 @@ public sealed class SoundCues : IDisposable
 
             using var reader = new Mp3FileReader(stream);
             ISampleProvider provider = reader.ToSampleProvider();
-            if (provider.WaveFormat.Channels == 1)
+
+            // Format der ERSTEN Datei gilt für alle: Nur wer davon abweicht, wird
+            // umgerechnet — und das ist der Ausnahmefall, nicht die Regel.
+            format ??= WaveFormat.CreateIeeeFloatWaveFormat(
+                provider.WaveFormat.SampleRate, Math.Max(1, provider.WaveFormat.Channels));
+
+            if (provider.WaveFormat.Channels == 1 && format.Channels == 2)
                 provider = new MonoToStereoSampleProvider(provider);
-            if (provider.WaveFormat.SampleRate != Format.SampleRate)
-                provider = new WdlResamplingSampleProvider(provider, Format.SampleRate);
+            if (provider.WaveFormat.SampleRate != format.SampleRate)
+                provider = new WdlResamplingSampleProvider(provider, format.SampleRate);
 
             var all = new List<float>();
             var chunk = new float[8_192];
@@ -116,10 +127,10 @@ public sealed class SoundCues : IDisposable
     /// Stille künstlich hochziehen — genau der Fall des 1,8 Sekunden langen
     /// Fehlertons.</para>
     /// </summary>
-    private static void Normalize(float[] data)
+    private void Normalize(float[] data)
     {
-        if (data.Length == 0) return;
-        var channels = Format.Channels;
+        if (data.Length == 0 || format == null) return;
+        var channels = format.Channels;
         var frames = data.Length / channels;
         if (frames == 0) return;
 
@@ -135,7 +146,7 @@ public sealed class SoundCues : IDisposable
         }
         if (peak <= 0) return;
 
-        var window = Math.Min(frames, (int)(Format.SampleRate * 0.3));
+        var window = Math.Min(frames, (int)(format.SampleRate * 0.3));
         var energy = 0f;
         for (var i = 0; i < window; i++) energy += mono[i] * mono[i];
         var best = energy;

@@ -2,16 +2,21 @@ import AVFoundation
 
 /// Die Klang-Signale der App: fertige Klänge aus `Resources/Audio`.
 ///
-/// Vorher waren das synthetisierte Holz-Taps. Die echten Dateien klingen besser,
-/// bringen aber ein Problem mit: Sie sind unterschiedlich laut ausgesteuert.
-/// Gemessen lagen Start und Stopp bei −1 dBFS Spitze (praktisch voll ausgesteuert),
-/// der Fehlerton rund 10 dB darunter. Unverändert abgespielt wären die ersten
-/// beiden unangenehm laut und der dritte kaum hörbar.
+/// Zwei Dinge sind hier wichtig und waren beim ersten Anlauf beide falsch:
 ///
-/// Deshalb wird beim Laden **gemessen und angeglichen**: Jeder Klang wird auf
-/// dieselbe wahrgenommene Lautstärke gebracht (lauteste 300 ms), gedeckelt durch
-/// eine Spitzenwert-Grenze. Das passiert zur Laufzeit und nicht als feste Zahl pro
-/// Datei — so bleibt die Lautstärke stimmig, wenn die Klänge ausgetauscht werden.
+/// **Nicht selbst umrechnen.** Die Dateien liegen in 48 kHz vor. Sie vorab auf
+/// 44,1 kHz zu bringen, klingt hörbar schlechter — ein krummes Verhältnis, das ohne
+/// hochwertigen Wandler Aliasing erzeugt. Stattdessen läuft der Player im Format der
+/// Dateien; das Umrechnen auf die Hardware-Rate übernimmt der Mixer der Audio-Engine,
+/// und der macht es richtig. Umgerechnet wird nur eine Datei, die aus der Reihe fällt
+/// — dann mit maximaler Wandler-Qualität.
+///
+/// **Lautstärke angleichen.** Gemessen lagen Start und Stopp bei −1 dBFS Spitze
+/// (praktisch voll ausgesteuert), der Fehlerton rund 10 dB darunter. Unverändert
+/// abgespielt wären die ersten beiden unangenehm laut und der dritte kaum hörbar.
+/// Deshalb wird beim Laden die lauteste 300-ms-Strecke gemessen und angeglichen —
+/// zur Laufzeit statt als feste Zahl pro Datei, damit ausgetauschte Klänge von selbst
+/// stimmig bleiben.
 @MainActor
 final class SoundCues {
     enum Cue { case start, stop, done, error }
@@ -21,8 +26,7 @@ final class SoundCues {
     /// Kopfhörern zusammenzucken lässt. Die alten synthetischen Töne lagen mit
     /// 0,09 Spitze in derselben Gegend — daran ist die Zahl geeicht.
     private static let targetLoudness: Float = 0.05
-    /// Obergrenze für den Spitzenwert (≈ −12 dBFS). Greift bei Klängen mit hoher
-    /// Dynamik, bei denen die Lautheits-Angleichung die Spitzen zu weit hochzöge.
+    /// Obergrenze für den Spitzenwert (≈ −12 dBFS).
     private static let maxPeak: Float = 0.25
 
     private let engine = AVAudioEngine()
@@ -34,24 +38,33 @@ final class SoundCues {
     private var enabled: Bool { UserDefaults.standard.object(forKey: "soundCuesEnabled") as? Bool ?? true }
 
     init() {
-        // Ein gemeinsames Format für den Player: Die Dateien liegen in 48 kHz vor,
-        // könnten aber ausgetauscht werden — deshalb wird beim Laden auf dieses
-        // Format umgerechnet, statt sich auf die Abtastrate der Dateien zu verlassen.
-        format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)
-        guard let format else { return }
+        // Erst laden, dann das Format festlegen: Der Player bekommt das Format der
+        // Dateien, nicht umgekehrt.
+        var loaded: [(cue: Cue, buffer: AVAudioPCMBuffer)] = []
+        for (cue, name) in [(Cue.start, "Rec_start"), (Cue.stop, "Rec_stop"), (Cue.error, "Error_sound")] {
+            guard let buffer = Self.read(name) else { continue }
+            loaded.append((cue, buffer))
+        }
+        guard let canonical = loaded.first?.buffer.format else {
+            format = nil
+            NSLog("SoundCues: keine Klangdatei ladbar — die App bleibt stumm")
+            return
+        }
+        format = canonical
 
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
-        engine.prepare()
-
-        buffers[.start] = load("Rec_start", to: format)
-        let stop = load("Rec_stop", to: format)
-        buffers[.stop] = stop
+        for (cue, buffer) in loaded {
+            guard let ready = Self.matched(buffer, to: canonical) else { continue }
+            Self.normalize(ready)
+            buffers[cue] = ready
+        }
         // „Fertig eingefügt" nutzt denselben Klang wie das Aufnahme-Ende: Es ist die
         // eigentlich nützliche Rückmeldung („du kannst weiterarbeiten"), und ein
         // vierter, andersartiger Ton wäre nur Unruhe.
-        buffers[.done] = stop
-        buffers[.error] = load("Error_sound", to: format)
+        buffers[.done] = buffers[.stop]
+
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: canonical)
+        engine.prepare()
     }
 
     func play(_ cue: Cue) {
@@ -80,7 +93,8 @@ final class SoundCues {
 
     // MARK: - Laden
 
-    private func load(_ name: String, to target: AVAudioFormat) -> AVAudioPCMBuffer? {
+    /// Liest die Datei in ihrem eigenen Format ein — ohne jede Umrechnung.
+    private static func read(_ name: String) -> AVAudioPCMBuffer? {
         guard let url = Bundle.main.url(forResource: name, withExtension: "mp3") else {
             NSLog("SoundCues: \(name).mp3 liegt nicht im Bundle")
             return nil
@@ -91,37 +105,48 @@ final class SoundCues {
         }
         let frames = AVAudioFrameCount(file.length)
         guard frames > 0,
-              let source = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames),
-              (try? file.read(into: source)) != nil,
-              let buffer = resample(source, to: target) else {
-            NSLog("SoundCues: \(name).mp3 konnte nicht aufbereitet werden")
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames),
+              (try? file.read(into: buffer)) != nil, buffer.frameLength > 0 else {
+            NSLog("SoundCues: \(name).mp3 konnte nicht gelesen werden")
             return nil
         }
-        normalize(buffer)
         return buffer
     }
 
-    /// Rechnet auf das Player-Format um. Stimmen die Formate schon überein, wird der
-    /// Puffer unverändert durchgereicht.
-    private func resample(_ buffer: AVAudioPCMBuffer, to target: AVAudioFormat) -> AVAudioPCMBuffer? {
+    /// Bringt einen Puffer auf das gemeinsame Format. Stimmt es schon überein — der
+    /// Normalfall, weil alle Klänge aus derselben Quelle stammen —, wird der Puffer
+    /// unverändert durchgereicht und es findet gar keine Umrechnung statt.
+    private static func matched(_ buffer: AVAudioPCMBuffer, to target: AVAudioFormat) -> AVAudioPCMBuffer? {
         if buffer.format == target { return buffer }
+
         guard let converter = AVAudioConverter(from: buffer.format, to: target) else { return nil }
+        // Muss eine Datei doch umgerechnet werden, dann wenigstens ordentlich.
+        converter.sampleRateConverterQuality = AVAudioQuality.max.rawValue
+        converter.sampleRateConverterAlgorithm = AVSampleRateConverterAlgorithm_Mastering
+
         let ratio = target.sampleRate / buffer.format.sampleRate
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1_024
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 4_096
         guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
 
         var delivered = false
         var error: NSError?
         converter.convert(to: output, error: &error) { _, status in
             if delivered {
-                status.pointee = .noDataNow
+                // .endOfStream und NICHT .noDataNow: Letzteres heißt „gerade nichts,
+                // vielleicht später" — der Wandler hört dann auf, ohne seinen internen
+                // Puffer auszuspülen, und das Ende des Klangs wird abgeschnitten.
+                status.pointee = .endOfStream
                 return nil
             }
             delivered = true
             status.pointee = .haveData
             return buffer
         }
-        return error == nil ? output : nil
+        guard error == nil, output.frameLength > 0 else {
+            NSLog("SoundCues: Umrechnen fehlgeschlagen (\(error?.localizedDescription ?? "leeres Ergebnis"))")
+            return nil
+        }
+        return output
     }
 
     /// Hebt oder senkt den Puffer auf die Ziel-Lautstärke.
@@ -131,7 +156,7 @@ final class SoundCues {
     /// werden aber völlig verschieden laut wahrgenommen. Über die Gesamtlänge zu
     /// mitteln würde einen langen Klang mit viel Stille künstlich hochziehen —
     /// genau der Fall des 1,8 Sekunden langen Fehlertons.
-    private func normalize(_ buffer: AVAudioPCMBuffer) {
+    private static func normalize(_ buffer: AVAudioPCMBuffer) {
         guard let channels = buffer.floatChannelData else { return }
         let frames = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
@@ -159,7 +184,7 @@ final class SoundCues {
         let loudness = (best / Float(window)).squareRoot()
         guard loudness > 0 else { return }
 
-        let gain = min(Self.targetLoudness / loudness, Self.maxPeak / peak)
+        let gain = min(targetLoudness / loudness, maxPeak / peak)
         guard abs(gain - 1) > 0.001 else { return }
         for c in 0..<channelCount {
             for i in 0..<frames { channels[c][i] *= gain }

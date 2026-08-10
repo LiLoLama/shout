@@ -216,7 +216,14 @@ struct TranscriptWindowView: View {
 
     private func saveSubtitles() {
         let name = TranscriptExport.fileName(for: job.url, suffix: "", extension: "srt")
-        write(SubtitleWriter.srt(from: job.segments), suggesting: name, types: [])
+        // Sprecher stehen im Untertitel vor dem Text — nur wenn die Trennung
+        // tatsächlich etwas gefunden hat.
+        let hasSpeakers = job.segments.contains { $0.speaker != nil }
+        let label: ((Int) -> String)? = hasSpeakers
+            ? { number in FileTranscriptionJob.speakerLabel(number) }
+            : nil
+        write(SubtitleWriter.srt(from: job.segments, speakerLabel: label),
+              suggesting: name, types: [])
     }
 
     private func write(_ content: String, suggesting name: String, types: [UTType]) {

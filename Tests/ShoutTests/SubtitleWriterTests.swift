@@ -69,6 +69,21 @@ final class SubtitleWriterTests: XCTestCase {
         XCTAssertTrue(SubtitleWriter.srt(from: segments).contains("00:00:05,000 --> 00:00:05,000"))
     }
 
+    // MARK: - Sprecher
+
+    func testSprecherStehtVorDemUntertiteltext() {
+        let segments = [TranscriptSegment(text: "Guten Morgen.", start: 0, end: 2, speaker: 1)]
+        let srt = SubtitleWriter.srt(from: segments, speakerLabel: { "Sprecher \($0)" })
+        XCTAssertTrue(srt.contains("Sprecher 1: Guten Morgen."))
+    }
+
+    func testOhneSprecherKeinPraefix() {
+        let segments = [TranscriptSegment(text: "Guten Morgen.", start: 0, end: 2)]
+        let srt = SubtitleWriter.srt(from: segments, speakerLabel: { "Sprecher \($0)" })
+        XCTAssertTrue(srt.contains("\nGuten Morgen."))
+        XCTAssertFalse(srt.contains("Sprecher"))
+    }
+
     // MARK: - Zeitversatz
 
     func testOffsetVerschiebtBeideZeitmarken() {

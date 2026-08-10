@@ -27,6 +27,7 @@ und LLM-Aufbereitung existieren unverändert weiter.
 - Ausgabe in einem eigenen Fenster: Rohtext und Protokoll getrennt, bearbeitbar,
   Speichern als `.txt` und als `.srt`.
 - Protokoll aus dem Transkript (Zusammenfassung, Kernpunkte, gegliederter Text), per Schalter abschaltbar.
+- Sprechertrennung (Pyannote über SpeakerKit), per Schalter zuschaltbar.
 - Zweisprachig (Deutsch/Englisch) über den bestehenden `Loc`-Mechanismus.
 
 **Bewusst nicht enthalten**
@@ -37,15 +38,6 @@ und LLM-Aufbereitung existieren unverändert weiter.
 - **Einfügen an der Cursor-Position.** Bei einer Stunde Transkript unbrauchbar;
   Kopieren und Speichern decken den Fall ab.
 - **Verlauf und Statistiken.** Begründung unten unter „Bewusste Auslassungen".
-- **Sprecher-Trennung (Diarisierung) — vorerst.** Anders als hier ursprünglich
-  behauptet ist sie sehr wohl möglich: Dasselbe Paket bringt neben WhisperKit ein
-  `SpeakerKit` mit (Pyannote, CoreML), das auf denselben 16-kHz-Samples arbeitet
-  und Sprecher-Labels an die Transkript-Segmente heften kann. Sie ist als eigene
-  Runde vorgesehen, weil sie zwei Dinge verlangt, die den jetzigen Aufbau
-  berühren: einen zusätzlichen Modell-Download und die **ganze Datei am Stück** —
-  blockweise vergebene Sprechernummern wären über Blockgrenzen hinweg
-  bedeutungslos, und das öffentliche API gibt keine Stimm-Merkmale heraus, mit
-  denen sich das zusammenführen ließe.
 - **Finder-Integration** („Öffnen mit", Dienste-Menü, Drop aufs Dock-Icon). Lässt
   sich später ergänzen, ohne am Kern etwas zu ändern.
 
@@ -120,6 +112,37 @@ Stelle im Audio wiederfinden lässt. Vor jeder Zeile wäre es genauer, läse sic
 aber wie eine Tabelle. Der Eingang ins Sprachmodell bekommt den Text **ohne**
 Zeitmarken (`timestamps: false`) — dort kosten sie nur Kontext und tauchten sonst
 mitten im Protokoll wieder auf.
+
+### Sprechertrennung braucht die ganze Datei
+
+`SpeakerKit` (Pyannote, CoreML) liegt im selben Paket wie WhisperKit und arbeitet
+auf denselben 16-kHz-Mono-Samples. Es lädt seine Modelle bei der ersten Nutzung
+selbst von Hugging Face (`argmaxinc/speakerkit-coreml`).
+
+Anders als die Transkription lässt es sich **nicht blockweise** betreiben: Die
+Sprechernummern entstehen aus einem Clustering über alles, was ein Lauf gesehen
+hat. Pro Zwei-Minuten-Block wäre „Sprecher 1" in Minute 3 nicht derselbe wie in
+Minute 40, und das öffentliche API gibt keine Stimm-Merkmale heraus, mit denen
+sich Blöcke zusammenführen ließen. Deshalb sammelt die Warteschlange die Samples
+**nur bei eingeschalteter Trennung** mit und gibt sie direkt nach dem Lauf wieder
+frei. Bei einer Stunde sind das rund 230 MB — der Grund, warum der Schalter
+standardmäßig aus ist und der Hinweistext die Kosten nennt.
+
+Whisper und Pyannote schneiden unabhängig voneinander; ihre Grenzen fallen nie
+zusammen. `SpeakerAssignment` gibt jedem Transkript-Segment deshalb den Sprecher
+mit der **größten zeitlichen Überlappung** und nummeriert die Cluster nach der
+Reihenfolge ihres ersten Auftretens um (Pyannote vergibt beliebige IDs, in der
+Anzeige soll „Sprecher 1" der sein, der zuerst spricht). Ohne Überlappung bleibt
+der Sprecher offen — ein falsches Label wäre schlimmer als keines.
+
+Scheitert die Trennung (Download nicht möglich, Modellfehler), läuft der Auftrag
+**ohne Sprecher zu Ende** und die Auftragszeile sagt es. Ein fertiges Transkript
+wegen der Kür zu verwerfen wäre die schlechtere Wahl.
+
+Angezeigt werden die Sprecher an drei Stellen: im Rohtext (`Sprecher 1: …`, dazu
+beginnt jeder Sprecherwechsel einen neuen Absatz), in der `.srt` vor dem
+Untertiteltext, und im Eingang fürs Sprachmodell — nur so kann das Protokoll
+zuordnen, wer was gesagt hat.
 
 ### Untertitel entstehen immer aus dem Rohtranskript
 
@@ -200,6 +223,8 @@ Alle unter `Sources/FlowLokal/`.
 | `TranscriptExport.swift` | Vorgeschlagene Dateinamen für den Sichern-Dialog. Reine Funktion. | Foundation |
 | `TranscriptLayout.swift` | Steuermarken entfernen, Segmente zu lesbarem Rohtext gliedern, Zeitmarken setzen. Reine Funktionen. | Foundation |
 | `TranscriptMinutes.swift` | Modellantworten zerlegen und zum Protokoll zusammensetzen. Reine Funktionen. | Foundation |
+| `SpeakerAssignment.swift` | Sprecherabschnitte auf Transkript-Segmente abbilden. Reine Funktion. | Foundation |
+| `SpeakerSeparator.swift` | `actor` um SpeakerKit (Pyannote/CoreML). | SpeakerKit |
 | `FileTranscriptionQueue.swift` | `FileTranscriptionJob` (ein Auftrag: Zustand, Fortschritt, Ergebnis) und `FileTranscriptionQueue`, die sie seriell abarbeitet. Beide zusammen in einer Datei, weil sie nur miteinander Sinn ergeben. | Transcriber, Formatter, PersonalDictionary |
 | `FilesView.swift` | Die Seite. | SwiftUI, FileTranscriptionQueue |
 | `TranscriptWindowView.swift` | Inhalt des Ergebnisfensters. | SwiftUI, FileTranscriptionJob |
@@ -415,7 +440,13 @@ in Sekunden. `Package.swift` bleibt unverändert, weil der echte Build ohnehin
   reinen Steuermarken wird leer, normaler Text bleibt unverändert, doppelte
   Leerzeichen werden zusammengezogen; eine Zeile je Segment, Absatz ab 1,5 s
   Pause, leere Segmente erzwingen keinen Absatz; Zeitmarke je Absatz, über eine
-  Stunde mit Stundenteil, abschaltbar.
+  Stunde mit Stundenteil, abschaltbar; Sprecherwechsel beginnt einen Absatz,
+  gleicher Sprecher nicht, Sprecher und Zeitmarke zusammen, ohne Label-Funktion
+  keine Sprecher.
+- `SpeakerAssignment`: überlappender Sprecher gewinnt, größerer Anteil gewinnt,
+  ohne Überlappung kein Sprecher, ohne Sprecherbereiche bleibt alles unverändert,
+  Text und Zeiten bleiben erhalten, Umnummerierung nach erstem Auftreten.
+- `SubtitleWriter`: Sprecher steht vor dem Untertiteltext, ohne Sprecher kein Präfix.
 - `TranscriptMinutes`: vollständige Modellantwort zerlegen, Antwort ohne Marker
   wird komplett zum Text, fehlende Teile, verschiedene Aufzählungszeichen,
   Marker unabhängig von der Groß-/Kleinschreibung; Dokument mit allen Teilen,
@@ -432,6 +463,10 @@ in Sekunden. `Package.swift` bleibt unverändert, weil der echte Build ohnehin
 - Diktat per Hotkey während eines laufenden Datei-Auftrags.
 - `.srt` in einem Videoschnitt-Programm oder VLC laden — Zeitmarken sitzen.
 - Oberflächensprache umschalten, während die Seite offen ist.
+- Sprechertrennung an einer Aufnahme mit mindestens zwei Stimmen: Nummern bleiben
+  über die ganze Datei stabil, Wechsel sitzen an den richtigen Stellen, `.srt`
+  trägt die Namen; bei fehlgeschlagenem Download läuft der Auftrag ohne Sprecher
+  durch und sagt es.
 - Ergebnisfenster: Doppelklick und „Öffnen" führen zum selben Fenster, ein
   zweiter Doppelklick öffnet kein zweites; Umschalter und Vergleichsspalte;
   Bearbeiten wirkt sich auf Kopieren, Sichern und die Wortzahl in der Zeile aus,

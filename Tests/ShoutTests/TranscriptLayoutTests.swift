@@ -99,4 +99,45 @@ final class TranscriptLayoutTests: XCTestCase {
         let segments = [seg("Eins", 0, 4), seg("Zwei", 4, 8)]
         XCTAssertEqual(TranscriptLayout.rawText(from: segments, timestamps: false), "Eins\nZwei")
     }
+
+    // MARK: - Sprecher
+
+    private func seg(_ text: String, _ start: Double, _ end: Double, _ speaker: Int?) -> TranscriptSegment {
+        TranscriptSegment(text: text, start: start, end: end, speaker: speaker)
+    }
+
+    /// Ein Sprecherwechsel beginnt einen neuen Absatz, auch ohne Pause — sonst
+    /// klebt die Antwort an der Frage.
+    func testSprecherwechselBeginntNeuenAbsatz() {
+        let segments = [seg("Frage?", 0, 4, 1), seg("Antwort.", 4, 8, 2)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, speakerLabel: { "Sprecher \($0)" }),
+                       "Sprecher 1: Frage?\n\nSprecher 2: Antwort.")
+    }
+
+    func testGleicherSprecherBleibtImAbsatz() {
+        let segments = [seg("Erst das", 0, 4, 1), seg("dann das", 4, 8, 1)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, speakerLabel: { "Sprecher \($0)" }),
+                       "Sprecher 1: Erst das\ndann das")
+    }
+
+    func testSprecherUndZeitmarkeZusammen() {
+        let segments = [seg("Hallo", 65, 68, 2)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, timestamps: true,
+                                                speakerLabel: { "Sprecher \($0)" }),
+                       "[1:05] Sprecher 2: Hallo")
+    }
+
+    /// Ohne erkannten Sprecher steht einfach kein Name davor.
+    func testOhneSprecherKeinLabel() {
+        let segments = [seg("Anonym", 0, 4, nil)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments, speakerLabel: { "Sprecher \($0)" }),
+                       "Anonym")
+    }
+
+    /// Ohne Label-Funktion bleibt alles wie bisher — der Eingang fürs Sprachmodell
+    /// soll die Namen aber bekommen, deshalb ist sie dort gesetzt.
+    func testOhneLabelFunktionKeineSprecher() {
+        let segments = [seg("Frage?", 0, 4, 1), seg("Antwort.", 4, 8, 2)]
+        XCTAssertEqual(TranscriptLayout.rawText(from: segments), "Frage?\nAntwort.")
+    }
 }

@@ -35,21 +35,40 @@ enum TranscriptLayout {
     ///
     /// `timestamps` ist beim Anzeigen an und für den Eingang ins Sprachmodell aus:
     /// Dort kosteten die Marken nur Kontext und tauchten am Ende im Protokoll wieder auf.
+    /// `speakerLabel` baut aus der Sprechernummer die Anrede („Sprecher 1"). Als
+    /// Funktion übergeben, damit diese Datei nichts von `Loc` wissen muss und rein
+    /// testbar bleibt. Ohne sie erscheinen keine Sprecher.
     static func rawText(from segments: [TranscriptSegment],
                         paragraphGap: Double = paragraphGap,
-                        timestamps: Bool = false) -> String {
+                        timestamps: Bool = false,
+                        speakerLabel: ((Int) -> String)? = nil) -> String {
         var lines: [String] = []
         var previousEnd: Double?
+        var previousSpeaker: Int?
 
         for segment in segments {
             let text = stripSpecialTokens(segment.text)
             guard !text.isEmpty else { continue }
-            // Absatz nur zwischen zwei ECHTEN Zeilen — der Vergleich läuft gegen das
-            // letzte übernommene Segment, nicht gegen ein übersprungenes leeres.
-            let newParagraph = previousEnd.map { segment.start - $0 >= paragraphGap } ?? true
+            let speaker = speakerLabel == nil ? nil : segment.speaker
+
+            // Neuer Absatz bei längerer Pause ODER bei Sprecherwechsel — sonst klebt
+            // die Antwort an der Frage. Der Vergleich läuft gegen das letzte
+            // übernommene Segment, nicht gegen ein übersprungenes leeres.
+            let pause = previousEnd.map { segment.start - $0 >= paragraphGap } ?? true
+            let changed = previousEnd != nil && speaker != previousSpeaker
+            let newParagraph = pause || changed
             if newParagraph, previousEnd != nil { lines.append("") }
-            lines.append(newParagraph && timestamps ? "[\(timecode(segment.start))] \(text)" : text)
+
+            var line = text
+            if newParagraph, let speaker, let speakerLabel {
+                line = "\(speakerLabel(speaker)): \(line)"
+            }
+            if newParagraph, timestamps {
+                line = "[\(timecode(segment.start))] \(line)"
+            }
+            lines.append(line)
             previousEnd = segment.end
+            previousSpeaker = speaker
         }
         return lines.joined(separator: "\n")
     }

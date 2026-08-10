@@ -104,6 +104,10 @@ targets:
     dependencies:
       - package: argmax
         product: WhisperKit
+      # Sprechertrennung (Pyannote/CoreML) — nur am Mac; die Modelle lädt
+      # SpeakerKit bei der ersten Nutzung selbst von Hugging Face.
+      - package: argmax
+        product: SpeakerKit
       - package: mlxlm
         product: MLXLLM
       - package: mlxlm
@@ -246,6 +250,7 @@ targets:
       - path: Sources/FlowLokal/TranscriptExport.swift
       - path: Sources/FlowLokal/TranscriptLayout.swift
       - path: Sources/FlowLokal/TranscriptMinutes.swift
+      - path: Sources/FlowLokal/SpeakerAssignment.swift
       - path: Sources/FlowLokal/MediaDecoder.swift
     settings:
       base:

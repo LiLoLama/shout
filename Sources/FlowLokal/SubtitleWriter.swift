@@ -10,12 +10,19 @@ enum SubtitleWriter {
     /// SRT-Text für die Segmente. Leere Segmente werden übersprungen; die
     /// Nummerierung bleibt trotzdem lückenlos, weil manche Abspieler bei Lücken
     /// die restliche Datei verwerfen.
-    static func srt(from segments: [TranscriptSegment]) -> String {
+    /// `speakerLabel` baut aus der Sprechernummer die Anrede („Sprecher 1"); ist sie
+    /// gesetzt und der Sprecher bekannt, steht er vor dem Untertiteltext — so wie es
+    /// Untertitel bei mehreren Sprechern üblicherweise halten.
+    static func srt(from segments: [TranscriptSegment],
+                    speakerLabel: ((Int) -> String)? = nil) -> String {
         var out = ""
         var index = 1
         for segment in segments {
-            let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            var text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
+            if let speakerLabel, let speaker = segment.speaker {
+                text = "\(speakerLabel(speaker)): \(text)"
+            }
             out += "\(index)\n"
             out += "\(timecode(segment.start)) --> \(timecode(max(segment.end, segment.start)))\n"
             out += "\(text)\n\n"

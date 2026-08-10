@@ -13,6 +13,9 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
     enum State: Equatable {
         case queued
         case transcribing(progress: Double)
+        /// Sprechertrennung. Ohne Fortschritt, weil SpeakerKit die ganze Datei in
+        /// einem Rutsch verarbeitet und dabei nichts Zwischendrin meldet.
+        case separatingSpeakers
         case formatting(progress: Double)
         case done
         case failed(String)
@@ -30,6 +33,9 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
     @Published var rawText = ""
     /// Aufbereiteter Text; leer, wenn nicht aufbereitet wurde.
     @Published var formattedText = ""
+    /// Hinweis, wenn die Sprechertrennung nicht geklappt hat — der Text ist dann
+    /// trotzdem vollständig, nur ohne Namen davor.
+    @Published var speakerNote: String?
 
     init(url: URL) { self.url = url }
 
@@ -45,8 +51,14 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
     var isFinished: Bool {
         switch state {
         case .done, .failed, .cancelled: return true
-        case .queued, .transcribing, .formatting: return false
+        case .queued, .transcribing, .separatingSpeakers, .formatting: return false
         }
+    }
+
+    /// Anrede für eine Sprechernummer — an einer Stelle, damit Text, Untertitel und
+    /// der Eingang fürs Sprachmodell dieselbe verwenden.
+    static func speakerLabel(_ number: Int) -> String {
+        Loc.f("Sprecher %d", number)
     }
 
     /// Bricht den Auftrag ab und verwirft das Teilergebnis. Ein halbes Transkript
@@ -74,6 +86,7 @@ final class FileTranscriptionQueue: ObservableObject {
     private let transcriber: Transcriber
     private let formatter: Formatter
     private let dictionary: PersonalDictionary
+    private let separator = SpeakerSeparator()
 
     private var runTask: Task<Void, Never>?
     /// Aufträge, die der Nutzer abgebrochen hat. Wird zwischen den Blöcken geprüft.
@@ -140,18 +153,24 @@ final class FileTranscriptionQueue: ObservableObject {
 
         let useCommands = UserDefaults.standard.bool(forKey: "fileSpeechCommandsEnabled")
         let useMinutes = UserDefaults.standard.object(forKey: "fileFormattingEnabled") as? Bool ?? true
+        let useSpeakers = UserDefaults.standard.bool(forKey: "fileDiarizationEnabled")
         let bias = dictionary.contents.terms
 
         job.state = .transcribing(progress: 0)
 
         let decoder = MediaDecoder(url: job.url)
         var collected: [TranscriptSegment] = []
+        // Nur wenn die Sprechertrennung an ist: Die braucht die GANZE Datei am Stück
+        // (siehe SpeakerSeparator) — eine Stunde sind rund 230 MB. Ist sie aus,
+        // bleibt der Speicherbedarf bei einem Block.
+        var allSamples: [Float] = []
         do {
             let duration = try await decoder.open()
             job.duration = duration
 
             while let block = try await decoder.next() {
                 if cancelled.contains(job.id) { job.markCancelled(); return }
+                if useSpeakers { allSamples.append(contentsOf: block.samples) }
 
                 let raw = try await transcriber.transcribeSegments(block.samples, biasTerms: bias)
                 for segment in raw {
@@ -182,6 +201,35 @@ final class FileTranscriptionQueue: ObservableObject {
 
         if cancelled.contains(job.id) { job.markCancelled(); return }
 
+        guard !collected.isEmpty else {
+            job.state = .done
+            return
+        }
+
+        // Sprechertrennung, bevor die Texte endgültig gebaut werden — sie ändert die
+        // Segmente, und daraus entstehen Rohtext, Untertitel und der Eingang fürs
+        // Sprachmodell.
+        if useSpeakers, !allSamples.isEmpty {
+            job.state = .separatingSpeakers
+            do {
+                let ranges = try await separator.ranges(for: allSamples)
+                collected = SpeakerAssignment.assign(ranges, to: collected)
+                job.segments = collected
+                job.rawText = TranscriptLayout.rawText(
+                    from: collected, timestamps: true,
+                    speakerLabel: FileTranscriptionJob.speakerLabel)
+            } catch {
+                // Ohne Sprecher weiterzumachen ist besser, als den fertigen Text
+                // wegen der Kür zu verwerfen.
+                NSLog("shout: Sprechertrennung fehlgeschlagen: \(error)")
+                job.speakerNote = Loc.t("Die Sprecher konnten nicht getrennt werden — der Text ist trotzdem vollständig.")
+            }
+            allSamples = []   // Speicher sofort freigeben, nicht erst am Ende
+            await separator.unload()
+        }
+
+        if cancelled.contains(job.id) { job.markCancelled(); return }
+
         guard !job.rawText.isEmpty else {
             job.state = .done
             return
@@ -192,8 +240,14 @@ final class FileTranscriptionQueue: ObservableObject {
             let hint = dictionary.termHint
             let jobRef = job
             // Das Modell bekommt den Text OHNE Zeitmarken — die kosten dort nur
-            // Kontext und tauchten sonst mitten im Protokoll wieder auf.
-            let input = TranscriptLayout.rawText(from: collected, timestamps: false)
+            // Kontext und tauchten sonst mitten im Protokoll wieder auf. Die
+            // Sprecher dagegen SCHON: Nur so kann das Protokoll zuordnen, wer was
+            // gesagt hat.
+            let label: ((Int) -> String)? = useSpeakers
+                ? { number in FileTranscriptionJob.speakerLabel(number) }
+                : nil
+            let input = TranscriptLayout.rawText(from: collected, timestamps: false,
+                                                 speakerLabel: label)
             let document = await formatter.minutes(from: input, termHint: hint) { fraction in
                 Task { @MainActor in
                     if case .formatting = jobRef.state { jobRef.state = .formatting(progress: fraction) }

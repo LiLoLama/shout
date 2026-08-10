@@ -20,6 +20,9 @@ struct FilesView: View {
 
     @AppStorage("fileFormattingEnabled") private var formattingEnabled = true
     @AppStorage("fileSpeechCommandsEnabled") private var speechCommands = false
+    /// Standard AUS: Sie kostet einen Modell-Download, Speicher und Zeit — das soll
+    /// niemand ungefragt bezahlen, der nur ein Transkript will.
+    @AppStorage("fileDiarizationEnabled") private var diarization = false
     @State private var isTargeted = false
 
     var body: some View {
@@ -87,6 +90,11 @@ struct FilesView: View {
                         : Loc.t("Das Modell zum Aufbereiten ist noch nicht geladen. Sobald es bereit ist, lässt sich der Schalter umlegen — bis dahin kommt das Rohtranskript.")) {
                 Toggle("", isOn: $formattingEnabled).labelsHidden().toggleStyle(.switch)
                     .tint(Color.shoutLive).disabled(!formatterReady)
+            }
+            ConsoleDivider()
+            FieldRow(title: Loc.t("Sprecher erkennen"),
+                     help: Loc.t("Trennt die Stimmen und stellt „Sprecher 1“, „Sprecher 2“ voran. Lädt beim ersten Mal ein zusätzliches Modell und braucht die ganze Datei im Speicher — bei einer Stunde rund 230 MB.")) {
+                Toggle("", isOn: $diarization).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
             }
             ConsoleDivider()
             FieldRow(title: Loc.t("Sprachbefehle anwenden"),
@@ -204,6 +212,7 @@ private struct JobRow: View {
     private var icon: String {
         switch job.state {
         case .queued: return "clock"
+        case .separatingSpeakers: return "person.2.wave.2"
         case .transcribing, .formatting: return "waveform"
         case .done: return "checkmark.circle.fill"
         case .failed: return "exclamationmark.triangle.fill"
@@ -226,8 +235,13 @@ private struct JobRow: View {
         switch job.state {
         case .queued: state = Loc.t("Wartet")
         case .transcribing: state = Loc.t("Wird transkribiert …")
+        case .separatingSpeakers: state = Loc.t("Sprecher werden getrennt …")
         case .formatting: state = Loc.t("Text wird aufbereitet …")
-        case .done: state = Loc.f("Fertig · %d Wörter", job.wordCount)
+        case .done:
+            let fertig = Loc.f("Fertig · %d Wörter", job.wordCount)
+            // Scheiterte die Sprechertrennung, steht der Grund gleich in der Zeile —
+            // sonst rätselt man, warum keine Namen im Text stehen.
+            state = job.speakerNote.map { "\(fertig) · \($0)" } ?? fertig
         case .failed(let reason): return reason
         case .cancelled: state = Loc.t("Abgebrochen")
         }

@@ -18,6 +18,14 @@ schemes:
       config: Debug
     archive:
       config: Release
+  ShoutTests:
+    build:
+      targets:
+        ShoutTests: [test]
+    test:
+      config: Debug
+      targets:
+        - ShoutTests
 
 packages:
   argmax:
@@ -52,6 +60,11 @@ targets:
     sources:
       - Sources/FlowLokal
       - Resources/Assets.xcassets
+      # Klang-Signale (Start, Stopp, Fehler). Nur die MP3s — die .asd-Dateien
+      # daneben sind Ableton-Analysedateien und gehören nicht ins Bundle.
+      - path: Resources/Audio
+        includes:
+          - "*.mp3"
     # Explizite Info.plist (von xcodegen generiert), damit die Sparkle-Keys
     # SUFeedURL/SUPublicEDKey gesetzt werden können — die gehen NICHT über die
     # INFOPLIST_KEY_-Build-Settings (nur Apple-bekannte Schlüssel).
@@ -83,8 +96,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.flowlokal
         # Datei-/Produktname ohne Punkt (sonst "shout..app"); Anzeigename mit Punkt.
         PRODUCT_NAME: "shout"
-        MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "1.4.4"
+        CURRENT_PROJECT_VERSION: "13"
         # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"
@@ -96,6 +109,10 @@ targets:
     dependencies:
       - package: argmax
         product: WhisperKit
+      # Sprechertrennung (Pyannote/CoreML) — nur am Mac; die Modelle lädt
+      # SpeakerKit bei der ersten Nutzung selbst von Hugging Face.
+      - package: argmax
+        product: SpeakerKit
       - package: mlxlm
         product: MLXLLM
       - package: mlxlm
@@ -123,11 +140,25 @@ targets:
       # Eigener iOS-Asset-Katalog. Der bestehende Katalog unter Resources/
       # enthält ausschließlich das macOS-App-Icon.
       - path: Resources/iOSAssets.xcassets
+      # Dieselben Klang-Signale wie am Mac.
+      - path: Resources/Audio
+        includes:
+          - "*.mp3"
       - path: Sources/FlowLokal
         includes:
           - Localization.swift
           - Transcriber.swift
           - Formatter.swift
+          # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
+          # beide sind plattformneutral und ziehen nichts weiter nach.
+          - TranscriptSegment.swift
+          - TranscriptLayout.swift
+          - TranscriptMinutes.swift
+          - MediaDecoder.swift
+          - SubtitleWriter.swift
+          - TranscriptExport.swift
+          - FileTranscriptionQueue.swift
+          - TextChunker.swift
           - AudioRecorder.swift
           - PersonalDictionary.swift
           - DictationHistory.swift
@@ -218,3 +249,29 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: G5FFT759WM
         SWIFT_VERSION: "5.10"
+
+  # Reine Logik-Tests: kompiliert NUR die abhängigkeitsfreien Dateien mit, damit
+  # die Tests ohne WhisperKit/MLX in Sekunden laufen (und ohne Host-App).
+  ShoutTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/ShoutTests
+      - path: Sources/FlowLokal/TranscriptSegment.swift
+      - path: Sources/FlowLokal/SubtitleWriter.swift
+      - path: Sources/FlowLokal/TextChunker.swift
+      - path: Sources/FlowLokal/TranscriptExport.swift
+      - path: Sources/FlowLokal/TranscriptLayout.swift
+      - path: Sources/FlowLokal/TranscriptMinutes.swift
+      - path: Sources/FlowLokal/SpeakerAssignment.swift
+      - path: Sources/FlowLokal/MediaDecoder.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests
+        PRODUCT_NAME: ShoutTests
+        GENERATE_INFOPLIST_FILE: YES
+        ARCHS: arm64
+        ONLY_ACTIVE_ARCH: NO
+        SWIFT_VERSION: "5.10"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual

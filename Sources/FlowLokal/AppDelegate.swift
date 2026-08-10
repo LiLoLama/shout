@@ -43,6 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let recIndicator = RecordingIndicator()
     private let sounds = SoundCues()
 
+    /// Datei-Transkription: eigene Warteschlange, teilt sich Modelle und Wörterbuch
+    /// mit dem Diktat. Serialisiert wird über den Transcriber-actor.
+    private lazy var fileQueue = FileTranscriptionQueue(
+        transcriber: transcriber, formatter: formatter, dictionary: dictionary)
+
     /// Sparkle-Auto-Update: prüft beim Start (SUEnableAutomaticChecks) und per
     /// Menüpunkt gegen den Appcast; installiert EdDSA-signierte Updates per Klick.
     private let updaterController = SPUStandardUpdaterController(
@@ -55,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dashboardModel = DashboardModel()
     private var dashboardWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    /// Ergebnisfenster der Datei-Transkription, eines je Auftrag. Ohne dieses
+    /// Verzeichnis öffnete jeder Doppelklick ein weiteres Fenster derselben Datei.
+    private var transcriptWindows: [UUID: NSWindow] = [:]
 
     // Hotkey-Aufnahme (Recorder in den Einstellungen)
     private var isCapturingHotkey = false
@@ -554,6 +562,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) },
                 onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
                 onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
+                files: fileQueue,
+                onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
+                onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
                 updates: updateBridge
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -572,6 +583,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Ergebnisfenster der Datei-Transkription
+
+    /// Öffnet das Ergebnisfenster eines Auftrags — oder holt das bestehende nach vorn.
+    private func openTranscriptWindow(for job: FileTranscriptionJob) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let existing = transcriptWindows[job.id] {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let hosting = NSHostingController(rootView: TranscriptWindowView(job: job))
+        let window = NSWindow(contentViewController: hosting)
+        window.title = Loc.f("shout. — %@", job.name)
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 820, height: 620))
+        window.minSize = NSSize(width: 620, height: 420)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.delegate = self
+        window.center()
+        // Mehrere Fenster versetzt öffnen, sonst liegen sie exakt übereinander.
+        if !transcriptWindows.isEmpty {
+            let offset = CGFloat(transcriptWindows.count * 24)
+            window.setFrameOrigin(NSPoint(x: window.frame.origin.x + offset,
+                                          y: window.frame.origin.y - offset))
+        }
+        transcriptWindows[job.id] = window
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Schließt das Fenster eines Auftrags (etwa weil er aus der Liste fliegt).
+    private func closeTranscriptWindow(_ id: UUID) {
+        transcriptWindows[id]?.close()
     }
 
     // MARK: - Export / Import (lokales „Sync")
@@ -664,18 +712,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let closing = notification.object as? NSWindow
         if closing === correctionWindow { correctionWindow = nil }   // Retention lösen
         if closing === onboardingWindow { onboardingWindow = nil }
+        if let id = transcriptWindows.first(where: { $0.value === closing })?.key {
+            transcriptWindows.removeValue(forKey: id)
+        }
 
         // Zurück zur reinen Menu-Bar-App (kein Dock-Icon) nur, wenn wirklich kein
         // eigenes Fenster mehr sichtbar ist (das schließende zählt nicht mehr).
         let dashVisible = dashboardWindow?.isVisible == true && dashboardWindow !== closing
         let corrVisible = correctionWindow?.isVisible == true && correctionWindow !== closing
         let onbVisible = onboardingWindow?.isVisible == true && onboardingWindow !== closing
-        if !dashVisible && !corrVisible && !onbVisible {
+        let transcriptVisible = transcriptWindows.values.contains { $0.isVisible && $0 !== closing }
+        if !dashVisible && !corrVisible && !onbVisible && !transcriptVisible {
             NSApp.setActivationPolicy(.accessory)
         }
     }
 
+    /// Läuft noch ein Datei-Auftrag, wird nachgefragt — sonst ist die Arbeit von
+    /// vielleicht einer halben Stunde stillschweigend weg.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard fileQueue.hasUnfinishedJobs else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = Loc.t("Es läuft noch eine Datei-Transkription.")
+        alert.informativeText = Loc.t("Wirklich beenden? Der laufende Auftrag geht verloren.")
+        alert.addButton(withTitle: Loc.t("Trotzdem beenden"))
+        alert.addButton(withTitle: Loc.t("Abbrechen"))
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        fileQueue.cancelAll()
         correctionWatcher.stop()    // AXObserver + Timer sauber abbauen
         for m in eventMonitors { NSEvent.removeMonitor(m) }
         eventMonitors.removeAll()
@@ -747,6 +814,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             await formatter.load(onProgress: formatProgressHandler())
             dashboardModel.formatLoadingID = nil
             dashboardModel.formatProgress = nil
+            dashboardModel.formatterReady = await formatter.isReady
             updateFormatterMenu()
         }
     }
@@ -759,6 +827,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // einem kleineren Modell aus einem fehlgeschlagenen Erst-Download befreien.
         guard state == .idle || state == .failed else {
             dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
+            return
+        }
+        // Ein Wechsel mitten in einer Datei-Transkription würde das Modell unter dem
+        // laufenden Auftrag wegziehen.
+        guard !fileQueue.isRunning else {
+            dashboardModel.modelNote = Loc.t("Transkription läuft — Modellwechsel ist erst danach möglich.")
             return
         }
         dashboardModel.modelNote = nil
@@ -801,6 +875,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
             return
         }
+        // Ein Wechsel mitten in einer Datei-Transkription würde das Modell unter dem
+        // laufenden Auftrag wegziehen.
+        guard !fileQueue.isRunning else {
+            dashboardModel.modelNote = Loc.t("Transkription läuft — Modellwechsel ist erst danach möglich.")
+            return
+        }
         dashboardModel.modelNote = nil
         let previous = UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
         UserDefaults.standard.set(id, forKey: "formatModel")
@@ -822,6 +902,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         dashboardModel.formatLoadingID = nil
         dashboardModel.formatProgress = nil
+        dashboardModel.formatterReady = await formatter.isReady
         updateFormatterMenu()
     }
 

@@ -30,6 +30,9 @@ final class MobileEngine: ObservableObject {
     @Published private(set) var asrLoadingID: String?     // gerade ladendes ASR-Modell
     @Published private(set) var formatLoadingID: String?  // gerade ladendes LLM
     @Published private(set) var transcriberReady = false
+    /// Ist das Modell zur Textaufbereitung geladen? Ohne das gibt es kein
+    /// Protokoll — der Schalter auf der Dateien-Seite bleibt dann ausgegraut.
+    @Published private(set) var formatterReady = false
     @Published var modelNote: String?
 
     /// Wurde diese Aufnahme von der shout-Tastatur (via shout://dictate) angestoßen?
@@ -49,6 +52,11 @@ final class MobileEngine: ObservableObject {
     private let recorder = AudioRecorder()
     private let transcriber = Transcriber()
     private let formatter = Formatter()
+
+    /// Warteschlange der Datei-Transkriptionen. Teilt sich Modelle und Wörterbuch
+    /// mit dem Diktat; serialisiert wird über den Transcriber-actor.
+    lazy var fileQueue = FileTranscriptionQueue(
+        transcriber: transcriber, formatter: formatter, dictionary: dictionary)
     private let sounds = SoundCues()
 
     // iOS-Default: Formatierung AUS — spart den zweiten Modell-Download und
@@ -128,6 +136,7 @@ final class MobileEngine: ObservableObject {
             await formatter.warmUp()
             formatProgress = nil
             formatLoadingID = nil
+            formatterReady = await formatter.isReady
         }
     }
 

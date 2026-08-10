@@ -90,7 +90,29 @@ actor Transcriber {
         return text
     }
 
+    /// Wie `transcribe`, liefert aber die Abschnitte mit Zeitmarken — Grundlage für
+    /// Untertitel bei der Datei-Transkription.
+    ///
+    /// Ohne die Plausibilitätsprüfung aus `transcribe`: Die vergleicht Textlänge mit
+    /// Audiolänge und zieht im Verdachtsfall einen zweiten Durchgang nach. Bei einem
+    /// Diktat ist das billig, bei einer Datei würde es die Laufzeit verdoppeln — und
+    /// eine Aufnahme mit langen Sprechpausen sieht dort regelmäßig „verdächtig" aus.
+    func transcribeSegments(_ samples: [Float], biasTerms: [String] = []) async throws -> [TranscriptSegment] {
+        guard pipe != nil else { throw TranscriberError.notLoaded }
+        let results = try await runResults(samples: samples, biasTerms: biasTerms)
+        return results.flatMap(\.segments).map {
+            TranscriptSegment(text: TranscriptLayout.stripSpecialTokens($0.text),
+                              start: Double($0.start),
+                              end: Double($0.end))
+        }
+    }
+
     private func run(samples: [Float], biasTerms: [String]) async throws -> String {
+        let results = try await runResults(samples: samples, biasTerms: biasTerms)
+        return results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func runResults(samples: [Float], biasTerms: [String]) async throws -> [TranscriptionResult] {
         guard let pipe else { throw TranscriberError.notLoaded }
 
         let lang = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de"
@@ -100,6 +122,11 @@ actor Transcriber {
         // Kein Prefill-Cache: verhindert, dass Decoder-Zustand über Aufnahmen
         // hinweg „hängen bleibt" (Ursache für leere Folge-Transkriptionen).
         options.usePrefillCache = false
+        // WhisperKit dekodiert die Steuermarken sonst in den SEGMENT-Text hinein
+        // („<|de|>", „<|0.00|>", „<|endoftext|>"). Beim Diktat fiel das nie auf, weil
+        // `TranscriptionResult.text` sie ohnehin herausfiltert — die Datei-
+        // Transkription arbeitet aber mit den Segmenten und bekam sie voll ab.
+        options.skipSpecialTokens = true
 
         // Wörterbuch-Begriffe als Konditionierungs-Prompt → Whisper erkennt
         // Eigennamen/Fachbegriffe schon beim Transkribieren besser.
@@ -118,7 +145,6 @@ actor Transcriber {
             }
         }
 
-        let results = try await pipe.transcribe(audioArray: samples, decodeOptions: options)
-        return results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await pipe.transcribe(audioArray: samples, decodeOptions: options)
     }
 }

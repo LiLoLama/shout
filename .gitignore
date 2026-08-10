@@ -20,3 +20,6 @@ Support/Info-iOS.plist
 .sparkle-tools/
 dist/
 build-ios/
+
+# Ableton-Analysedateien neben den Klang-Signalen — reine Hilfsdateien
+*.asd

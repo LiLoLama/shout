@@ -3,7 +3,7 @@ import SwiftUI
 /// Hält die ausgewählte Dashboard-Seite (von Menüpunkten steuerbar).
 @MainActor
 final class DashboardModel: ObservableObject {
-    enum Tab: Hashable { case aufnahme, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
+    enum Tab: Hashable { case aufnahme, dateien, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
     @Published var tab: Tab = .aufnahme
 
     // Modell-Zustand zentral (überlebt Tab-Wechsel, damit Spinner/Auswahl
@@ -16,6 +16,10 @@ final class DashboardModel: ObservableObject {
     @Published var formatProgress: Double?
     @Published var modelNote: String?         // z. B. Hinweis „Wechsel während Aufnahme nicht möglich"
     @Published var transcriberReady = false   // Transkriptions-Modell geladen (fürs Onboarding)
+    /// Formatierungs-Modell geladen. Die Datei-Seite graut den Schalter „Text
+    /// aufbereiten" sonst aus — er würde still nichts tun, weil `Formatter.format`
+    /// ohne geladenes Modell den Rohtext zurückgibt.
+    @Published var formatterReady = false
     @Published var asrLoadFailed = false      // Laden des ASR-Modells fehlgeschlagen (Onboarding zeigt Wiederholen)
 
     /// „Über shout." — vom Klick auf die Wortmarke und vom Menüpunkt gesteuert.
@@ -41,6 +45,12 @@ struct DashboardView: View {
     let onSelectFormat: (String) async -> Void
     var onPersistentPillChanged: (Bool) -> Void = { _ in }
     var onPillPositionChanged: () -> Void = {}
+    /// Warteschlange der Datei-Transkriptionen (vom AppDelegate durchgereicht).
+    @ObservedObject var files: FileTranscriptionQueue
+    /// Öffnet bzw. schließt das Ergebnisfenster eines Auftrags. Die Fenster liegen
+    /// beim AppDelegate, weil sie das Dashboard überdauern können.
+    var onOpenResult: (FileTranscriptionJob) -> Void = { _ in }
+    var onCloseResult: (UUID) -> Void = { _ in }
     var updates: UpdateBridge = .disabled
 
     /// Sprachwechsel: die Texte stecken in den fertig gebauten Views, daher baut
@@ -106,6 +116,7 @@ struct DashboardView: View {
             .padding(.horizontal, 18).padding(.top, 42).padding(.bottom, 20)
 
             navRow(.aufnahme, Loc.t("Aufnahme & Text"), "mic.fill")
+            navRow(.dateien, Loc.t("Dateien"), "doc.text.below.ecg")
             navRow(.woerterbuch, Loc.t("Wörterbuch"), "text.book.closed.fill")
             navRow(.verlauf, Loc.t("Verlauf"), "clock.arrow.circlepath")
             navRow(.statistik, Loc.t("Statistiken"), "chart.bar.xaxis")
@@ -150,6 +161,10 @@ struct DashboardView: View {
             SettingsView(settings: settings, onRecordHotkey: onRecordHotkey,
                          onPersistentPillChanged: onPersistentPillChanged,
                          onPillPositionChanged: onPillPositionChanged)
+        case .dateien:
+            FilesView(queue: files, modelReady: model.transcriberReady,
+                      formatterReady: model.formatterReady,
+                      onOpenResult: onOpenResult, onCloseResult: onCloseResult)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:

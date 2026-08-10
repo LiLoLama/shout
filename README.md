@@ -45,6 +45,10 @@ file**, so you can move them between devices (no cloud involved).
   progress; switch freely.
 - **Adaptive silence detection** with trimming, gentle sound cues, history & stats,
   and local file-based backup/sync.
+- **Transcribe files** — pick or drop audio and video files and get the transcript
+  as text, `.txt` or `.srt` subtitles, optionally as a set of minutes (summary, key
+  points, structured text). On **all three platforms**; speaker separation is macOS
+  only for now. Same local pipeline as dictation, nothing is uploaded.
 
 - **Onboarding assistant** on first launch — permissions or microphone check,
   hotkey, model download and a test dictation, on all three platforms.

@@ -154,6 +154,143 @@ public sealed class LlmFormatter : IDisposable
         }
     }
 
+    /// <summary>
+    /// Macht aus einem Datei-Transkript ein Protokoll: Zusammenfassung, Kernpunkte,
+    /// darunter der gegliederte Volltext (Mac: Formatter.minutes).
+    ///
+    /// <para>Liefert <c>null</c>, wenn kein Modell geladen ist oder nichts Brauchbares
+    /// herauskam. Bewusst null statt des Rohtexts: Wer den Rohtext zurückbekommt,
+    /// sieht in der Oberfläche zwei identische Fassungen und hält das für ein
+    /// kaputtes Protokoll.</para>
+    ///
+    /// <para>Zwei Stufen, weil eine Stunde Transkript in kein Kontextfenster passt:
+    /// je Abschnitt Überschrift, Kernpunkte und geglätteter Text; danach aus allen
+    /// Kernpunkten eine Zusammenfassung.</para>
+    /// </summary>
+    public async Task<string?> MinutesAsync(string raw, string? termHint,
+                                            Action<double>? onProgress = null,
+                                            CancellationToken cancel = default)
+    {
+        var text = raw.Trim();
+        if (weights == null || modelParams == null || text.Length == 0) return null;
+
+        // Größere Abschnitte als beim Diktat: Das Modell soll hier gliedern und
+        // verdichten, nicht Wort für Wort putzen — und jeder Aufruf kostet Zeit.
+        var parts = TextChunker.Chunks(text, 3000, 2000);
+        if (parts.Count == 0) return null;
+
+        var sections = new List<TranscriptMinutes.Section>();
+        for (var i = 0; i < parts.Count; i++)
+        {
+            cancel.ThrowIfCancellationRequested();
+            var answer = await RespondAsync(SectionPrompt(termHint), parts[i], 0.3f, cancel);
+            if (answer == null) continue;
+            var section = TranscriptMinutes.ParseSection(answer);
+            // Hat das Modell den Text verschluckt, ist der Abschnitt des Transkripts
+            // besser als gar nichts.
+            if (section.Text.Length == 0) section.Text = parts[i];
+            sections.Add(section);
+            onProgress?.Invoke((i + 1) / (double)parts.Count * 0.9);
+        }
+        if (sections.Count == 0) return null;
+
+        var points = TranscriptMinutes.CollectPoints(sections);
+        var summary = await SummarizeAsync(sections, points, cancel) ?? "";
+        onProgress?.Invoke(1);
+
+        var headings = new TranscriptMinutes.Headings(
+            Loc.T("Zusammenfassung"), Loc.T("Kernpunkte"), Loc.T("Protokoll"));
+        var document = TranscriptMinutes.Assemble(summary, points, sections, headings);
+        return document.Length == 0 ? null : document;
+    }
+
+    /// <summary>Stufe 2: aus Überschriften und Kernpunkten eine kurze Zusammenfassung.
+    /// Nur die Punkte, nicht der Volltext — sonst platzt das Kontextfenster wieder.</summary>
+    private async Task<string?> SummarizeAsync(List<TranscriptMinutes.Section> sections,
+                                               List<string> points, CancellationToken cancel)
+    {
+        var overview = string.Join("\n", sections.Where(s => s.Title != null).Select(s => $"- {s.Title}"))
+                     + "\n" + string.Join("\n", points.Select(p => $"- {p}"));
+        if (overview.Trim().Length <= 20) return null;
+
+        const string system = """
+        Du fasst ein Besprechungs- oder Gesprächsprotokoll zusammen. Du bekommst die Themen und Kernpunkte, nicht den Volltext.
+        Regeln:
+        - Antworte in derselben Sprache wie die Eingabe.
+        - Drei bis fünf Sätze Fließtext, keine Aufzählung, keine Überschrift.
+        - Nur zusammenfassen, was dasteht. Nichts hinzuerfinden, nicht bewerten.
+        Gib AUSSCHLIESSLICH die Zusammenfassung aus.
+        """;
+        return await RespondAsync(system, overview, 0.3f, cancel);
+    }
+
+    private static string SectionPrompt(string? termHint)
+    {
+        var terms = termHint != null
+            ? $"\n- Eigennamen/Fachbegriffe EXAKT so schreiben: {termHint}."
+            : "";
+        return $"""
+        Du machst aus einem automatisch erstellten Transkript ein lesbares Protokoll. Du bekommst einen Abschnitt des Transkripts.
+
+        Regeln:{terms}
+        - Antworte in exakt derselben Sprache wie die Eingabe.
+        - Erfinde nichts dazu. Was nicht im Abschnitt steht, kommt nicht ins Protokoll.
+        - Entferne Füllwörter, Wiederholungen, Versprecher und Erkennungsfehler-Reste.
+        - Fasse zusammengehörende Sätze zu Absätzen zusammen und formuliere sie flüssig.
+        - Kürze Geplauder ohne Inhalt weg.
+
+        Antworte GENAU in diesem Format:
+        TITEL: <kurze Überschrift für diesen Abschnitt, höchstens sieben Wörter>
+        PUNKTE:
+        - <die wichtigsten Aussagen, Entscheidungen oder Aufgaben, ein bis vier Stichpunkte>
+        TEXT:
+        <der aufbereitete Abschnitt in Absätzen>
+        """;
+    }
+
+    /// <summary>
+    /// Ein Aufruf ans Modell. Ohne den Kürzungs-Schutz aus <see cref="FormatAsync"/> —
+    /// der ist fürs Diktat gedacht und würde hier JEDE Zusammenfassung verwerfen,
+    /// weil sie naturgemäß deutlich kürzer ist als die Eingabe.
+    /// </summary>
+    private async Task<string?> RespondAsync(string system, string user, float temperature,
+                                             CancellationToken cancel)
+    {
+        if (weights == null || modelParams == null) return null;
+        await gate.WaitAsync(cancel);
+        try
+        {
+            var executor = new StatelessExecutor(weights, modelParams);
+            var prompt =
+                "<|im_start|>system\n" + system + "<|im_end|>\n" +
+                "<|im_start|>user\n" + user + "<|im_end|>\n" +
+                "<|im_start|>assistant\n";
+            var inference = new InferenceParams
+            {
+                MaxTokens = 1536,
+                AntiPrompts = new[] { "<|im_end|>" },
+                SamplingPipeline = new DefaultSamplingPipeline { Temperature = temperature },
+            };
+            var output = new StringBuilder();
+            await foreach (var token in executor.InferAsync(prompt, inference, cancel))
+                output.Append(token);
+            var cleaned = StripArtifacts(output.ToString());
+            return cleaned.Length == 0 ? null : cleaned;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     /// <summary>Der Profiltext steht in der Oberfläche, folgt also der
     /// Oberflächensprache — nicht der Diktier-Sprache.</summary>
     private static string VoicePrompt() => Loc.IsGerman

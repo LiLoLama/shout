@@ -80,6 +80,46 @@ public sealed class Transcriber : IDisposable
         }
     }
 
+    /// <summary>
+    /// Wie <see cref="TranscribeAsync"/>, liefert aber die Abschnitte mit Zeitmarken —
+    /// Grundlage für Untertitel und die Gliederung bei der Datei-Transkription.
+    /// </summary>
+    public async Task<List<TranscriptSegment>> TranscribeSegmentsAsync(
+        float[] samples, IReadOnlyList<string>? biasTerms, CancellationToken cancel = default)
+    {
+        if (factory == null) throw new InvalidOperationException("Modell ist nicht geladen.");
+        var result = new List<TranscriptSegment>();
+        if (samples.Length == 0) return result;
+
+        await gate.WaitAsync(cancel);
+        try
+        {
+            var builder = factory.CreateBuilder();
+
+            var language = Settings.Shared.Language;
+            if (language == "auto") builder = builder.WithLanguageDetection();
+            else builder = builder.WithLanguage(language);
+
+            if (biasTerms is { Count: > 0 })
+                builder = builder.WithPrompt(string.Join(", ", biasTerms));
+
+            await using var processor = builder.Build();
+            await foreach (var segment in processor.ProcessAsync(samples, cancel))
+            {
+                var text = TranscriptLayout.StripSpecialTokens(segment.Text);
+                if (text.Length == 0) continue;
+                result.Add(new TranscriptSegment(text,
+                                                 segment.Start.TotalSeconds,
+                                                 segment.End.TotalSeconds));
+            }
+            return result;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public void Dispose()
     {
         factory?.Dispose();

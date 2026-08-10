@@ -251,6 +251,12 @@ public sealed class TrayContext : ApplicationContext
     /// null = kein Modell geladen oder Erzeugung fehlgeschlagen.</summary>
     public Task<string?> DescribeVoiceAsync(string sample) => formatter.DescribeVoiceAsync(sample);
 
+    /// <summary>Warteschlange der Datei-Transkriptionen (Seite „Dateien"). Teilt sich
+    /// Modelle und Wörterbuch mit dem Diktat; serialisiert wird über die Sperren in
+    /// <see cref="Transcriber"/> und <see cref="LlmFormatter"/>.</summary>
+    public FileTranscriptionQueue FileQueue => fileQueue ??= new FileTranscriptionQueue(transcriber, formatter, dictionary);
+    private FileTranscriptionQueue? fileQueue;
+
     /// <summary>Aufnahme-Art aus den Einstellungen.</summary>
     private static HotkeyManager.Mode HotkeyMode =>
         Settings.Shared.HotkeyMode == "hold" ? HotkeyManager.Mode.Hold : HotkeyManager.Mode.Toggle;

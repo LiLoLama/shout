@@ -42,6 +42,12 @@ public sealed class Settings
     /// Modell-Download; wer sie will, schaltet sie in den Einstellungen ein).</summary>
     public bool FormattingEnabled { get; set; } = false;
 
+    // Datei-Transkription (Seite „Dateien"). Eigene Schlüssel, NICHT die des
+    // Diktats: Sprachbefehle sind hier standardmäßig aus, weil „Punkt" in einer
+    // Aufzeichnung meist ein normales Wort ist und kein Satzzeichen.
+    public bool FileMinutesEnabled { get; set; } = true;
+    public bool FileSpeechCommandsEnabled { get; set; } = false;
+
     // Gewählte Modelle (IDs aus ModelCatalog)
     public string AsrModel { get; set; } = "";
     public string LlmModel { get; set; } = "";

@@ -340,5 +340,58 @@ public static class Loc
         ["Text/CSV (*.csv;*.txt)|*.csv;*.txt|Alle Dateien (*.*)|*.*"] =
             "Text/CSV (*.csv;*.txt)|*.csv;*.txt|All files (*.*)|*.*",
         ["shout-Backup (*.json)|*.json"] = "shout backup (*.json)|*.json",
+
+        // MARK: Dateien
+        ["Dateien"] = "Files",
+        ["Audio- oder Videodateien hierher ziehen"] = "Drag audio or video files here",
+        ["MP3, M4A, WAV, MP4, MOV und alles, was Windows abspielen kann"] =
+            "MP3, M4A, WAV, MP4, MOV and anything Windows can play",
+        ["Auswählen …"] = "Choose…",
+        ["Verarbeitung"] = "Processing",
+        ["Protokoll erstellen"] = "Create minutes",
+        ["Zusätzlich zum Rohtext ein Protokoll: Zusammenfassung, Kernpunkte und der gegliederte Text. Dauert bei langen Dateien deutlich länger."] =
+            "In addition to the raw text, a set of minutes: summary, key points and the structured text. Takes considerably longer for long files.",
+        ["Das Modell zum Aufbereiten ist noch nicht geladen. Sobald es bereit ist, lässt sich der Schalter umlegen — bis dahin kommt das Rohtranskript."] =
+            "The clean-up model is not loaded yet. Once it is ready you can flip the switch — until then you get the raw transcript.",
+        ["Sprachbefehle anwenden"] = "Apply spoken commands",
+        ["Standardmäßig aus: In einer Aufzeichnung ist „Punkt“ meist ein normales Wort und kein Satzzeichen."] =
+            "Off by default: in a recording, “period” is usually just a word, not punctuation.",
+        ["Aufträge"] = "Jobs",
+        ["Alle abbrechen"] = "Cancel all",
+        ["Öffnen"] = "Open",
+        ["Wartet"] = "Waiting",
+        ["Wird transkribiert …"] = "Transcribing…",
+        ["Protokoll wird erstellt …"] = "Creating minutes…",
+        ["Fertig · {0} Wörter"] = "Done · {0} words",
+        ["Fehlgeschlagen"] = "Failed",
+        ["Abgebrochen"] = "Cancelled",
+        ["Diese Datei enthält keine Tonspur."] = "This file has no audio track.",
+        ["Zum Transkribieren wird das Sprachmodell gebraucht. Lade es unter „Modelle“ herunter — danach geht es hier weiter."] =
+            "Transcribing needs the speech model. Download it under “Models” — then come back here.",
+        ["Die Datei wird auf diesem Gerät gelesen — nichts wird hochgeladen. Ergebnisse werden nicht automatisch gespeichert und tauchen weder im Verlauf noch in den Statistiken auf."] =
+            "The file is read on this device — nothing is uploaded. Results are not saved automatically and appear neither in the history nor in the statistics.",
+
+        // MARK: Ergebnisfenster
+        ["Protokoll"] = "Minutes",
+        ["Rohtext"] = "Raw text",
+        ["Zusammenfassung"] = "Summary",
+        ["Kernpunkte"] = "Key points",
+        ["Vergleichen"] = "Compare",
+        ["Vergleich ausblenden"] = "Hide comparison",
+        ["Kopieren"] = "Copy",
+        ["Als Text sichern …"] = "Save as text…",
+        ["Untertitel sichern …"] = "Save subtitles…",
+        ["Untertitel folgen immer dem ursprünglichen Transkript — Änderungen in diesem Fenster wirken sich nicht auf die Zeitmarken aus."] =
+            "Subtitles always follow the original transcript — edits in this window do not affect the timestamps.",
+        ["{0} in die Zwischenablage kopiert."] = "{0} copied to the clipboard.",
+        ["Die Zwischenablage ist gerade belegt."] = "The clipboard is busy right now.",
+        ["Gesichert: {0}"] = "Saved: {0}",
+        ["Sichern fehlgeschlagen: {0}"] = "Saving failed: {0}",
+        ["{0} · {1} · {2} Wörter"] = "{0} · {1} · {2} words",
+        ["{0} · {1} Wörter"] = "{0} · {1} words",
+        ["Audio & Video|*.mp3;*.m4a;*.wav;*.aiff;*.aac;*.flac;*.wma;*.mp4;*.m4v;*.mov;*.avi;*.wmv;*.mkv|Alle Dateien|*.*"] =
+            "Audio & video|*.mp3;*.m4a;*.wav;*.aiff;*.aac;*.flac;*.wma;*.mp4;*.m4v;*.mov;*.avi;*.wmv;*.mkv|All files|*.*",
+        ["Textdatei (*.txt)|*.txt"] = "Text file (*.txt)|*.txt",
+        ["Untertitel (*.srt)|*.srt"] = "Subtitles (*.srt)|*.srt",
     };
 }

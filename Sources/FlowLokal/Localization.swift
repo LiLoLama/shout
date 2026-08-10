@@ -504,12 +504,9 @@ final class Loc: ObservableObject {
         "Sprachbefehle anwenden": "Apply spoken commands",
         "Standardmäßig aus: In einer Aufzeichnung ist „Punkt“ meist ein normales Wort und kein Satzzeichen.": "Off by default: in a recording, “period” is usually just a word, not punctuation.",
         "Aufträge": "Jobs",
-        "Ergebnis": "Result",
         "Kein gesprochener Inhalt erkannt.": "No speech detected.",
         "Als Text sichern …": "Save as text…",
         "Untertitel sichern …": "Save subtitles…",
-        "Untertitel enthalten immer das Rohtranskript — nur so passen die Zeitmarken zum Wortlaut.": "Subtitles always contain the raw transcript — only then do the timestamps match the wording.",
-        "In die Zwischenablage kopiert.": "Copied to the clipboard.",
         "Gesichert: %@": "Saved: %@",
         "Sichern fehlgeschlagen: %@": "Saving failed: %@",
         "Aus der Liste entfernen": "Remove from list",
@@ -527,5 +524,19 @@ final class Loc: ObservableObject {
         "Es läuft noch eine Datei-Transkription.": "A file transcription is still running.",
         "Wirklich beenden? Der laufende Auftrag geht verloren.": "Quit anyway? The running job will be lost.",
         "Trotzdem beenden": "Quit anyway",
+
+        // MARK: - Ergebnisfenster
+
+        "Öffnen": "Open",
+        "shout. — %@": "shout. — %@",
+        "Aufbereitet": "Cleaned up",
+        "Rohtext": "Raw text",
+        "Vergleichen": "Compare",
+        "Vergleich ausblenden": "Hide comparison",
+        "nur lesen": "read-only",
+        "%d Wörter": "%d words",
+        "%@ · %d Wörter": "%@ · %d words",
+        "%@ in die Zwischenablage kopiert.": "%@ copied to the clipboard.",
+        "Untertitel folgen immer dem ursprünglichen Transkript — Änderungen in diesem Fenster wirken sich nicht auf die Zeitmarken aus.": "Subtitles always follow the original transcript — edits in this window do not affect the timestamps.",
     ]
 }

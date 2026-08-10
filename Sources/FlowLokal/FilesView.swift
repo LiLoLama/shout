@@ -11,18 +11,16 @@ struct FilesView: View {
     /// Ist das Formatierungs-Modell geladen? Ohne das gibt `Formatter.format` still
     /// den Rohtext zurück — der Schalter würde also nichts tun und wird ausgegraut.
     let formatterReady: Bool
+    /// Öffnet das Ergebnisfenster für einen fertigen Auftrag (AppDelegate verwaltet
+    /// die Fenster, weil sie den Auftrag überdauern können).
+    let onOpenResult: (FileTranscriptionJob) -> Void
+    /// Schließt ein offenes Ergebnisfenster — nötig, bevor der Auftrag aus der
+    /// Liste fliegt, sonst bliebe ein Fenster ohne Zeile zurück.
+    let onCloseResult: (UUID) -> Void
 
     @AppStorage("fileFormattingEnabled") private var formattingEnabled = true
     @AppStorage("fileSpeechCommandsEnabled") private var speechCommands = false
     @State private var isTargeted = false
-    @State private var status = ""
-
-    /// Nur ein wirklich fertiger Auftrag zeigt ein Ergebnis. Abgebrochene und
-    /// fehlgeschlagene erklären sich in ihrer Zeile — ein Ergebnisfeld dazu wäre
-    /// bestenfalls leer und schlimmstenfalls irreführend.
-    private var selectedJob: FileTranscriptionJob? {
-        queue.jobs.first { $0.id == queue.selectedJobID && $0.state == .done }
-    }
 
     var body: some View {
         ScrollView {
@@ -35,7 +33,6 @@ struct FilesView: View {
                     dropZone
                     optionsPanel
                     if !queue.jobs.isEmpty { jobsPanel }
-                    if let job = selectedJob { resultPanel(job) }
                 } else {
                     ConsolePanel {
                         Text(Loc.t("Zum Transkribieren wird das Sprachmodell gebraucht. Lade es unter „Modelle“ herunter — danach geht es hier weiter."))
@@ -108,8 +105,9 @@ struct FilesView: View {
                     JobRow(job: job,
                            selected: job.id == queue.selectedJobID,
                            onSelect: { queue.selectedJobID = job.id },
+                           onOpen: { onOpenResult(job) },
                            onCancel: { queue.cancel(job) },
-                           onRemove: { queue.remove(job) })
+                           onRemove: { onCloseResult(job.id); queue.remove(job) })
                     if index < queue.jobs.count - 1 { ConsoleDivider() }
                 }
                 // „Alle abbrechen" erst ab zwei offenen Aufträgen — bei einem einzigen
@@ -127,51 +125,7 @@ struct FilesView: View {
         }
     }
 
-    // MARK: - Ergebnis
-
-    private func resultPanel(_ job: FileTranscriptionJob) -> some View {
-        ConsolePanel(title: Loc.t("Ergebnis")) {
-            VStack(alignment: .leading, spacing: 12) {
-                if job.displayText.isEmpty {
-                    Text(Loc.t("Kein gesprochener Inhalt erkannt."))
-                        .font(.system(size: 13)).foregroundStyle(Color(white: 0.62))
-                } else {
-                    ScrollView {
-                        Text(job.displayText)
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(Color(white: 0.88))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                    }
-                    .frame(height: 220)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.11)))
-
-                    HStack(spacing: 10) {
-                        Button(Loc.t("Kopieren")) {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(job.displayText, forType: .string)
-                            status = Loc.t("In die Zwischenablage kopiert.")
-                        }.buttonStyle(ConsoleButtonStyle())
-                        Button(Loc.t("Als Text sichern …")) { save(job, asSubtitles: false) }
-                            .buttonStyle(ConsoleButtonStyle())
-                        Button(Loc.t("Untertitel sichern …")) { save(job, asSubtitles: true) }
-                            .buttonStyle(ConsoleButtonStyle())
-                            .disabled(job.segments.isEmpty)
-                    }
-                    Text(Loc.t("Untertitel enthalten immer das Rohtranskript — nur so passen die Zeitmarken zum Wortlaut."))
-                        .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !status.isEmpty {
-                        Text(status).font(.system(size: 12)).foregroundStyle(Color.shoutLive)
-                    }
-                }
-            }
-            .padding(16)
-        }
-    }
-
-    // MARK: - Dateien annehmen und sichern
+    // MARK: - Dateien annehmen
 
     private func chooseFiles() {
         let panel = NSOpenPanel()
@@ -181,7 +135,6 @@ struct FilesView: View {
         // was AVFoundation lesen kann — eine längere Liste wäre nur redundant.
         panel.allowedContentTypes = [.audio, .movie]
         guard panel.runModal() == .OK else { return }
-        status = ""
         queue.add(panel.urls)
     }
 
@@ -189,26 +142,8 @@ struct FilesView: View {
         for provider in providers {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 guard let url else { return }
-                Task { @MainActor in
-                    status = ""
-                    queue.add([url])
-                }
+                Task { @MainActor in queue.add([url]) }
             }
-        }
-    }
-
-    private func save(_ job: FileTranscriptionJob, asSubtitles: Bool) {
-        let panel = NSSavePanel()
-        let base = job.url.deletingPathExtension().lastPathComponent
-        panel.nameFieldStringValue = base + (asSubtitles ? ".srt" : ".txt")
-        panel.allowedContentTypes = asSubtitles ? [] : [.plainText]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let content = asSubtitles ? SubtitleWriter.srt(from: job.segments) : job.displayText
-        do {
-            try content.write(to: url, atomically: true, encoding: .utf8)
-            status = Loc.f("Gesichert: %@", url.lastPathComponent)
-        } catch {
-            status = Loc.f("Sichern fehlgeschlagen: %@", error.localizedDescription)
         }
     }
 }
@@ -218,8 +153,13 @@ private struct JobRow: View {
     @ObservedObject var job: FileTranscriptionJob
     let selected: Bool
     let onSelect: () -> Void
+    let onOpen: () -> Void
     let onCancel: () -> Void
     let onRemove: () -> Void
+
+    /// Nur fertige Aufträge haben ein Ergebnis zum Anschauen. Abgebrochene und
+    /// fehlgeschlagene erklären sich in ihrer Zeile.
+    private var hasResult: Bool { job.state == .done }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -236,6 +176,9 @@ private struct JobRow: View {
                 }
             }
             Spacer(minLength: 8)
+            if hasResult {
+                Button(Loc.t("Öffnen"), action: onOpen).buttonStyle(ConsoleButtonStyle())
+            }
             Button(action: job.isFinished ? onRemove : onCancel) {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Color(white: 0.6))
@@ -246,6 +189,8 @@ private struct JobRow: View {
         .padding(.horizontal, 15).padding(.vertical, 12)
         .background(selected ? Color.shoutLive.opacity(0.10) : Color.clear)
         .contentShape(Rectangle())
+        // Doppelklick zuerst — sonst schluckt der einfache Klick das Ereignis.
+        .onTapGesture(count: 2) { if hasResult { onOpen() } else { onSelect() } }
         .onTapGesture(perform: onSelect)
     }
 

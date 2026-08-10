@@ -60,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dashboardModel = DashboardModel()
     private var dashboardWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    /// Ergebnisfenster der Datei-Transkription, eines je Auftrag. Ohne dieses
+    /// Verzeichnis öffnete jeder Doppelklick ein weiteres Fenster derselben Datei.
+    private var transcriptWindows: [UUID: NSWindow] = [:]
 
     // Hotkey-Aufnahme (Recorder in den Einstellungen)
     private var isCapturingHotkey = false
@@ -560,6 +563,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
                 onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
                 files: fileQueue,
+                onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
+                onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
                 updates: updateBridge
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -578,6 +583,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Ergebnisfenster der Datei-Transkription
+
+    /// Öffnet das Ergebnisfenster eines Auftrags — oder holt das bestehende nach vorn.
+    private func openTranscriptWindow(for job: FileTranscriptionJob) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let existing = transcriptWindows[job.id] {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let hosting = NSHostingController(rootView: TranscriptWindowView(job: job))
+        let window = NSWindow(contentViewController: hosting)
+        window.title = Loc.f("shout. — %@", job.name)
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 820, height: 620))
+        window.minSize = NSSize(width: 620, height: 420)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.delegate = self
+        window.center()
+        // Mehrere Fenster versetzt öffnen, sonst liegen sie exakt übereinander.
+        if !transcriptWindows.isEmpty {
+            let offset = CGFloat(transcriptWindows.count * 24)
+            window.setFrameOrigin(NSPoint(x: window.frame.origin.x + offset,
+                                          y: window.frame.origin.y - offset))
+        }
+        transcriptWindows[job.id] = window
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Schließt das Fenster eines Auftrags (etwa weil er aus der Liste fliegt).
+    private func closeTranscriptWindow(_ id: UUID) {
+        transcriptWindows[id]?.close()
     }
 
     // MARK: - Export / Import (lokales „Sync")
@@ -670,13 +712,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let closing = notification.object as? NSWindow
         if closing === correctionWindow { correctionWindow = nil }   // Retention lösen
         if closing === onboardingWindow { onboardingWindow = nil }
+        if let id = transcriptWindows.first(where: { $0.value === closing })?.key {
+            transcriptWindows.removeValue(forKey: id)
+        }
 
         // Zurück zur reinen Menu-Bar-App (kein Dock-Icon) nur, wenn wirklich kein
         // eigenes Fenster mehr sichtbar ist (das schließende zählt nicht mehr).
         let dashVisible = dashboardWindow?.isVisible == true && dashboardWindow !== closing
         let corrVisible = correctionWindow?.isVisible == true && correctionWindow !== closing
         let onbVisible = onboardingWindow?.isVisible == true && onboardingWindow !== closing
-        if !dashVisible && !corrVisible && !onbVisible {
+        let transcriptVisible = transcriptWindows.values.contains { $0.isVisible && $0 !== closing }
+        if !dashVisible && !corrVisible && !onbVisible && !transcriptVisible {
             NSApp.setActivationPolicy(.accessory)
         }
     }

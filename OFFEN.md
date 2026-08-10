@@ -17,7 +17,7 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [x] **Sparkle-Auto-Update** (EdDSA-signierter Appcast) — `appcast.xml` + `SPUStandardUpdaterController`; prüft beim Start automatisch und ist in der Oberfläche über „Über shout." (Klick auf die Wortmarke), das Programm-Menü und das Menü der Menüleiste erreichbar.
 
 ## 🟡 Audio / Sound
-- [ ] **Sound-Cues final abstimmen** (aktuell bei Codex): kurzes, sanftes, warmes „Klopf"-Geräusch — kein Ton, kein Metall. Datei: `SoundCues.swift`.
+- [x] **Sound-Cues** — echte Klänge aus `Resources/Audio` (Rec_start, Rec_stop, Error_sound) ersetzen die synthetisierten Holz-Taps, auf allen drei Plattformen (`SoundCues.swift`, `windows/src/Shout/Core/SoundCues.cs`; unter Windows eingebettet statt Systemtöne). Die Dateien sind sehr unterschiedlich ausgesteuert — Start und Stopp bei −1 dBFS Spitze, der Fehlerton rund 10 dB darunter — deshalb wird beim Laden die **lauteste 300-ms-Strecke gemessen** und auf −26 dBFS angeglichen (Spitzen-Deckel −12 dBFS). Zur Laufzeit statt fester Faktoren, damit ausgetauschte Klänge automatisch stimmig bleiben. „Fertig eingefügt" nutzt den Stopp-Klang.
 - [ ] **Optional: echtes Silero-VAD (CoreML)** als Upgrade über den adaptiven DSP-VAD (mehr Genauigkeit; separater Modell-Download, live zu testen).
 - [ ] **Download-Fortschritt auch für ASR-Modelle** (aktuell nur Formatierungsmodelle; ASR zeigt nur Spinner).
 

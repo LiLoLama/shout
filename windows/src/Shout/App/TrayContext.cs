@@ -1,4 +1,3 @@
-using System.Media;
 using Shout.Core;
 using Shout.UI;
 
@@ -25,6 +24,7 @@ public sealed class TrayContext : ApplicationContext
     private readonly PersonalDictionary dictionary = new();
     private readonly DictationHistory history = new();
     private readonly StatsStore stats = new();
+    private readonly SoundCues sounds = new();
 
     private readonly ToolStripMenuItem dictateItem;
     private readonly ToolStripMenuItem statusItem;
@@ -379,7 +379,7 @@ public sealed class TrayContext : ApplicationContext
             recorder.Start();
             SetState(State.Recording);
             overlay.ShowPhase(RecordingOverlay.Phase.Recording);
-            PlayCue(SystemSounds.Exclamation);
+            sounds.Play(SoundCues.Cue.Start);
         }
         catch (Exception ex)
         {
@@ -430,7 +430,7 @@ public sealed class TrayContext : ApplicationContext
             ui.Post(_ =>
             {
                 TextInjector.Insert(final, s.KeepInClipboard);
-                PlayCue(SystemSounds.Asterisk);
+                sounds.Play(SoundCues.Cue.Done);
             }, null);
 
             history.Add(final);
@@ -440,7 +440,7 @@ public sealed class TrayContext : ApplicationContext
         catch (Exception ex)
         {
             Log($"Verarbeitung fehlgeschlagen: {ex.Message}");
-            ui.Post(_ => PlayCue(SystemSounds.Hand), null);
+            ui.Post(_ => sounds.Play(SoundCues.Cue.Error), null);
         }
         finally
         {
@@ -457,11 +457,6 @@ public sealed class TrayContext : ApplicationContext
     {
         if (Settings.Shared.PersistentPill) overlay.ShowPhase(RecordingOverlay.Phase.Idle);
         else overlay.HideOverlay();
-    }
-
-    private static void PlayCue(SystemSound sound)
-    {
-        if (Settings.Shared.SoundCuesEnabled) sound.Play();
     }
 
     // MARK: UI-Zustand

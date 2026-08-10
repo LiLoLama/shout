@@ -60,6 +60,11 @@ targets:
     sources:
       - Sources/FlowLokal
       - Resources/Assets.xcassets
+      # Klang-Signale (Start, Stopp, Fehler). Nur die MP3s — die .asd-Dateien
+      # daneben sind Ableton-Analysedateien und gehören nicht ins Bundle.
+      - path: Resources/Audio
+        includes:
+          - "*.mp3"
     # Explizite Info.plist (von xcodegen generiert), damit die Sparkle-Keys
     # SUFeedURL/SUPublicEDKey gesetzt werden können — die gehen NICHT über die
     # INFOPLIST_KEY_-Build-Settings (nur Apple-bekannte Schlüssel).
@@ -135,6 +140,10 @@ targets:
       # Eigener iOS-Asset-Katalog. Der bestehende Katalog unter Resources/
       # enthält ausschließlich das macOS-App-Icon.
       - path: Resources/iOSAssets.xcassets
+      # Dieselben Klang-Signale wie am Mac.
+      - path: Resources/Audio
+        includes:
+          - "*.mp3"
       - path: Sources/FlowLokal
         includes:
           - Localization.swift

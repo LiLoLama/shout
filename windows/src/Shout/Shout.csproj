@@ -24,6 +24,12 @@
     <!-- Das Logo zusätzlich einbetten: so lässt sich zur Laufzeit die passgenaue
          Größe für Fenster (32 px) und Infobereich (16 px) entnehmen. -->
     <EmbeddedResource Include="..\..\assets\shout.ico" LogicalName="shout.ico" />
+    <!-- Klang-Signale: dieselben Dateien wie am Mac (Resources/Audio im Repo-Wurzel-
+         verzeichnis). Eingebettet statt kopiert, damit die Portable-Variante eine
+         einzelne Exe bleibt. -->
+    <EmbeddedResource Include="..\..\..\Resources\Audio\Rec_start.mp3" LogicalName="Rec_start.mp3" />
+    <EmbeddedResource Include="..\..\..\Resources\Audio\Rec_stop.mp3" LogicalName="Rec_stop.mp3" />
+    <EmbeddedResource Include="..\..\..\Resources\Audio\Error_sound.mp3" LogicalName="Error_sound.mp3" />
   </ItemGroup>
 
   <ItemGroup>

@@ -128,16 +128,16 @@ Alle unter `Sources/FlowLokal/`.
 | `MediaDecoder.swift` | `actor`: `AVAssetReader` → Folge von Blöcken (`samples: [Float]`, `startTime: Double`). Pull-Schnittstelle: `open()` liefert die Dauer, `next()` den nächsten Block, `nil` am Ende. Als actor läuft die Arbeit garantiert außerhalb des Main-Actors, ohne Closures über Actor-Grenzen zu reichen. | AVFoundation |
 | `SubtitleWriter.swift` | Segmente → SRT-Text. Reine Funktion. | Foundation |
 | `TextChunker.swift` | Text an Satzgrenzen in Abschnitte teilen. Reine Funktion. | Foundation |
+| `TranscriptExport.swift` | Vorgeschlagene Dateinamen für den Sichern-Dialog. Reine Funktion. | Foundation |
+| `FileTranscriptionQueue.swift` | `FileTranscriptionJob` (ein Auftrag: Zustand, Fortschritt, Ergebnis) und `FileTranscriptionQueue`, die sie seriell abarbeitet. Beide zusammen in einer Datei, weil sie nur miteinander Sinn ergeben. | Transcriber, Formatter, PersonalDictionary |
+| `FilesView.swift` | Die Seite. | SwiftUI, FileTranscriptionQueue |
+| `TranscriptWindowView.swift` | Inhalt des Ergebnisfensters. | SwiftUI, FileTranscriptionJob |
 
 `TextChunker` arbeitet nach einer bewusst einfachen Regel: vom Zielmaß (1500
 Zeichen) aus rückwärts die letzte Stelle suchen, an der auf `.`, `!` oder `?` ein
-Leerraum und ein Großbuchstabe folgt. Diese Zusatzbedingung ist der billige
-Schutz gegen Abkürzungen — „z. B." wird nicht als Satzende gelesen, ohne dass
-eine Abkürzungsliste gepflegt werden muss. Findet sich in den letzten 500 Zeichen
-keine solche Stelle, wird am Zielmaß hart geteilt.
-| `FileTranscriptionJob.swift` | Ein Auftrag = eine Datei: Zustand, Fortschritt, Ergebnis. | Foundation |
-| `FileTranscriptionQueue.swift` | `ObservableObject`, arbeitet Aufträge seriell ab. | Transcriber, Formatter, PersonalDictionary |
-| `FilesView.swift` | Die Seite. | SwiftUI, FileTranscriptionQueue |
+Leerraum und ein Großbuchstabe folgt. Zusätzlich ausgeschlossen sind einzelne
+Buchstaben und eine kurze Liste von Abkürzungen davor („z. B.", „Dr."). Findet
+sich keine solche Stelle, wird am Zielmaß hart geteilt.
 
 ### Änderungen an bestehenden Dateien
 
@@ -160,7 +160,8 @@ keine solche Stelle, wird am Zielmaß hart geteilt.
   (Symbol `doc.text.below.ecg`), Verzweigung im `detail`-Block.
 - **`AppDelegate.swift`** — hält die `FileTranscriptionQueue`, reicht sie ans
   Dashboard durch, blockiert Modellwechsel bei laufender Warteschlange (siehe
-  „Zusammenspiel"), fragt beim Beenden nach.
+  „Zusammenspiel"), fragt beim Beenden nach und verwaltet die Ergebnisfenster
+  (`[UUID: NSWindow]`).
 - **`Localization.swift`** — englische Entsprechungen für die neuen Texte.
 - **`project.yml`** — neues Test-Target (siehe „Tests").
 
@@ -239,19 +240,65 @@ Akzentfarbe hervor.
 
 **Auftragsliste.** Pro Zeile: Dateiname, Dauer, Zustand. Bei laufendem Auftrag
 ein Fortschrittsbalken und ein Abbrechen-Kreuz; bei Fehlern der Grund in
-Klartext; bei Erfolg die Wortzahl. Ein Klick wählt den Auftrag aus.
+Klartext; bei Erfolg die Wortzahl und ein Knopf „Öffnen". Ab zwei offenen
+Aufträgen zusätzlich „Alle abbrechen".
 
-**Ergebnisbereich** (nur bei ausgewähltem, fertigem Auftrag). Scrollbares,
-selektierbares Textfeld mit dem Ergebnis, darunter:
-
-- „Kopieren" — in die Zwischenablage.
-- „Als Text sichern (.txt)" — `NSSavePanel`, vorbelegt mit dem Dateinamen der
-  Quelle plus `.txt`.
-- „Untertitel sichern (.srt)" — dito, mit Fußnote: „Untertitel enthalten immer
-  das Rohtranskript, damit die Zeitmarken zum Wortlaut passen."
+Ein **Ergebnisbereich auf der Seite selbst gibt es nicht.** Ein Textfeld von
+220 Punkt Höhe trägt bei einem einstündigen Transkript nicht; man scrollt darin
+herum, statt zu lesen. Das Ergebnis lebt stattdessen in einem eigenen Fenster
+(nächster Abschnitt). Damit ist die Seite genau eine Sache: Dateien annehmen,
+Verarbeitung einstellen, Warteschlange verfolgen.
 
 Alle Texte laufen über `Loc.t` / `Loc.f`; die Seite hängt wie das übrige
 Dashboard am `.id(loc.language)`-Neuaufbau.
+
+## Das Ergebnisfenster
+
+Ein eigenes Fenster pro Auftrag (`TranscriptWindowView`), geöffnet per Doppelklick
+auf die Zeile oder über den Knopf „Öffnen". Der `AppDelegate` hält die Fenster in
+einem `[UUID: NSWindow]`: Ein zweiter Doppelklick holt das bestehende Fenster nach
+vorn statt ein zweites zu öffnen, beim Schließen fliegt es aus dem Verzeichnis,
+und wer den Auftrag aus der Liste entfernt, schließt damit auch sein Fenster.
+Mehrere Fenster staffeln sich versetzt. Größe 820 × 620, frei veränderbar,
+Mindestmaß 620 × 420. Titel: „shout. — Interview.m4a".
+
+**Zwei Fassungen, eine aktive.** Oben ein Segment-Umschalter „Aufbereitet |
+Rohtext". Die dort gewählte Fassung ist die **aktive**: sie füllt das Fenster, sie
+ist bearbeitbar, und die Export-Knöpfe beziehen sich auf genau sie. Der Knopf
+„Vergleichen" blendet die jeweils andere Fassung als zweite Spalte ein — **nur
+lesbar**. Diese Asymmetrie ist Absicht: Wären beide Spalten bearbeitbar, wäre bei
+jedem Klick auf „Sichern" unklar, welcher der beiden Texte gemeint ist. Zum
+Bearbeiten der anderen Fassung legt man den Umschalter um; dann tauschen die
+Spalten ihre Rollen.
+
+Wurde nicht aufbereitet (Schalter aus oder kein Formatierungsmodell geladen), gibt
+es nur eine Fassung: Umschalter und „Vergleichen" entfallen, darüber steht „Rohtext".
+
+**Bearbeiten.** Beide Fassungen sind echte Textfelder; Änderungen schreiben direkt
+in `job.rawText` bzw. `job.formattedText` und gelten für alles Weitere — Kopieren,
+Sichern, die Wortzahl in der Auftragszeile. Sie überleben das Schließen des
+Fensters, aber nicht das Beenden der App (wie alle Ergebnisse, siehe „Bewusste
+Auslassungen").
+
+**Die Untertitel bleiben von Änderungen unberührt.** Die `.srt` entsteht weiterhin
+aus `job.segments` mit ihren Zeitmarken, nicht aus dem bearbeiteten Text. Alles
+andere hieße, jeden Tastendruck einer Zeitmarke zuzuordnen — ein eigenes Vorhaben.
+Der Hinweis unter dem Knopf sagt das.
+
+**Export unten im Fenster.**
+
+- „Kopieren" — die aktive Fassung in die Zwischenablage.
+- „Als Text sichern …" — `NSSavePanel`. Der vorgeschlagene Name trägt die Fassung
+  mit: `Interview.txt` für die aufbereitete, `Interview-roh.txt` (englisch
+  `-raw`) für den Rohtext. Ohne diesen Zusatz überschriebe das zweite Sichern
+  stillschweigend die erste Datei. Der Zusatz entfällt, wenn es ohnehin nur eine
+  Fassung gibt.
+- „Untertitel sichern …" — `Interview.srt`, immer aus den Segmenten; ausgegraut,
+  wenn keine vorliegen.
+- Statuszeile darunter („Gesichert: …", „Sichern fehlgeschlagen: …").
+
+Die Namensbildung steckt in `TranscriptExport` — eine reine Funktion, damit sie
+ohne Fenster testbar ist.
 
 ## Fehlerbehandlung
 
@@ -276,8 +323,9 @@ die Sandbox wandert.
 
 Das Projekt hat bisher kein Test-Target. Diese Erweiterung bringt das erste mit:
 ein eigenständiges Unit-Test-Bundle in `project.yml`, das **keine Host-App**
-braucht und nur die reinen Dateien mitkompiliert (`SubtitleWriter.swift`,
-`TextChunker.swift`) — damit hängt es weder an WhisperKit noch an MLX und läuft
+braucht und nur die reinen Dateien mitkompiliert (`TranscriptSegment.swift`,
+`SubtitleWriter.swift`, `TextChunker.swift`, `TranscriptExport.swift`,
+`MediaDecoder.swift`) — damit hängt es weder an WhisperKit noch an MLX und läuft
 in Sekunden. `Package.swift` bleibt unverändert, weil der echte Build ohnehin
 über XcodeGen und `xcodebuild` läuft (MLX kompiliert seine Metal-Shader nur so).
 
@@ -289,6 +337,12 @@ in Sekunden. `Package.swift` bleibt unverändert, weil der echte Build ohnehin
 - `TextChunker`: Teilung an Satzgrenzen, Text ohne jedes Satzzeichen (harte
   Teilung statt Endlosschleife), Text kürzer als ein Abschnitt, leerer Text,
   Abkürzungen mit Punkt lösen keine Teilung mitten im Satz aus.
+- `MediaDecoder`: Schnitt landet in der Stille-Lücke, zu kurzer Puffer wird nicht
+  geschnitten, Dauer und Abtastrate einer echt geschriebenen WAV, lückenlose
+  Startzeiten über mehrere Blöcke, Tonspur aus einer `.mov` mit H.264-Bild- und
+  AAC-Tonspur, Datei ohne Tonspur wirft.
+- `TranscriptExport`: Name mit und ohne Rohtext-Zusatz, Quelldatei ohne Endung,
+  Quelldatei mit Punkten im Namen, Untertitel-Endung.
 
 **Von Hand in der laufenden App** (aus `/Applications`, kein Debug-Build)
 
@@ -300,6 +354,10 @@ in Sekunden. `Package.swift` bleibt unverändert, weil der echte Build ohnehin
 - Diktat per Hotkey während eines laufenden Datei-Auftrags.
 - `.srt` in einem Videoschnitt-Programm oder VLC laden — Zeitmarken sitzen.
 - Oberflächensprache umschalten, während die Seite offen ist.
+- Ergebnisfenster: Doppelklick und „Öffnen" führen zum selben Fenster, ein
+  zweiter Doppelklick öffnet kein zweites; Umschalter und Vergleichsspalte;
+  Bearbeiten wirkt sich auf Kopieren, Sichern und die Wortzahl in der Zeile aus,
+  aber nicht auf die `.srt`; Auftrag entfernen schließt sein Fenster.
 
 ## Portierung (später, eigene Runde)
 

@@ -25,15 +25,18 @@ private struct RootView: View {
             HomeView(engine: engine)
                 .tabItem { Label(Loc.t("Diktieren"), systemImage: "mic.fill") }
                 .tag(0)
+            MobileFilesView(engine: engine, queue: engine.fileQueue)
+                .tabItem { Label(Loc.t("Dateien"), systemImage: "doc.text.below.ecg") }
+                .tag(1)
             MobileHistoryView(history: engine.history)
                 .tabItem { Label(Loc.t("Verlauf"), systemImage: "clock.arrow.circlepath") }
-                .tag(1)
+                .tag(2)
             MobileDictionaryView(dictionary: engine.dictionary)
                 .tabItem { Label(Loc.t("Wörterbuch"), systemImage: "text.book.closed.fill") }
-                .tag(2)
+                .tag(3)
             MobileSettingsView(engine: engine)
                 .tabItem { Label(Loc.t("Einstellungen"), systemImage: "gearshape.fill") }
-                .tag(3)
+                .tag(4)
         }
         .id(loc.language)
         .tint(Color.shoutLive)

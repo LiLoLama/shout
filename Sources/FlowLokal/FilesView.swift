@@ -236,7 +236,7 @@ private struct JobRow: View {
         case .queued: state = Loc.t("Wartet")
         case .transcribing: state = Loc.t("Wird transkribiert …")
         case .separatingSpeakers: state = Loc.t("Sprecher werden getrennt …")
-        case .formatting: state = Loc.t("Text wird aufbereitet …")
+        case .formatting: state = Loc.t("Protokoll wird erstellt …")
         case .done:
             let fertig = Loc.f("Fertig · %d Wörter", job.wordCount)
             // Scheiterte die Sprechertrennung, steht der Grund gleich in der Zeile —

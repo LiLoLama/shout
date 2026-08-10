@@ -145,6 +145,10 @@ targets:
           - TranscriptSegment.swift
           - TranscriptLayout.swift
           - TranscriptMinutes.swift
+          - MediaDecoder.swift
+          - SubtitleWriter.swift
+          - TranscriptExport.swift
+          - FileTranscriptionQueue.swift
           - TextChunker.swift
           - AudioRecorder.swift
           - PersonalDictionary.swift

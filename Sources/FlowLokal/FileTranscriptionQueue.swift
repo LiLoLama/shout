@@ -86,7 +86,9 @@ final class FileTranscriptionQueue: ObservableObject {
     private let transcriber: Transcriber
     private let formatter: Formatter
     private let dictionary: PersonalDictionary
+    #if os(macOS)
     private let separator = SpeakerSeparator()
+    #endif
 
     private var runTask: Task<Void, Never>?
     /// Aufträge, die der Nutzer abgebrochen hat. Wird zwischen den Blöcken geprüft.
@@ -153,24 +155,40 @@ final class FileTranscriptionQueue: ObservableObject {
 
         let useCommands = UserDefaults.standard.bool(forKey: "fileSpeechCommandsEnabled")
         let useMinutes = UserDefaults.standard.object(forKey: "fileFormattingEnabled") as? Bool ?? true
+        #if os(macOS)
         let useSpeakers = UserDefaults.standard.bool(forKey: "fileDiarizationEnabled")
+        #else
+        // Auf dem iPhone gibt es die Sprechertrennung nicht: Sie braucht die ganze
+        // Datei im Speicher, und iOS beendet Apps, die zu viel belegen, ohne Vorwarnung.
+        let useSpeakers = false
+        #endif
         let bias = dictionary.contents.terms
 
         job.state = .transcribing(progress: 0)
 
+        // Dateien aus der Dateien-App kommen als „security-scoped" URL: ohne diesen
+        // Zugriff schlägt das Öffnen auf dem iPhone fehl. Am Mac ist der Aufruf
+        // folgenlos (liefert false, und dann wird auch nichts freigegeben).
+        let scoped = job.url.startAccessingSecurityScopedResource()
+        defer { if scoped { job.url.stopAccessingSecurityScopedResource() } }
+
         let decoder = MediaDecoder(url: job.url)
         var collected: [TranscriptSegment] = []
+        #if os(macOS)
         // Nur wenn die Sprechertrennung an ist: Die braucht die GANZE Datei am Stück
         // (siehe SpeakerSeparator) — eine Stunde sind rund 230 MB. Ist sie aus,
         // bleibt der Speicherbedarf bei einem Block.
         var allSamples: [Float] = []
+        #endif
         do {
             let duration = try await decoder.open()
             job.duration = duration
 
             while let block = try await decoder.next() {
                 if cancelled.contains(job.id) { job.markCancelled(); return }
+                #if os(macOS)
                 if useSpeakers { allSamples.append(contentsOf: block.samples) }
+                #endif
 
                 let raw = try await transcriber.transcribeSegments(block.samples, biasTerms: bias)
                 for segment in raw {
@@ -206,6 +224,7 @@ final class FileTranscriptionQueue: ObservableObject {
             return
         }
 
+        #if os(macOS)
         // Sprechertrennung, bevor die Texte endgültig gebaut werden — sie ändert die
         // Segmente, und daraus entstehen Rohtext, Untertitel und der Eingang fürs
         // Sprachmodell.
@@ -227,6 +246,8 @@ final class FileTranscriptionQueue: ObservableObject {
             allSamples = []   // Speicher sofort freigeben, nicht erst am Ende
             await separator.unload()
         }
+
+        #endif
 
         if cancelled.contains(job.id) { job.markCancelled(); return }
 

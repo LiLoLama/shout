@@ -109,7 +109,7 @@ targets:
     dependencies:
       - package: argmax
         product: WhisperKit
-      # Sprechertrennung (Pyannote/CoreML) — nur am Mac; die Modelle lädt
+      # Sprechertrennung (Pyannote/CoreML). Die Modelle lädt
       # SpeakerKit bei der ersten Nutzung selbst von Hugging Face.
       - package: argmax
         product: SpeakerKit
@@ -158,6 +158,9 @@ targets:
           - SubtitleWriter.swift
           - TranscriptExport.swift
           - FileTranscriptionQueue.swift
+          - MeetingRecorder.swift
+          - SpeakerAssignment.swift
+          - SpeakerSeparator.swift
           - TextChunker.swift
           - AudioRecorder.swift
           - PersonalDictionary.swift
@@ -192,6 +195,10 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.inthezone.shout
             CFBundleURLSchemes: [shout]
+        # Ohne diesen Modus endet ein Meeting-Mitschnitt, sobald das iPhone
+        # gesperrt wird oder die App in den Hintergrund geht.
+        UIBackgroundModes:
+          - audio
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -208,6 +215,9 @@ targets:
     dependencies:
       - package: argmax
         product: WhisperKit
+      # Sprechertrennung auch am iPhone (SpeakerKit unterstuetzt iOS ab 16).
+      - package: argmax
+        product: SpeakerKit
       - package: mlxlm
         product: MLXLLM
       - package: mlxlm

@@ -57,6 +57,10 @@ final class MobileEngine: ObservableObject {
     /// mit dem Diktat; serialisiert wird über den Transcriber-actor.
     lazy var fileQueue = FileTranscriptionQueue(
         transcriber: transcriber, formatter: formatter, dictionary: dictionary)
+
+    /// Mitschnitt eines Meetings. Gehört der Engine und nicht der View, damit eine
+    /// laufende Aufnahme das Schließen des Fensters übersteht.
+    let meetingRecorder = MeetingRecorder()
     private let sounds = SoundCues()
 
     // iOS-Default: Formatierung AUS — spart den zweiten Modell-Download und

@@ -533,6 +533,17 @@ final class Loc: ObservableObject {
         "OK": "OK",
         "Protokoll wird erstellt …": "Creating minutes…",
 
+        // MARK: - Meeting-Mitschnitt (iOS)
+
+        "Meeting aufnehmen": "Record a meeting",
+        "Handy auf den Tisch legen und aufnehmen. Die Aufnahme läuft weiter, wenn der Bildschirm aus ist, und wird danach automatisch transkribiert.": "Put the phone on the table and hit record. Recording continues with the screen off, and the transcript is created afterwards.",
+        "Nimmt auf …": "Recording…",
+        "Pausiert": "Paused",
+        "Kurz vorweg": "One thing first",
+        "Ein Gespräch mitzuschneiden ist ohne Einverständnis der anderen Beteiligten in Deutschland und Österreich strafbar. Frag kurz, bevor du aufnimmst.": "In Germany and Austria, recording a conversation without the consent of everyone involved is a criminal offence. Ask before you hit record.",
+        "Verstanden": "Got it",
+        "Zu wenig Speicher für die Sprechertrennung — der Text ist trotzdem vollständig.": "Not enough memory to separate speakers — the text is complete nonetheless.",
+
         // MARK: - Ergebnisfenster
 
         "Öffnen": "Open",

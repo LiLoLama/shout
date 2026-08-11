@@ -15,11 +15,13 @@ struct MobileFilesView: View {
     @AppStorage("fileSpeechCommandsEnabled") private var speechCommands = false
     @State private var picking = false
     @State private var pickerError: String?
+    @State private var recording = false
 
     var body: some View {
         NavigationStack {
             List {
                 if engine.transcriberReady {
+                    meetingSection
                     optionsSection
                     filesSection
                     if !queue.jobs.isEmpty { jobsSection }
@@ -44,6 +46,11 @@ struct MobileFilesView: View {
                 case .failure(let error): pickerError = error.localizedDescription
                 }
             }
+            .fullScreenCover(isPresented: $recording) {
+                MeetingRecordView(recorder: engine.meetingRecorder) { url in
+                    queue.add([url])
+                }
+            }
             .alert(Loc.t("Datei konnte nicht geöffnet werden"),
                    isPresented: .init(get: { pickerError != nil },
                                       set: { if !$0 { pickerError = nil } })) {
@@ -55,6 +62,21 @@ struct MobileFilesView: View {
     }
 
     // MARK: - Abschnitte
+
+    /// Aufnehmen steht oben: Es ist der Weg, bei dem das Transkript erst entsteht,
+    /// waehrend die Dateiauswahl schon vorhandenes Material verarbeitet.
+    private var meetingSection: some View {
+        Section {
+            Button {
+                recording = true
+            } label: {
+                Label(Loc.t("Meeting aufnehmen"), systemImage: "record.circle")
+            }
+            .tint(Color.shoutLive)
+        } footer: {
+            Text(Loc.t("Handy auf den Tisch legen und aufnehmen. Die Aufnahme läuft weiter, wenn der Bildschirm aus ist, und wird danach automatisch transkribiert."))
+        }
+    }
 
     private var filesSection: some View {
         Section {

@@ -211,7 +211,9 @@ private struct JobRow: View {
 
     private var icon: String {
         switch job.state {
-        case .queued: return "clock"
+        // „Noch nicht verarbeitet" entsteht nur am iPhone; am Mac starten Dateien
+        // sofort, weil die Schalter direkt über der Auswahl stehen.
+        case .unprocessed, .queued: return "clock"
         case .separatingSpeakers: return "person.2.wave.2"
         case .transcribing, .formatting: return "waveform"
         case .done: return "checkmark.circle.fill"
@@ -233,7 +235,7 @@ private struct JobRow: View {
     private var subtitle: String {
         let state: String
         switch job.state {
-        case .queued: state = Loc.t("Wartet")
+        case .unprocessed, .queued: state = Loc.t("Wartet")
         case .transcribing: state = Loc.t("Wird transkribiert …")
         case .separatingSpeakers: state = Loc.t("Sprecher werden getrennt …")
         case .formatting: state = Loc.t("Protokoll wird erstellt …")

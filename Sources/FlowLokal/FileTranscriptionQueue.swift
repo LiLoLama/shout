@@ -1,8 +1,31 @@
 import Foundation
+import AVFoundation
 import Combine
 #if os(iOS)
 import UIKit
 #endif
+
+/// Was mit einer Datei geschehen soll.
+///
+/// Hängt am einzelnen Auftrag statt an den Einstellungen, weil die Entscheidung
+/// nicht immer vorher fällt: Am iPhone steht nach einem Meeting erst einmal nur
+/// die Aufnahme da, und ob daraus ein Protokoll wird — oder ob die Datei lieber
+/// an den Rechner geht — entscheidet sich danach.
+struct FileJobOptions: Equatable {
+    var minutes: Bool
+    var speakers: Bool
+    var commands: Bool
+
+    /// Am Mac stehen die Schalter direkt über der Dateiauswahl; dort gilt weiter,
+    /// was dort eingestellt ist.
+    static func fromSettings() -> FileJobOptions {
+        let d = UserDefaults.standard
+        return FileJobOptions(
+            minutes: d.object(forKey: "fileFormattingEnabled") as? Bool ?? true,
+            speakers: d.bool(forKey: "fileDiarizationEnabled"),
+            commands: d.bool(forKey: "fileSpeechCommandsEnabled"))
+    }
+}
 
 /// Ein Transkriptions-Auftrag: eine Datei, ihr Zustand und ihr Ergebnis.
 ///
@@ -14,6 +37,10 @@ import UIKit
 final class FileTranscriptionJob: ObservableObject, Identifiable {
 
     enum State: Equatable {
+        /// Liegt bereit, aber niemand hat gesagt, was damit passieren soll. Nur der
+        /// Mitschnitt am iPhone landet hier: Nach einer Stunde Meeting ist das
+        /// Telefon der schlechteste Ort, um ungefragt loszurechnen.
+        case unprocessed
         case queued
         case transcribing(progress: Double)
         /// Sprechertrennung. Ohne Fortschritt, weil SpeakerKit die ganze Datei in
@@ -27,6 +54,10 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
 
     let id = UUID()
     let url: URL
+
+    /// Wird beim Anlegen aus den Einstellungen gefüllt und vor dem Start noch
+    /// einmal überschrieben, wenn der Nutzer selbst entscheidet.
+    var options = FileJobOptions.fromSettings()
 
     @Published var state: State = .queued
     @Published var duration: Double = 0
@@ -51,9 +82,12 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
         displayText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
     }
 
+    /// Ist gerade nichts zu tun? „Noch nicht verarbeitet" gehört dazu — der Auftrag
+    /// wartet auf eine Entscheidung, nicht auf Rechenzeit, und darf das Beenden der
+    /// App nicht blockieren.
     var isFinished: Bool {
         switch state {
-        case .done, .failed, .cancelled: return true
+        case .unprocessed, .done, .failed, .cancelled: return true
         case .queued, .transcribing, .separatingSpeakers, .formatting: return false
         }
     }
@@ -122,13 +156,49 @@ final class FileTranscriptionQueue: ObservableObject {
 
     // MARK: - Steuerung
 
-    func add(_ urls: [URL]) {
+    /// Nimmt Dateien auf. `start: false` legt sie nur ab — dann entscheidet der
+    /// Nutzer später, was damit geschehen soll (iPhone).
+    func add(_ urls: [URL], start: Bool = true) {
         for url in urls {
             let job = FileTranscriptionJob(url: url)
+            if !start {
+                job.state = .unprocessed
+                probeDuration(job)
+            }
             jobs.append(job)
-            if selectedJobID == nil { selectedJobID = job.id }
+            if start, selectedJobID == nil { selectedJobID = job.id }
         }
+        if start { startIfNeeded() }
+    }
+
+    /// Holt liegengebliebene Mitschnitte zurück in die Liste. Ergebnisse leben nur
+    /// zur Laufzeit, die Aufnahmen selbst aber nicht: Wer ein Meeting aufnimmt und
+    /// die App schließt, muss die Datei danach wiederfinden.
+    func restore(_ urls: [URL]) {
+        let known = Set(jobs.map(\.url))
+        let fresh = urls.filter { !known.contains($0) }
+        guard !fresh.isEmpty else { return }
+        add(fresh, start: false)
+    }
+
+    /// Startet einen wartenden Auftrag mit den gewählten Einstellungen.
+    func start(_ job: FileTranscriptionJob, options: FileJobOptions) {
+        guard case .unprocessed = job.state else { return }
+        job.options = options
+        job.state = .queued
         startIfNeeded()
+    }
+
+    /// Länge einer noch nicht verarbeiteten Datei. Sie ist die entscheidende Angabe,
+    /// wenn jemand abwägt, ob er das auf dem Telefon rechnen lässt — der Decoder
+    /// liefert sie sonst erst, wenn die Verarbeitung längst läuft.
+    private func probeDuration(_ job: FileTranscriptionJob) {
+        let url = job.url
+        Task { [weak job] in
+            let seconds = try? await AVURLAsset(url: url).load(.duration).seconds
+            guard let seconds, seconds.isFinite, seconds > 0 else { return }
+            job?.duration = seconds
+        }
     }
 
     func cancel(_ job: FileTranscriptionJob) {
@@ -147,6 +217,12 @@ final class FileTranscriptionQueue: ObservableObject {
         // Nachrücken auf einen Auftrag MIT Ergebnis — sonst zeigt die Seite nach dem
         // Entfernen auf einen abgebrochenen und der Ergebnisbereich verschwindet.
         if selectedJobID == job.id { selectedJobID = jobs.first { $0.state == .done }?.id }
+        // Eigene Mitschnitte mitlöschen: Sie liegen in unserem Ordner, tauchen nach
+        // einem Neustart wieder in der Liste auf und sammelten sich sonst
+        // unsichtbar an. Ausgewählte Dateien gehören dem Nutzer — Finger weg.
+        if MeetingRecorder.isOwnRecording(job.url) {
+            try? FileManager.default.removeItem(at: job.url)
+        }
     }
 
     // MARK: - Abarbeitung
@@ -168,9 +244,9 @@ final class FileTranscriptionQueue: ObservableObject {
     private func process(_ job: FileTranscriptionJob) async {
         guard !cancelled.contains(job.id) else { job.markCancelled(); return }
 
-        let useCommands = UserDefaults.standard.bool(forKey: "fileSpeechCommandsEnabled")
-        let useMinutes = UserDefaults.standard.object(forKey: "fileFormattingEnabled") as? Bool ?? true
-        let useSpeakers = UserDefaults.standard.bool(forKey: "fileDiarizationEnabled")
+        let useCommands = job.options.commands
+        let useMinutes = job.options.minutes
+        let useSpeakers = job.options.speakers
         let bias = dictionary.contents.terms
 
         job.state = .transcribing(progress: 0)

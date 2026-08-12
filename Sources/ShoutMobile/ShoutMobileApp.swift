@@ -25,8 +25,11 @@ private struct RootView: View {
             HomeView(engine: engine)
                 .tabItem { Label(Loc.t("Diktieren"), systemImage: "mic.fill") }
                 .tag(0)
+            // „Meetings" statt „Dateien": Unter Dateien sucht niemand die
+            // Mitschnitt-Funktion — und eine ausgewählte Datei ist fast immer
+            // eine Besprechung oder ein Interview.
             MobileFilesView(engine: engine, queue: engine.fileQueue)
-                .tabItem { Label(Loc.t("Dateien"), systemImage: "doc.text.below.ecg") }
+                .tabItem { Label(Loc.t("Meetings"), systemImage: "record.circle") }
                 .tag(1)
             MobileHistoryView(history: engine.history)
                 .tabItem { Label(Loc.t("Verlauf"), systemImage: "clock.arrow.circlepath") }

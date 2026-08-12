@@ -38,9 +38,39 @@ final class MeetingRecorder: ObservableObject {
     /// Eine Stunde Meeting kann man nicht noch einmal aufnehmen, wenn beim
     /// Transkribieren etwas schiefgeht.
     static func recordingsDirectory() -> URL {
-        let dir = StoreIO.directory().appendingPathComponent("Recordings", isDirectory: true)
+        let dir = recordingsPath
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    /// Nur der Pfad, ohne ihn anzulegen — fürs Nachschauen und Vergleichen. Sonst
+    /// entstünde der Ordner auch am Mac, wo es gar keine Mitschnitte gibt.
+    private static var recordingsPath: URL {
+        StoreIO.directory().appendingPathComponent("Recordings", isDirectory: true)
+    }
+
+    /// Alle liegengebliebenen Mitschnitte, neueste zuerst. Grundlage dafür, dass ein
+    /// Meeting nach dem Neustart der App noch da ist.
+    static func existingRecordings() -> [URL] {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: recordingsPath,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles])) ?? []
+        return files
+            .filter { $0.pathExtension.lowercased() == "m4a" }
+            .sorted { modified($0) > modified($1) }
+    }
+
+    private static func modified(_ url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+            ?? .distantPast
+    }
+
+    /// Stammt die Datei aus unserem Mitschnitt-Ordner? Nur solche darf die App von
+    /// sich aus löschen.
+    static func isOwnRecording(_ url: URL) -> Bool {
+        url.deletingLastPathComponent().standardizedFileURL
+            == recordingsDirectory().standardizedFileURL
     }
 
     /// „Meeting 2026-08-11 17-42.m4a" — lesbar und ohne Zeichen, die Dateisysteme

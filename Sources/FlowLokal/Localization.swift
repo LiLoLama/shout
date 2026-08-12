@@ -522,21 +522,35 @@ final class Loc: ObservableObject {
         "Wirklich beenden? Der laufende Auftrag geht verloren.": "Quit anyway? The running job will be lost.",
         "Trotzdem beenden": "Quit anyway",
 
-        // MARK: - Dateien auf dem iPhone
+        // MARK: - Meetings auf dem iPhone
 
+        "Meetings": "Meetings",
         "Datei auswählen …": "Choose a file…",
         "MP3, M4A, WAV, MP4, MOV und alles, was iOS abspielen kann": "MP3, M4A, WAV, MP4, MOV and anything iOS can play",
         "Zum Transkribieren wird das Sprachmodell gebraucht. Lade es in den Einstellungen — danach geht es hier weiter.": "Transcribing needs the speech model. Download it in the settings — then come back here.",
         "Das Modell zum Aufbereiten ist noch nicht geladen. Bis dahin kommt das Rohtranskript.": "The clean-up model is not loaded yet. Until then you get the raw transcript.",
-        "Die Datei wird auf diesem Gerät gelesen — nichts wird hochgeladen. Lange Dateien dauern auf dem Telefon deutlich länger als am Rechner.": "The file is read on this device — nothing is uploaded. Long files take considerably longer on a phone than on a computer.",
+        "Alles läuft auf diesem Gerät — nichts wird hochgeladen. Aufnahmen bleiben liegen, bis du sie hier entfernst.": "Everything runs on this device — nothing is uploaded. Recordings stay until you remove them here.",
         "Datei konnte nicht geöffnet werden": "The file could not be opened",
         "OK": "OK",
         "Protokoll wird erstellt …": "Creating minutes…",
 
+        // MARK: - Was soll damit passieren? (iOS)
+
+        "Noch nicht verarbeitet": "Not processed yet",
+        "Verarbeiten": "Process",
+        "Auf diesem Gerät": "On this device",
+        "Nur transkribieren": "Transcribe only",
+        "Reiner Text mit Zeitmarken. Geht am schnellsten.": "Plain text with timestamps. The quickest option.",
+        "Transkribieren und Protokoll": "Transcribe and write minutes",
+        "Aufnahme teilen …": "Share the recording…",
+        "Zum Beispiel per AirDrop an den Rechner — dort geht die Verarbeitung deutlich schneller. Die Aufnahme bleibt hier trotzdem liegen.": "By AirDrop to your computer, for instance — processing is considerably faster there. The recording stays here either way.",
+        "Später entscheiden": "Decide later",
+
         // MARK: - Meeting-Mitschnitt (iOS)
 
         "Meeting aufnehmen": "Record a meeting",
-        "Handy auf den Tisch legen und aufnehmen. Die Aufnahme läuft weiter, wenn der Bildschirm aus ist, und wird danach automatisch transkribiert.": "Put the phone on the table and hit record. Recording continues with the screen off, and the transcript is created afterwards.",
+        "Handy auf den Tisch legen und antippen": "Put the phone on the table and tap",
+        "Die Aufnahme läuft weiter, wenn der Bildschirm aus ist. Was danach damit passiert, entscheidest du selbst.": "Recording continues with the screen off. What happens with it afterwards is up to you.",
         "Nimmt auf …": "Recording…",
         "Pausiert": "Paused",
         "Kurz vorweg": "One thing first",

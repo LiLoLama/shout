@@ -61,6 +61,10 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
     /// einmal überschrieben, wenn der Nutzer selbst entscheidet.
     var options = FileJobOptions.fromSettings()
 
+    /// Nachgereichtes Protokoll: Der Text steht schon, es fehlt nur die Aufbereitung.
+    /// Die Datei wird dafür NICHT noch einmal transkribiert.
+    fileprivate(set) var minutesOnly = false
+
     @Published var state: State = .queued
     @Published var duration: Double = 0
     /// Rohsegmente mit Zeitmarken — Grundlage der .srt-Datei.
@@ -98,6 +102,26 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
     /// der Eingang fürs Sprachmodell dieselbe verwenden.
     static func speakerLabel(_ number: Int) -> String {
         Loc.f("Sprecher %d", number)
+    }
+
+    /// Kann noch ein Protokoll nachgereicht werden? Nur wenn der Text fertig ist
+    /// und keins existiert.
+    var canAddMinutes: Bool {
+        if case .done = state { return formattedText.isEmpty && !rawText.isEmpty }
+        return false
+    }
+
+    /// Eingang fürs Sprachmodell: **ohne** Zeitmarken — die kosten dort nur Kontext
+    /// und tauchten sonst mitten im Protokoll wieder auf — und **mit** Sprechern,
+    /// sofern welche erkannt wurden. Das entscheiden die Segmente selbst und nicht
+    /// die Einstellungen: Bei einem später nachgereichten Protokoll sagen die
+    /// Einstellungen nichts mehr darüber aus, was damals tatsächlich lief.
+    var minutesInput: String {
+        guard !segments.isEmpty else { return rawText }
+        let label: ((Int) -> String)? = segments.contains { $0.speaker != nil }
+            ? { number in FileTranscriptionJob.speakerLabel(number) }
+            : nil
+        return TranscriptLayout.rawText(from: segments, timestamps: false, speakerLabel: label)
     }
 
     /// Zustand zum Sichern.
@@ -212,6 +236,19 @@ final class FileTranscriptionQueue: ObservableObject {
         job.url = MeetingRecorder.rename(job.url, to: name)
     }
 
+    /// Reicht das Protokoll nach — aus dem vorhandenen Text, ohne die Datei noch
+    /// einmal zu transkribieren. Wer sich für „nur transkribieren" entschieden hat,
+    /// müsste sonst eine Stunde neu rechnen lassen, obwohl der Text längst dasteht.
+    func addMinutes(to job: FileTranscriptionJob) {
+        guard job.canAddMinutes else { return }
+        job.options.minutes = true
+        job.minutesOnly = true
+        // Direkt auf „wird erstellt" statt über „wartet": Die Zeile bleibt so
+        // durchgehend navigierbar und die geöffnete Ansicht klappt nicht zu.
+        job.state = .formatting(progress: 0)
+        startIfNeeded()
+    }
+
     /// Startet einen wartenden Auftrag mit den gewählten Einstellungen.
     func start(_ job: FileTranscriptionJob, options: FileJobOptions) {
         guard case .unprocessed = job.state else { return }
@@ -270,10 +307,17 @@ final class FileTranscriptionQueue: ObservableObject {
     }
 
     private func nextJob() -> FileTranscriptionJob? {
-        jobs.first { if case .queued = $0.state { return true } else { return false } }
+        jobs.first { job in
+            if case .queued = job.state { return true }
+            // Nachgereichtes Protokoll steht schon auf „wird erstellt"; die Marke
+            // fällt beim Abarbeiten, deshalb wird derselbe Auftrag nicht zweimal
+            // gezogen.
+            return job.minutesOnly
+        }
     }
 
     private func process(_ job: FileTranscriptionJob) async {
+        if job.minutesOnly { await addMinutesOnly(to: job); return }
         guard !cancelled.contains(job.id) else { job.markCancelled(); return }
 
         let useCommands = job.options.commands
@@ -369,32 +413,41 @@ final class FileTranscriptionQueue: ObservableObject {
         }
 
         if useMinutes {
-            job.state = .formatting(progress: 0)
-            let hint = dictionary.termHint
-            let jobRef = job
-            // Das Modell bekommt den Text OHNE Zeitmarken — die kosten dort nur
-            // Kontext und tauchten sonst mitten im Protokoll wieder auf. Die
-            // Sprecher dagegen SCHON: Nur so kann das Protokoll zuordnen, wer was
-            // gesagt hat.
-            let label: ((Int) -> String)? = useSpeakers
-                ? { number in FileTranscriptionJob.speakerLabel(number) }
-                : nil
-            let input = TranscriptLayout.rawText(from: collected, timestamps: false,
-                                                 speakerLabel: label)
-            let document = await formatter.minutes(from: input, termHint: hint) { fraction in
-                Task { @MainActor in
-                    if case .formatting = jobRef.state { jobRef.state = .formatting(progress: fraction) }
-                }
-            }
+            await writeMinutes(for: job)
             if cancelled.contains(job.id) { job.markCancelled(); return }
-            // Nur setzen, wenn wirklich ein Protokoll herauskam. Sonst stünden im
-            // Fenster zwei identische Fassungen — genau der Eindruck, der beim
-            // ersten Anlauf entstanden ist.
-            if let document { job.formattedText = document }
         }
 
         finish(job)
         if selectedJobID == nil { selectedJobID = job.id }
+    }
+
+    /// Der nachgereichte Weg: nur die Aufbereitung, der Text steht ja schon.
+    private func addMinutesOnly(to job: FileTranscriptionJob) async {
+        job.minutesOnly = false
+        await writeMinutes(for: job)
+        // Ein Abbruch verwirft hier NICHTS: Anders als beim ersten Durchlauf ist
+        // das Transkript fertig und bleibt es auch — es fehlt dann nur das
+        // Protokoll. Die Marke muss trotzdem weg, sonst liefe ein zweiter Anlauf
+        // sofort ins Leere.
+        cancelled.remove(job.id)
+        finish(job)
+    }
+
+    /// Erstellt das Protokoll aus dem vorhandenen Text und trägt es ein.
+    private func writeMinutes(for job: FileTranscriptionJob) async {
+        job.state = .formatting(progress: 0)
+        let hint = dictionary.termHint
+        let jobRef = job
+        let document = await formatter.minutes(from: job.minutesInput, termHint: hint) { fraction in
+            Task { @MainActor in
+                if case .formatting = jobRef.state { jobRef.state = .formatting(progress: fraction) }
+            }
+        }
+        guard !cancelled.contains(job.id) else { return }
+        // Nur setzen, wenn wirklich ein Protokoll herauskam. Sonst stünden im
+        // Fenster zwei identische Fassungen — genau der Eindruck, der beim
+        // ersten Anlauf entstanden ist.
+        if let document { job.formattedText = document }
     }
 
     /// Auftrag fertig — und bei einem eigenen Mitschnitt das Ergebnis daneben legen.

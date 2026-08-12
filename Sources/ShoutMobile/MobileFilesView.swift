@@ -63,9 +63,10 @@ struct MobileFilesView: View {
                 }
             }
             .sheet(item: $choosing) { job in
-                ProcessingChoiceView(job: job, formatterReady: engine.formatterReady) { options in
-                    queue.start(job, options: options)
-                }
+                ProcessingChoiceView(job: job,
+                                     formatterReady: engine.formatterReady,
+                                     onStart: { options in queue.start(job, options: options) },
+                                     onDelete: { queue.remove(job) })
             }
             // Eigener Schalter statt `renaming != nil`: Sonst räumte der Setter der
             // Bindung den Auftrag womöglich weg, bevor der Knopf ihn liest.
@@ -135,26 +136,38 @@ struct MobileFilesView: View {
     private var jobsSection: some View {
         Section(Loc.t("Aufträge")) {
             ForEach(queue.jobs) { job in
-                MobileJobRow(job: job,
-                             onChoose: { choosing = job },
-                             onCancel: { queue.cancel(job) })
+                MobileJobRow(job: job, queue: queue,
+                             formatterReady: engine.formatterReady,
+                             onChoose: { choosing = job })
                     // Statt `.onDelete`: Umbenennen gehört an dieselbe Geste, und
                     // beides zusammen geht nur über `swipeActions`.
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            queue.remove(job)
-                        } label: {
-                            Label(Loc.t("Entfernen"), systemImage: "trash")
-                        }
-                        if MeetingRecorder.isOwnRecording(job.url), job.isFinished {
-                            Button {
-                                newName = job.url.deletingPathExtension().lastPathComponent
-                                renaming = job
-                                showRename = true
+                    // Kein Voll-Wisch: Ein Meeting ist unwiederbringlich weg, das
+                    // darf keine schnelle Handbewegung allein auslösen.
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if job.isFinished {
+                            Button(role: .destructive) {
+                                queue.remove(job)
                             } label: {
-                                Label(Loc.t("Umbenennen"), systemImage: "pencil")
+                                Label(Loc.t("Entfernen"), systemImage: "trash")
                             }
-                            .tint(.gray)
+                            if MeetingRecorder.isOwnRecording(job.url) {
+                                Button {
+                                    newName = job.url.deletingPathExtension().lastPathComponent
+                                    renaming = job
+                                    showRename = true
+                                } label: {
+                                    Label(Loc.t("Umbenennen"), systemImage: "pencil")
+                                }
+                                .tint(.gray)
+                            }
+                        } else {
+                            // Laufendes NICHT über „Entfernen": Das löschte auch die
+                            // Aufnahme. Abbrechen lässt die Datei liegen.
+                            Button(role: .destructive) {
+                                queue.cancel(job)
+                            } label: {
+                                Label(Loc.t("Abbrechen"), systemImage: "xmark")
+                            }
                         }
                     }
             }
@@ -166,8 +179,13 @@ struct MobileFilesView: View {
 /// Ergebnis.
 private struct MobileJobRow: View {
     @ObservedObject var job: FileTranscriptionJob
+    @ObservedObject var queue: FileTranscriptionQueue
+    let formatterReady: Bool
     let onChoose: () -> Void
-    let onCancel: () -> Void
+
+    private var destination: some View {
+        MobileTranscriptView(job: job, queue: queue, formatterReady: formatterReady)
+    }
 
     var body: some View {
         switch job.state {
@@ -183,14 +201,17 @@ private struct MobileJobRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-        case .done:
-            NavigationLink { MobileTranscriptView(job: job) } label: { label }
+        // „Wird aufbereitet" bleibt begehbar: Der Rohtext ist zu diesem Zeitpunkt
+        // fertig, und wer das Protokoll gerade angestoßen hat, will nicht aus der
+        // Ansicht geworfen werden.
+        case .done, .formatting:
+            NavigationLink { destination } label: { label }
         default:
             HStack {
                 label
                 Spacer()
                 if !job.isFinished {
-                    Button(role: .destructive, action: onCancel) {
+                    Button(role: .destructive) { queue.cancel(job) } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -241,10 +262,12 @@ private struct ProcessingChoiceView: View {
     @ObservedObject var job: FileTranscriptionJob
     let formatterReady: Bool
     let onStart: (FileJobOptions) -> Void
+    let onDelete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fileDiarizationEnabled") private var speakers = false
     @AppStorage("fileSpeechCommandsEnabled") private var commands = false
+    @State private var confirmDelete = false
 
     var body: some View {
         NavigationStack {
@@ -282,6 +305,24 @@ private struct ProcessingChoiceView: View {
                 } footer: {
                     Text(Loc.t("Zum Beispiel per AirDrop an den Rechner — dort geht die Verarbeitung deutlich schneller. Die Aufnahme bleibt hier trotzdem liegen."))
                 }
+
+                // „Weg damit" ist eine legitime Antwort auf „was soll damit
+                // passieren?" — und der Ort, an dem man sie gibt, ist dieser.
+                Section {
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Label(Loc.t("Aufnahme löschen"), systemImage: "trash")
+                    }
+                }
+            }
+            .confirmationDialog(Loc.t("Aufnahme löschen?"),
+                                isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button(Loc.t("Löschen"), role: .destructive) {
+                    onDelete()
+                    dismiss()
+                }
+                Button(Loc.t("Abbrechen"), role: .cancel) {}
+            } message: {
+                Text(Loc.t("Die Audiodatei wird vom Gerät entfernt. Das lässt sich nicht rückgängig machen."))
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -335,9 +376,20 @@ private struct ProcessingChoiceView: View {
 /// einstündiges Transkript ist auf dem iPhone eher Falle als Hilfe.
 private struct MobileTranscriptView: View {
     @ObservedObject var job: FileTranscriptionJob
+    @ObservedObject var queue: FileTranscriptionQueue
+    let formatterReady: Bool
 
     private enum Fassung: Hashable { case protokoll, roh }
     @State private var active: Fassung = .protokoll
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var renaming = false
+    @State private var newName = ""
+    @State private var confirmDelete = false
+
+    /// Umbenennen und Löschen der Datei gibt es nur für eigene Mitschnitte —
+    /// ausgewählte Dateien liegen beim Nutzer.
+    private var isOwn: Bool { MeetingRecorder.isOwnRecording(job.url) }
 
     private var hasBoth: Bool { !job.formattedText.isEmpty && !job.rawText.isEmpty }
     private var text: String {
@@ -355,6 +407,8 @@ private struct MobileTranscriptView: View {
                     .pickerStyle(.segmented)
                 }
 
+                minutesInvitation
+
                 if text.isEmpty {
                     Text(Loc.t("Kein gesprochener Inhalt erkannt."))
                         .font(.footnote).foregroundStyle(.secondary)
@@ -362,11 +416,30 @@ private struct MobileTranscriptView: View {
                     Text(text).font(.callout).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+
+                verwaltung
             }
             .padding()
         }
         .navigationTitle(job.name)
         .navigationBarTitleDisplayMode(.inline)
+        .alert(Loc.t("Wie soll die Aufnahme heißen?"), isPresented: $renaming) {
+            TextField(Loc.t("Name"), text: $newName)
+            Button(Loc.t("Sichern")) { queue.rename(job, to: newName) }
+            Button(Loc.t("Abbrechen"), role: .cancel) {}
+        }
+        .confirmationDialog(Loc.t("Aufnahme löschen?"),
+                            isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button(Loc.t("Löschen"), role: .destructive) {
+                // Erst zurück, dann entfernen: Sonst verschwindet die Zeile unter
+                // der geöffneten Ansicht und die Navigation räumt selbst auf.
+                dismiss()
+                queue.remove(job)
+            }
+            Button(Loc.t("Abbrechen"), role: .cancel) {}
+        } message: {
+            Text(Loc.t("Die Audiodatei wird vom Gerät entfernt. Das lässt sich nicht rückgängig machen."))
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -379,6 +452,62 @@ private struct MobileTranscriptView: View {
                 if let file = exportFile() {
                     ShareLink(item: file) { Image(systemName: "square.and.arrow.up") }
                 }
+            }
+        }
+    }
+
+    /// Umbenennen und Löschen sichtbar am Ende der Ansicht. Beides geht auch per
+    /// Wischen in der Liste — aber eine Geste, die man nicht kennt, ist keine
+    /// Funktion, die man hat.
+    @ViewBuilder
+    private var verwaltung: some View {
+        if isOwn, job.isFinished {
+            Divider().padding(.vertical, 4)
+            HStack(spacing: 12) {
+                Button {
+                    newName = job.url.deletingPathExtension().lastPathComponent
+                    renaming = true
+                } label: {
+                    Label(Loc.t("Umbenennen"), systemImage: "pencil")
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Label(Loc.t("Löschen"), systemImage: "trash")
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+
+                Spacer(minLength: 0)
+            }
+            .font(.subheadline)
+        }
+    }
+
+    /// Angebot, das Protokoll nachzureichen — der Text ist ja schon gerechnet.
+    /// Steht hier und nicht in der Liste, weil hier entsteht, was einem fehlt:
+    /// Man liest das Transkript und hätte gern die Kurzfassung.
+    @ViewBuilder
+    private var minutesInvitation: some View {
+        if case .formatting(let fraction) = job.state {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Loc.t("Protokoll wird erstellt …")).font(.footnote)
+                ProgressView(value: fraction).tint(Color.shoutLive)
+            }
+        } else if job.canAddMinutes {
+            VStack(alignment: .leading, spacing: 6) {
+                Button { queue.addMinutes(to: job) } label: {
+                    Label(Loc.t("Protokoll erstellen"), systemImage: "doc.text.magnifyingglass")
+                        .font(.subheadline.weight(.medium))
+                }
+                .buttonStyle(.bordered)
+                .tint(Color.shoutLive)
+                .disabled(!formatterReady)
+
+                Text(formatterReady
+                     ? Loc.t("Zusammenfassung und Kernpunkte aus diesem Text — die Datei wird dafür nicht noch einmal transkribiert.")
+                     : Loc.t("Das Modell zum Aufbereiten ist noch nicht geladen. Bis dahin kommt das Rohtranskript."))
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }

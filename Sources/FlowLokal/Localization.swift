@@ -561,8 +561,12 @@ final class Loc: ObservableObject {
         "Name": "Name",
         "Sichern": "Save",
         "Später": "Later",
+        "Zusammenfassung und Kernpunkte aus diesem Text — die Datei wird dafür nicht noch einmal transkribiert.": "A summary and key points from this text — the file is not transcribed again for this.",
         "Umbenennen": "Rename",
         "Entfernen": "Remove",
+        "Aufnahme löschen": "Delete the recording",
+        "Aufnahme löschen?": "Delete the recording?",
+        "Die Audiodatei wird vom Gerät entfernt. Das lässt sich nicht rückgängig machen.": "The audio file is removed from the device. This cannot be undone.",
         "Zu wenig Speicher für die Sprechertrennung — der Text ist trotzdem vollständig.": "Not enough memory to separate speakers — the text is complete nonetheless.",
 
         // MARK: - Ergebnisfenster

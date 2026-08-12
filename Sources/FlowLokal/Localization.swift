@@ -556,6 +556,13 @@ final class Loc: ObservableObject {
         "Kurz vorweg": "One thing first",
         "Ein Gespräch mitzuschneiden ist ohne Einverständnis der anderen Beteiligten in Deutschland und Österreich strafbar. Frag kurz, bevor du aufnimmst.": "In Germany and Austria, recording a conversation without the consent of everyone involved is a criminal offence. Ask before you hit record.",
         "Verstanden": "Got it",
+        "Wie soll die Aufnahme heißen?": "What should the recording be called?",
+        "Du kannst sie auch später in der Liste umbenennen.": "You can also rename it later in the list.",
+        "Name": "Name",
+        "Sichern": "Save",
+        "Später": "Later",
+        "Umbenennen": "Rename",
+        "Entfernen": "Remove",
         "Zu wenig Speicher für die Sprechertrennung — der Text ist trotzdem vollständig.": "Not enough memory to separate speakers — the text is complete nonetheless.",
 
         // MARK: - Ergebnisfenster

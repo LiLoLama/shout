@@ -17,6 +17,10 @@ struct MeetingRecordView: View {
     @AppStorage("meetingLegalHintShown") private var hintShown = false
     @State private var showHint = false
     @State private var error: String?
+    /// Fertige Aufnahme, die noch auf ihren Namen wartet.
+    @State private var finished: URL?
+    @State private var naming = false
+    @State private var name = ""
 
     var body: some View {
         NavigationStack {
@@ -71,6 +75,18 @@ struct MeetingRecordView: View {
             } message: {
                 Text(Loc.t("Ein Gespräch mitzuschneiden ist ohne Einverständnis der anderen Beteiligten in Deutschland und Österreich strafbar. Frag kurz, bevor du aufnimmst."))
             }
+            // Der Name fällt direkt nach dem Stoppen — da weiß man noch, worum es
+            // ging. „Meeting 2026-08-12 09-15" findet später niemand wieder.
+            // Eigener Schalter statt `finished != nil`: Sonst liefe beim Tippen auf
+            // „Sichern" auch der Setter der Bindung, und ob er vor oder nach der
+            // Aktion des Knopfes dran ist, garantiert SwiftUI nicht.
+            .alert(Loc.t("Wie soll die Aufnahme heißen?"), isPresented: $naming) {
+                TextField(Loc.t("Name"), text: $name)
+                Button(Loc.t("Sichern")) { hand(over: true) }
+                Button(Loc.t("Später"), role: .cancel) { hand(over: false) }
+            } message: {
+                Text(Loc.t("Du kannst sie auch später in der Liste umbenennen."))
+            }
         }
     }
 
@@ -111,8 +127,9 @@ struct MeetingRecordView: View {
 
             Button {
                 guard let url = recorder.stop() else { dismiss(); return }
-                onFinished(url)
-                dismiss()
+                name = url.deletingPathExtension().lastPathComponent
+                finished = url
+                naming = true
             } label: {
                 Image(systemName: "stop.fill")
                     .font(.title)
@@ -124,6 +141,16 @@ struct MeetingRecordView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
+    }
+
+    /// Gibt die fertige Aufnahme weiter — mit oder ohne neuen Namen. Der Weg aus
+    /// diesem Fenster führt IMMER hier durch, auch wenn der Name übersprungen wird:
+    /// Eine Aufnahme, die niemand übernimmt, wäre verloren.
+    private func hand(over rename: Bool) {
+        guard let url = finished else { dismiss(); return }
+        finished = nil
+        onFinished(rename ? MeetingRecorder.rename(url, to: name) : url)
+        dismiss()
     }
 
     private func begin() {

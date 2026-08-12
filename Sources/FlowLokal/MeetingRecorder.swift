@@ -82,6 +82,66 @@ final class MeetingRecorder: ObservableObject {
         return "Meeting \(formatter.string(from: date)).m4a"
     }
 
+    // MARK: - Umbenennen
+
+    /// Benennt einen Mitschnitt um und nimmt das gesicherte Transkript mit.
+    /// Gibt die neue Adresse zurück — oder die alte, wenn nichts zu tun war oder
+    /// das Umbenennen scheiterte. Der Aufrufer arbeitet also immer mit einer
+    /// gültigen Datei weiter.
+    @discardableResult
+    static func rename(_ url: URL, to raw: String) -> URL {
+        guard isOwnRecording(url), let name = safeName(raw) else { return url }
+        let directory = url.deletingLastPathComponent()
+        let ext = url.pathExtension
+        // Unveränderter Name ZUERST, vor der Suche nach einem freien Platz: Sonst
+        // schöbe die Suche an der Datei selbst vorbei und machte aus „Kickoff"
+        // beim zweiten Bestätigen „Kickoff 2".
+        guard directory.appendingPathComponent(name).appendingPathExtension(ext) != url else {
+            return url
+        }
+        let target = freeTarget(in: directory, name: name, extension: ext)
+
+        do {
+            try FileManager.default.moveItem(at: url, to: target)
+        } catch {
+            NSLog("shout: Mitschnitt konnte nicht umbenannt werden: \(error)")
+            return url
+        }
+        // Erst nach der Audiodatei: Bleibt die Ablage liegen, wäre das Transkript
+        // verwaist — andersherum stünde es neben einer Datei, die es nicht gibt.
+        try? FileManager.default.moveItem(at: TranscriptStore.sidecar(for: url),
+                                          to: TranscriptStore.sidecar(for: target))
+        return target
+    }
+
+    /// Freier Platz für den Namen: „Kickoff", sonst „Kickoff 2", „Kickoff 3" …
+    /// Zwei Meetings am selben Tag dürfen sich nicht gegenseitig überschreiben.
+    static func freeTarget(in directory: URL, name: String, extension ext: String) -> URL {
+        let candidate = { (base: String) in
+            directory.appendingPathComponent(base).appendingPathExtension(ext)
+        }
+        var target = candidate(name)
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: target.path) {
+            target = candidate("\(name) \(suffix)")
+            suffix += 1
+        }
+        return target
+    }
+
+    /// Macht aus einer Eingabe einen brauchbaren Dateinamen: keine Schrägstriche
+    /// und Doppelpunkte (die zerlegen Pfade), kein führender Punkt (das wäre eine
+    /// versteckte Datei) und nicht endlos lang.
+    static func safeName(_ raw: String) -> String? {
+        var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        for zeichen in ["/", ":", "\\"] {
+            name = name.replacingOccurrences(of: zeichen, with: "-")
+        }
+        while name.hasPrefix(".") { name.removeFirst() }
+        name = String(name.prefix(80)).trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? nil : name
+    }
+
     // MARK: - Steuerung
 
     @discardableResult

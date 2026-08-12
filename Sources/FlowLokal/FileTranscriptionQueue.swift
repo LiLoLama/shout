@@ -53,7 +53,9 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
     }
 
     let id = UUID()
-    let url: URL
+    /// Änderbar, weil ein Mitschnitt umbenannt werden kann; die Identität des
+    /// Auftrags hängt an der `id`, nicht am Dateinamen.
+    @Published fileprivate(set) var url: URL
 
     /// Wird beim Anlegen aus den Einstellungen gefüllt und vor dem Start noch
     /// einmal überschrieben, wenn der Nutzer selbst entscheidet.
@@ -201,6 +203,13 @@ final class FileTranscriptionQueue: ObservableObject {
         let fresh = urls.filter { !known.contains($0) }
         guard !fresh.isEmpty else { return }
         add(fresh, start: false)
+    }
+
+    /// Benennt einen Mitschnitt um. Nur solange nichts läuft: Der Decoder liest die
+    /// Datei gerade, und ein wandernder Name wäre unnötiges Risiko für nichts.
+    func rename(_ job: FileTranscriptionJob, to name: String) {
+        guard job.isFinished else { return }
+        job.url = MeetingRecorder.rename(job.url, to: name)
     }
 
     /// Startet einen wartenden Auftrag mit den gewählten Einstellungen.

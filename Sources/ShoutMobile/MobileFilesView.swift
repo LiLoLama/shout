@@ -18,6 +18,10 @@ struct MobileFilesView: View {
     @State private var recording = false
     /// Auftrag, für den gerade die Entscheidung ansteht.
     @State private var choosing: FileTranscriptionJob?
+    /// Auftrag, der gerade umbenannt wird, und der neue Name.
+    @State private var renaming: FileTranscriptionJob?
+    @State private var showRename = false
+    @State private var newName = ""
 
     var body: some View {
         NavigationStack {
@@ -62,6 +66,16 @@ struct MobileFilesView: View {
                 ProcessingChoiceView(job: job, formatterReady: engine.formatterReady) { options in
                     queue.start(job, options: options)
                 }
+            }
+            // Eigener Schalter statt `renaming != nil`: Sonst räumte der Setter der
+            // Bindung den Auftrag womöglich weg, bevor der Knopf ihn liest.
+            .alert(Loc.t("Wie soll die Aufnahme heißen?"), isPresented: $showRename) {
+                TextField(Loc.t("Name"), text: $newName)
+                Button(Loc.t("Sichern")) {
+                    if let job = renaming { queue.rename(job, to: newName) }
+                    renaming = nil
+                }
+                Button(Loc.t("Abbrechen"), role: .cancel) { renaming = nil }
             }
             .alert(Loc.t("Datei konnte nicht geöffnet werden"),
                    isPresented: .init(get: { pickerError != nil },
@@ -124,11 +138,25 @@ struct MobileFilesView: View {
                 MobileJobRow(job: job,
                              onChoose: { choosing = job },
                              onCancel: { queue.cancel(job) })
-            }
-            .onDelete { indexSet in
-                for index in indexSet where index < queue.jobs.count {
-                    queue.remove(queue.jobs[index])
-                }
+                    // Statt `.onDelete`: Umbenennen gehört an dieselbe Geste, und
+                    // beides zusammen geht nur über `swipeActions`.
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            queue.remove(job)
+                        } label: {
+                            Label(Loc.t("Entfernen"), systemImage: "trash")
+                        }
+                        if MeetingRecorder.isOwnRecording(job.url), job.isFinished {
+                            Button {
+                                newName = job.url.deletingPathExtension().lastPathComponent
+                                renaming = job
+                                showRename = true
+                            } label: {
+                                Label(Loc.t("Umbenennen"), systemImage: "pencil")
+                            }
+                            .tint(.gray)
+                        }
+                    }
             }
         }
     }

@@ -277,6 +277,8 @@ targets:
       - path: Sources/FlowLokal/SpeakerAssignment.swift
       - path: Sources/FlowLokal/MediaDecoder.swift
       - path: Sources/FlowLokal/TranscriptStore.swift
+      - path: Sources/FlowLokal/MeetingRecorder.swift
+      - path: Sources/FlowLokal/StoreIO.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

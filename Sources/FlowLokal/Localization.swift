@@ -546,9 +546,14 @@ final class Loc: ObservableObject {
         "Zum Beispiel per AirDrop an den Rechner — dort geht die Verarbeitung deutlich schneller. Die Aufnahme bleibt hier trotzdem liegen.": "By AirDrop to your computer, for instance — processing is considerably faster there. The recording stays here either way.",
         "Später entscheiden": "Decide later",
 
-        // MARK: - Meeting-Mitschnitt (iOS)
+        // MARK: - Meeting-Mitschnitt
 
         "Meeting aufnehmen": "Record a meeting",
+        "Aufnehmen": "Record",
+        "Pause": "Pause",
+        "Fortsetzen": "Resume",
+        "Stoppen": "Stop",
+        "Nimmt über das Mikrofon auf und legt die Aufnahme danach als Auftrag ab. Was damit passiert, entscheidest du dort.": "Records through the microphone and files the recording as a job afterwards. What happens with it is decided there.",
         "Handy auf den Tisch legen und antippen": "Put the phone on the table and tap",
         "Die Aufnahme läuft weiter, wenn der Bildschirm aus ist. Was danach damit passiert, entscheidest du selbst.": "Recording continues with the screen off. What happens with it afterwards is up to you.",
         "Nimmt auf …": "Recording…",

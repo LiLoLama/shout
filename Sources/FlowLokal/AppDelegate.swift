@@ -43,6 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let recIndicator = RecordingIndicator()
     private let sounds = SoundCues()
 
+    /// Mitschnitt einer Besprechung über das Mikrofon. Gehört dem Delegate und
+    /// nicht der Ansicht, damit eine laufende Aufnahme das Schließen des
+    /// Dashboard-Fensters übersteht.
+    private let meetingRecorder = MeetingRecorder()
+
     /// Datei-Transkription: eigene Warteschlange, teilt sich Modelle und Wörterbuch
     /// mit dem Diktat. Serialisiert wird über den Transcriber-actor.
     private lazy var fileQueue = FileTranscriptionQueue(
@@ -563,6 +568,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
                 onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
                 files: fileQueue,
+                meetingRecorder: meetingRecorder,
                 onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
                 onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
                 updates: updateBridge

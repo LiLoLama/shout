@@ -5,6 +5,9 @@ import UniformTypeIdentifiers
 /// „Dateien" — fertige Audio- und Videodateien lokal transkribieren.
 struct FilesView: View {
     @ObservedObject var queue: FileTranscriptionQueue
+    /// Mitschnitt einer Besprechung. Gehört dem AppDelegate, nicht dieser Ansicht —
+    /// eine laufende Aufnahme muss das Schließen des Fensters überstehen.
+    @ObservedObject var recorder: MeetingRecorder
     /// Ist das Transkriptions-Modell geladen? Ohne Modell wäre jeder Knopf hier
     /// eine Lüge, deshalb steht dann nur ein Hinweis da.
     let modelReady: Bool
@@ -24,6 +27,14 @@ struct FilesView: View {
     /// niemand ungefragt bezahlen, der nur ein Transkript will.
     @AppStorage("fileDiarizationEnabled") private var diarization = false
     @State private var isTargeted = false
+    /// Einmaliger Hinweis auf die Rechtslage vor dem ersten Mitschnitt.
+    @AppStorage("meetingLegalHintShown") private var legalHintShown = false
+    @State private var showLegalHint = false
+    @State private var recorderError: String?
+    /// Fertige Aufnahme, die noch auf ihren Namen wartet.
+    @State private var finished: URL?
+    @State private var naming = false
+    @State private var name = ""
 
     var body: some View {
         ScrollView {
@@ -33,6 +44,7 @@ struct FilesView: View {
                     .foregroundStyle(Color(white: 0.92))
 
                 if modelReady {
+                    meetingPanel
                     dropZone
                     optionsPanel
                     if !queue.jobs.isEmpty { jobsPanel }
@@ -55,6 +67,116 @@ struct FilesView: View {
         }
         .background(Color.shoutWindow)
         .scrollContentBackground(.hidden)
+        // Liegengebliebene Mitschnitte zurück in die Liste — sonst wäre eine
+        // Aufnahme nach einem Neustart der App unauffindbar.
+        .task {
+            guard !recorder.isRecording else { return }
+            queue.restore(MeetingRecorder.existingRecordings())
+        }
+        .alert(Loc.t("Kurz vorweg"), isPresented: $showLegalHint) {
+            Button(Loc.t("Verstanden")) { legalHintShown = true; beginRecording() }
+            Button(Loc.t("Abbrechen"), role: .cancel) {}
+        } message: {
+            Text(Loc.t("Ein Gespräch mitzuschneiden ist ohne Einverständnis der anderen Beteiligten in Deutschland und Österreich strafbar. Frag kurz, bevor du aufnimmst."))
+        }
+        // Der Name fällt direkt nach dem Stoppen — da weiß man noch, worum es ging.
+        .alert(Loc.t("Wie soll die Aufnahme heißen?"), isPresented: $naming) {
+            TextField(Loc.t("Name"), text: $name)
+            Button(Loc.t("Sichern")) { hand(over: true) }
+            Button(Loc.t("Später"), role: .cancel) { hand(over: false) }
+        } message: {
+            Text(Loc.t("Du kannst sie auch später in der Liste umbenennen."))
+        }
+    }
+
+    // MARK: - Mitschnitt
+
+    /// Läuft nichts, steht hier der Aufnahme-Knopf; läuft etwas, dieselbe Fläche mit
+    /// Zeit, Pegel und den Knöpfen. Bewusst kein eigenes Fenster: Eine laufende
+    /// Aufnahme soll man sehen, wo man sie gestartet hat.
+    @ViewBuilder
+    private var meetingPanel: some View {
+        ConsolePanel {
+            if recorder.isRecording {
+                HStack(spacing: 14) {
+                    Text(Self.clock(recorder.duration))
+                        .font(.system(size: 26, weight: .light, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(Color(white: recorder.isPaused ? 0.55 : 0.92))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(recorder.isPaused ? Loc.t("Pausiert") : Loc.t("Nimmt auf …"))
+                            .font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.white.opacity(0.12))
+                                Capsule().fill(Color.shoutLive)
+                                    .frame(width: geo.size.width * CGFloat(recorder.isPaused ? 0 : recorder.level))
+                                    .animation(.linear(duration: 0.1), value: recorder.level)
+                            }
+                        }
+                        .frame(height: 4)
+                    }
+                    Button(recorder.isPaused ? Loc.t("Fortsetzen") : Loc.t("Pause")) {
+                        recorder.isPaused ? recorder.resume() : recorder.pause()
+                    }
+                    .buttonStyle(ConsoleButtonStyle())
+                    Button(Loc.t("Stoppen")) { stopRecording() }
+                        .buttonStyle(ConsoleButtonStyle())
+                }
+                .padding(15)
+            } else {
+                HStack(spacing: 14) {
+                    Image(systemName: "record.circle")
+                        .font(.system(size: 22)).foregroundStyle(Color.shoutLive)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(Loc.t("Meeting aufnehmen"))
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(white: 0.9))
+                        Text(recorderError ?? Loc.t("Nimmt über das Mikrofon auf und legt die Aufnahme danach als Auftrag ab. Was damit passiert, entscheidest du dort."))
+                            .font(.system(size: 11))
+                            .foregroundStyle(recorderError == nil ? Color(white: 0.5) : Color(red: 0.95, green: 0.7, blue: 0.2))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Button(Loc.t("Aufnehmen")) {
+                        recorderError = nil
+                        legalHintShown ? beginRecording() : (showLegalHint = true)
+                    }
+                    .buttonStyle(ConsoleButtonStyle())
+                }
+                .padding(15)
+            }
+        }
+    }
+
+    private func beginRecording() {
+        do { try recorder.start() } catch { recorderError = error.localizedDescription }
+    }
+
+    private func stopRecording() {
+        guard let url = recorder.stop() else { return }
+        name = url.deletingPathExtension().lastPathComponent
+        finished = url
+        naming = true
+    }
+
+    /// Übergibt die fertige Aufnahme an die Warteschlange — mit oder ohne neuen
+    /// Namen. Dieser Weg wird IMMER durchlaufen: Eine Aufnahme, die niemand
+    /// übernimmt, wäre verloren.
+    private func hand(over rename: Bool) {
+        guard let url = finished else { return }
+        finished = nil
+        // Am Mac startet die Verarbeitung sofort — anders als am iPhone. Dort fällt
+        // die Entscheidung nachträglich, weil eine Stunde Rechnen auf dem Telefon
+        // teuer ist; hier stehen die Schalter sichtbar über dem Knopf, die Frage ist
+        // also schon beantwortet, bevor die Aufnahme beginnt.
+        queue.add([rename ? MeetingRecorder.rename(url, to: name) : url])
+    }
+
+    /// „1:02:44" bzw. „7:31" — ohne führende Stunde, solange keine gebraucht wird.
+    private static func clock(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        return total >= 3600
+            ? String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+            : String(format: "%d:%02d", total / 60, total % 60)
     }
 
     // MARK: - Ablagefläche

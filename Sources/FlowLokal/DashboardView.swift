@@ -47,6 +47,7 @@ struct DashboardView: View {
     var onPillPositionChanged: () -> Void = {}
     /// Warteschlange der Datei-Transkriptionen (vom AppDelegate durchgereicht).
     @ObservedObject var files: FileTranscriptionQueue
+    @ObservedObject var meetingRecorder: MeetingRecorder
     /// Öffnet bzw. schließt das Ergebnisfenster eines Auftrags. Die Fenster liegen
     /// beim AppDelegate, weil sie das Dashboard überdauern können.
     var onOpenResult: (FileTranscriptionJob) -> Void = { _ in }
@@ -162,7 +163,8 @@ struct DashboardView: View {
                          onPersistentPillChanged: onPersistentPillChanged,
                          onPillPositionChanged: onPillPositionChanged)
         case .dateien:
-            FilesView(queue: files, modelReady: model.transcriberReady,
+            FilesView(queue: files, recorder: meetingRecorder,
+                      modelReady: model.transcriberReady,
                       formatterReady: model.formatterReady,
                       onOpenResult: onOpenResult, onCloseResult: onCloseResult)
         case .woerterbuch:

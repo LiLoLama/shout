@@ -5,7 +5,7 @@ import Foundation
 /// Bewusst ein eigener Typ statt WhisperKits `TranscriptionSegment`: So kommen
 /// `SubtitleWriter` und die Tests ohne den Modell-Stack aus, und die Zeitmarken
 /// lassen sich beim blockweisen Lesen verschieben, ohne WhisperKit-Typen zu kopieren.
-struct TranscriptSegment: Sendable, Equatable {
+struct TranscriptSegment: Sendable, Equatable, Codable {
     let text: String
     let start: Double
     let end: Double

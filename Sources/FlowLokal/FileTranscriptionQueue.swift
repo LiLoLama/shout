@@ -98,6 +98,23 @@ final class FileTranscriptionJob: ObservableObject, Identifiable {
         Loc.f("Sprecher %d", number)
     }
 
+    /// Zustand zum Sichern.
+    var snapshot: StoredTranscript {
+        StoredTranscript(rawText: rawText, formattedText: formattedText,
+                         segments: segments, duration: duration, speakerNote: speakerNote)
+    }
+
+    /// Übernimmt ein gesichertes Ergebnis. Der Auftrag ist damit fertig — er wurde
+    /// ja schon einmal gerechnet.
+    func apply(_ stored: StoredTranscript) {
+        rawText = stored.rawText
+        formattedText = stored.formattedText
+        segments = stored.segments
+        duration = stored.duration
+        speakerNote = stored.speakerNote
+        state = .done
+    }
+
     /// Bricht den Auftrag ab und verwirft das Teilergebnis. Ein halbes Transkript
     /// anzuzeigen wäre eine Falle: Es sieht aus wie ein fertiges und ließe sich
     /// genauso sichern.
@@ -162,8 +179,13 @@ final class FileTranscriptionQueue: ObservableObject {
         for url in urls {
             let job = FileTranscriptionJob(url: url)
             if !start {
-                job.state = .unprocessed
-                probeDuration(job)
+                // Schon einmal verarbeitet? Dann steht das Ergebnis daneben.
+                if let stored = TranscriptStore.load(for: url) {
+                    job.apply(stored)
+                } else {
+                    job.state = .unprocessed
+                    probeDuration(job)
+                }
             }
             jobs.append(job)
             if start, selectedJobID == nil { selectedJobID = job.id }
@@ -221,6 +243,7 @@ final class FileTranscriptionQueue: ObservableObject {
         // einem Neustart wieder in der Liste auf und sammelten sich sonst
         // unsichtbar an. Ausgewählte Dateien gehören dem Nutzer — Finger weg.
         if MeetingRecorder.isOwnRecording(job.url) {
+            TranscriptStore.remove(for: job.url)
             try? FileManager.default.removeItem(at: job.url)
         }
     }
@@ -301,7 +324,7 @@ final class FileTranscriptionQueue: ObservableObject {
         if cancelled.contains(job.id) { job.markCancelled(); return }
 
         guard !collected.isEmpty else {
-            job.state = .done
+            finish(job)
             return
         }
 
@@ -332,7 +355,7 @@ final class FileTranscriptionQueue: ObservableObject {
         if cancelled.contains(job.id) { job.markCancelled(); return }
 
         guard !job.rawText.isEmpty else {
-            job.state = .done
+            finish(job)
             return
         }
 
@@ -361,8 +384,17 @@ final class FileTranscriptionQueue: ObservableObject {
             if let document { job.formattedText = document }
         }
 
-        job.state = .done
+        finish(job)
         if selectedJobID == nil { selectedJobID = job.id }
+    }
+
+    /// Auftrag fertig — und bei einem eigenen Mitschnitt das Ergebnis daneben legen.
+    /// Ohne das wäre nach einem Neustart der App die Aufnahme zwar noch da, die
+    /// gerechnete Stunde aber weg.
+    private func finish(_ job: FileTranscriptionJob) {
+        job.state = .done
+        guard MeetingRecorder.isOwnRecording(job.url) else { return }
+        TranscriptStore.save(job.snapshot, for: job.url)
     }
 
     /// Übersetzt die Decoder-Fehler. Hier statt im `MediaDecoder`, weil `Loc` an den

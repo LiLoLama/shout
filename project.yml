@@ -158,6 +158,7 @@ targets:
           - SubtitleWriter.swift
           - TranscriptExport.swift
           - FileTranscriptionQueue.swift
+          - TranscriptStore.swift
           - MeetingRecorder.swift
           - SpeakerAssignment.swift
           - SpeakerSeparator.swift
@@ -275,6 +276,7 @@ targets:
       - path: Sources/FlowLokal/TranscriptMinutes.swift
       - path: Sources/FlowLokal/SpeakerAssignment.swift
       - path: Sources/FlowLokal/MediaDecoder.swift
+      - path: Sources/FlowLokal/TranscriptStore.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

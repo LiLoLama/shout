@@ -529,7 +529,7 @@ final class Loc: ObservableObject {
         "MP3, M4A, WAV, MP4, MOV und alles, was iOS abspielen kann": "MP3, M4A, WAV, MP4, MOV and anything iOS can play",
         "Zum Transkribieren wird das Sprachmodell gebraucht. Lade es in den Einstellungen — danach geht es hier weiter.": "Transcribing needs the speech model. Download it in the settings — then come back here.",
         "Das Modell zum Aufbereiten ist noch nicht geladen. Bis dahin kommt das Rohtranskript.": "The clean-up model is not loaded yet. Until then you get the raw transcript.",
-        "Alles läuft auf diesem Gerät — nichts wird hochgeladen. Aufnahmen bleiben liegen, bis du sie hier entfernst.": "Everything runs on this device — nothing is uploaded. Recordings stay until you remove them here.",
+        "Alles läuft auf diesem Gerät — nichts wird hochgeladen. Aufnahmen und fertige Transkripte bleiben liegen, bis du sie hier entfernst.": "Everything runs on this device — nothing is uploaded. Recordings and finished transcripts stay until you remove them here.",
         "Datei konnte nicht geöffnet werden": "The file could not be opened",
         "OK": "OK",
         "Protokoll wird erstellt …": "Creating minutes…",

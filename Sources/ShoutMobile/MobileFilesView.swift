@@ -34,7 +34,7 @@ struct MobileFilesView: View {
                 }
 
                 Section {
-                    Text(Loc.t("Alles läuft auf diesem Gerät — nichts wird hochgeladen. Aufnahmen bleiben liegen, bis du sie hier entfernst."))
+                    Text(Loc.t("Alles läuft auf diesem Gerät — nichts wird hochgeladen. Aufnahmen und fertige Transkripte bleiben liegen, bis du sie hier entfernst."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

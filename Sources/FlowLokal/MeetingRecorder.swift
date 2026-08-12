@@ -1,6 +1,14 @@
 import AVFoundation
 import Foundation
 
+/// Woher der Ton kommt. Am iPhone gibt es nur das Mikrofon — iOS lässt Apps nicht
+/// an den Ton anderer Apps.
+enum MeetingSource: String, CaseIterable, Sendable {
+    case microphone
+    case systemAudio
+    case both
+}
+
 /// Nimmt ein Meeting auf und schreibt es **direkt in eine Datei**.
 ///
 /// Bewusst getrennt vom `AudioRecorder`: Der ist fürs Diktat gebaut — er sammelt
@@ -16,6 +24,11 @@ import Foundation
 final class MeetingRecorder: ObservableObject {
 
     @Published private(set) var isRecording = false
+    /// Läuft der Mitschnitt, ohne dass je ein Ton ankam? Bei Systemton heißt das
+    /// fast immer: Die Erlaubnis zur Tonaufnahme fehlt. macOS meldet das nicht —
+    /// der Tap liefert einfach Nullen, und ohne diesen Hinweis stünde man nach
+    /// einer Stunde vor einer stummen Datei.
+    @Published private(set) var noSignal = false
     @Published private(set) var isPaused = false
     /// Aufgenommene Zeit in Sekunden, aus den geschriebenen Frames gerechnet und
     /// nicht aus der Uhr — so zählt eine Pause exakt nicht mit.
@@ -31,6 +44,15 @@ final class MeetingRecorder: ObservableObject {
     private let writeQueue = DispatchQueue(label: "shout.meeting.write", qos: .utility)
     private var framesWritten: AVAudioFramePosition = 0
     private var paused = false
+    /// Wurde seit dem Start überhaupt ein Ausschlag gemessen?
+    private var sawSignal = false
+
+    #if os(macOS)
+    private var tap: Any?
+    /// Wandelt die Mono-Samples des Taps ins Dateiformat.
+    private var tapConverter: AVAudioConverter?
+    private var tapFormat: AVAudioFormat?
+    #endif
 
     private static let sampleRate = 16_000.0
 
@@ -145,7 +167,7 @@ final class MeetingRecorder: ObservableObject {
     // MARK: - Steuerung
 
     @discardableResult
-    func start() throws -> URL {
+    func start(source: MeetingSource = .microphone) throws -> URL {
         guard !isRecording else { throw MeetingRecorderError.alreadyRunning }
 
         #if os(iOS)
@@ -165,15 +187,9 @@ final class MeetingRecorder: ObservableObject {
             AVEncoderBitRateKey: 32_000,
         ]
         let audioFile = try AVAudioFile(forWriting: target, settings: settings)
-
-        let input = engine.inputNode
-        let inputFormat = input.inputFormat(forBus: 0)
         // Das Zielformat kommt von der Datei selbst — so passt die Umrechnung
         // garantiert zu dem, was write(from:) erwartet.
         let writeFormat = audioFile.processingFormat
-        guard let converter = AVAudioConverter(from: inputFormat, to: writeFormat) else {
-            throw MeetingRecorderError.converterFailed
-        }
 
         file = audioFile
         url = target
@@ -181,18 +197,80 @@ final class MeetingRecorder: ObservableObject {
         paused = false
         duration = 0
         level = 0
+        sawSignal = false
+        noSignal = false
 
-        input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat) { [weak self] buffer, _ in
-            self?.handle(buffer, converter: converter, format: writeFormat)
+        do {
+            switch source {
+            case .microphone:
+                try startMicrophone(writeFormat: writeFormat)
+            case .systemAudio, .both:
+                try startSystemAudio(includeMicrophone: source == .both, writeFormat: writeFormat)
+            }
+        } catch {
+            // Angefangene Datei nicht liegen lassen, sonst taucht ein leerer
+            // Mitschnitt in der Liste auf.
+            file = nil
+            url = nil
+            try? FileManager.default.removeItem(at: target)
+            throw error
         }
-
-        engine.prepare()
-        try engine.start()
 
         isRecording = true
         isPaused = false
         observeInterruptions()
+        watchForSilence()
         return target
+    }
+
+    private func startMicrophone(writeFormat: AVAudioFormat) throws {
+        let input = engine.inputNode
+        let inputFormat = input.inputFormat(forBus: 0)
+        guard let converter = AVAudioConverter(from: inputFormat, to: writeFormat) else {
+            throw MeetingRecorderError.converterFailed
+        }
+        input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat) { [weak self] buffer, _ in
+            self?.handle(buffer, converter: converter, format: writeFormat)
+        }
+        engine.prepare()
+        try engine.start()
+    }
+
+    #if os(macOS)
+    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat) throws {
+        guard #available(macOS 14.2, *) else { throw MeetingRecorderError.systemAudioUnsupported }
+        let capture = SystemAudioTap()
+        try capture.start(includeMicrophone: includeMicrophone) { [weak self] samples in
+            self?.handleTap(samples)
+        }
+        // Format erst NACH dem Start: Die Rate richtet sich nach dem Ausgabegerät.
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                         sampleRate: capture.sampleRate,
+                                         channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: format, to: writeFormat) else {
+            capture.stop()
+            throw MeetingRecorderError.converterFailed
+        }
+        tapFormat = format
+        tapConverter = converter
+        tap = capture
+    }
+    #else
+    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat) throws {
+        // iOS lässt Apps nicht an den Ton anderer Apps — es gibt keine API dafür.
+        throw MeetingRecorderError.systemAudioUnsupported
+    }
+    #endif
+
+    /// Meldet nach ein paar Sekunden, wenn nie ein Ausschlag kam. Bei Systemton
+    /// fehlt dann fast immer die Erlaubnis zur Tonaufnahme — macOS sagt das nicht,
+    /// der Tap liefert einfach Nullen.
+    private func watchForSilence() {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard let self, self.isRecording, !self.sawSignal else { return }
+            self.noSignal = true
+        }
     }
 
     func pause() {
@@ -238,6 +316,13 @@ final class MeetingRecorder: ObservableObject {
     private func teardown() {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        #if os(macOS)
+        if #available(macOS 14.2, *) { (tap as? SystemAudioTap)?.stop() }
+        tap = nil
+        tapConverter = nil
+        tapFormat = nil
+        #endif
+        noSignal = false
         isRecording = false
         isPaused = false
         paused = false
@@ -277,10 +362,47 @@ final class MeetingRecorder: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self, self.isRecording else { return }
             self.level = self.isPaused ? 0 : peak
+            if peak > 0.0001 { self.sawSignal = true; self.noSignal = false }
             guard !self.paused else { return }
             self.write(converted)
         }
     }
+
+    #if os(macOS)
+    /// Mono-Samples aus dem Systemton-Tap: in einen Puffer packen, umrechnen,
+    /// schreiben. Läuft auf dem Audio-Thread des Aggregats.
+    private nonisolated func handleTap(_ samples: [Float]) {
+        Task { @MainActor [weak self] in
+            guard let self, self.isRecording,
+                  let format = self.tapFormat, let converter = self.tapConverter,
+                  let source = AVAudioPCMBuffer(pcmFormat: format,
+                                                frameCapacity: AVAudioFrameCount(samples.count)),
+                  let channel = source.floatChannelData?[0] else { return }
+            samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+            source.frameLength = AVAudioFrameCount(samples.count)
+
+            let peak = Self.peak(of: source)
+            self.level = self.isPaused ? 0 : peak
+            if peak > 0.0001 { self.sawSignal = true; self.noSignal = false }
+            guard !self.paused else { return }
+
+            let ratio = converter.outputFormat.sampleRate / format.sampleRate
+            let capacity = AVAudioFrameCount(Double(samples.count) * ratio) + 1_024
+            guard let converted = AVAudioPCMBuffer(pcmFormat: converter.outputFormat,
+                                                   frameCapacity: capacity) else { return }
+            var delivered = false
+            var error: NSError?
+            converter.convert(to: converted, error: &error) { _, status in
+                if delivered { status.pointee = .noDataNow; return nil }
+                delivered = true
+                status.pointee = .haveData
+                return source
+            }
+            guard error == nil, converted.frameLength > 0 else { return }
+            self.write(converted)
+        }
+    }
+    #endif
 
     private func write(_ buffer: AVAudioPCMBuffer) {
         // Die Datei-Referenz HIER greifen, solange wir auf dem Main-Actor sind, und
@@ -343,11 +465,17 @@ final class MeetingRecorder: ObservableObject {
 enum MeetingRecorderError: LocalizedError {
     case alreadyRunning
     case converterFailed
+    case systemAudioUnsupported
+    case systemAudioFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .alreadyRunning: return "Es läuft bereits eine Aufnahme."
         case .converterFailed: return "Die Audio-Umrechnung konnte nicht aufgesetzt werden."
+        case .systemAudioUnsupported:
+            return "Den Systemton mitzuschneiden braucht macOS 14.2 oder neuer."
+        case .systemAudioFailed(let detail):
+            return "Der Systemton konnte nicht abgegriffen werden: \(detail)"
         }
     }
 }

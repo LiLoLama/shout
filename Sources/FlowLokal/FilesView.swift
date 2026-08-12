@@ -35,6 +35,8 @@ struct FilesView: View {
     @State private var finished: URL?
     @State private var naming = false
     @State private var name = ""
+    /// Zuletzt gewählte Tonquelle. Als roher Wert, damit @AppStorage sie sichern kann.
+    @AppStorage("meetingSource") private var source = MeetingSource.microphone.rawValue
 
     var body: some View {
         ScrollView {
@@ -123,6 +125,13 @@ struct FilesView: View {
                         .buttonStyle(ConsoleButtonStyle())
                 }
                 .padding(15)
+                if recorder.noSignal {
+                    Text(Loc.t("Es kommt kein Ton an. Beim Systemton fehlt dann meist die Erlaubnis: Systemeinstellungen → Datenschutz & Sicherheit → Tonaufnahme."))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(red: 0.95, green: 0.7, blue: 0.2))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 15).padding(.bottom, 12)
+                }
             } else {
                 HStack(spacing: 14) {
                     Image(systemName: "record.circle")
@@ -130,12 +139,18 @@ struct FilesView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(Loc.t("Meeting aufnehmen"))
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(white: 0.9))
-                        Text(recorderError ?? Loc.t("Nimmt über das Mikrofon auf und legt die Aufnahme danach als Auftrag ab. Was damit passiert, entscheidest du dort."))
+                        Text(recorderError ?? sourceHelp)
                             .font(.system(size: 11))
                             .foregroundStyle(recorderError == nil ? Color(white: 0.5) : Color(red: 0.95, green: 0.7, blue: 0.2))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
+                    Picker("", selection: $source) {
+                        Text(Loc.t("Mikrofon")).tag(MeetingSource.microphone.rawValue)
+                        Text(Loc.t("Systemton")).tag(MeetingSource.systemAudio.rawValue)
+                        Text(Loc.t("Beides")).tag(MeetingSource.both.rawValue)
+                    }
+                    .labelsHidden().pickerStyle(.menu).frame(width: 130)
                     Button(Loc.t("Aufnehmen")) {
                         recorderError = nil
                         legalHintShown ? beginRecording() : (showLegalHint = true)
@@ -147,8 +162,25 @@ struct FilesView: View {
         }
     }
 
+    /// Was die gewählte Quelle bedeutet — direkt unter dem Knopf, wo die
+    /// Entscheidung fällt.
+    private var sourceHelp: String {
+        switch MeetingSource(rawValue: source) ?? .microphone {
+        case .microphone:
+            return Loc.t("Nimmt über das Mikrofon auf — für Besprechungen im Raum.")
+        case .systemAudio:
+            return Loc.t("Nimmt den Ton anderer Programme auf — für Online-Meetings. Deine eigene Stimme ist dann NICHT dabei.")
+        case .both:
+            return Loc.t("Mikrofon und Ton anderer Programme zusammen — für Online-Meetings, bei denen du mitsprichst.")
+        }
+    }
+
     private func beginRecording() {
-        do { try recorder.start() } catch { recorderError = error.localizedDescription }
+        do {
+            try recorder.start(source: MeetingSource(rawValue: source) ?? .microphone)
+        } catch {
+            recorderError = error.localizedDescription
+        }
     }
 
     private func stopRecording() {

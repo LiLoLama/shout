@@ -78,6 +78,10 @@ targets:
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln."
         NSContactsUsageDescription: "shout. liest Namen aus deinen Kontakten nur lokal, um sie ins Wörterbuch zu übernehmen. Es werden keine Daten übertragen."
+        # Ohne diesen Schlüssel kann die App die Erlaubnis zum Mitschnitt des
+        # Systemtons nicht einmal anfragen — der Abgriff liefert dann stillschweigend
+        # Nullen statt eines Fehlers. Steht in keinem Xcode-Menü.
+        NSAudioCaptureUsageDescription: "shout. schneidet den Ton anderer Programme mit, um Online-Meetings lokal zu transkribieren. Nichts verlässt deinen Rechner."
         # Sparkle Auto-Update
         SUFeedURL: "https://raw.githubusercontent.com/LiLoLama/shout/main/appcast.xml"
         SUPublicEDKey: "K4fmCpqGG4t4iy6K9FkJqr0xLJddTyWtUBiKWWoxmMI="
@@ -278,6 +282,8 @@ targets:
       - path: Sources/FlowLokal/MediaDecoder.swift
       - path: Sources/FlowLokal/TranscriptStore.swift
       - path: Sources/FlowLokal/MeetingRecorder.swift
+      # Vom MeetingRecorder mitbenutzt; nur System-Frameworks, keine Pakete.
+      - path: Sources/FlowLokal/SystemAudioTap.swift
       - path: Sources/FlowLokal/StoreIO.swift
     settings:
       base:

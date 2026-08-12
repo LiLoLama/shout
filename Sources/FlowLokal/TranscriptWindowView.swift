@@ -14,14 +14,23 @@ struct TranscriptWindowView: View {
     private enum Fassung: Hashable { case protokoll, roh }
 
     @ObservedObject var job: FileTranscriptionJob
+    /// Für das nachgereichte Protokoll — es läuft über dieselbe Warteschlange wie
+    /// alles andere, damit sich nie zwei Läufe um das Modell streiten.
+    @ObservedObject var queue: FileTranscriptionQueue
+    /// Zustand beim Öffnen des Fensters. Ein Abbild reicht: Wer hier steht, hat
+    /// einen fertigen Auftrag vor sich — bis dahin ist das Modell längst geladen
+    /// oder es wurde nie eingeschaltet.
+    let formatterReady: Bool
     @ObservedObject private var loc = Loc.shared
 
     @State private var active: Fassung
     @State private var comparing = false
     @State private var status = ""
 
-    init(job: FileTranscriptionJob) {
+    init(job: FileTranscriptionJob, queue: FileTranscriptionQueue, formatterReady: Bool) {
         self.job = job
+        self.queue = queue
+        self.formatterReady = formatterReady
         // Ohne Aufbereitung gibt es nur den Rohtext — dann ist er auch die aktive Fassung.
         _active = State(initialValue: job.formattedText.isEmpty ? .roh : .protokoll)
     }
@@ -58,6 +67,12 @@ struct TranscriptWindowView: View {
             }
         }
         .id(loc.language)
+        // Kommt das Protokoll nachträglich, ist es auch das, was man sehen will —
+        // sonst bliebe das Fenster auf dem Rohtext stehen und der Knopf wirkte
+        // folgenlos.
+        .onChange(of: job.formattedText) { _, neu in
+            if !neu.isEmpty, active == .roh, !comparing { active = .protokoll }
+        }
         .background(Color.shoutWindow)
         .preferredColorScheme(.dark)
         .frame(minWidth: 620, minHeight: 420)
@@ -181,6 +196,7 @@ struct TranscriptWindowView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            minutesRow
             HStack(spacing: 10) {
                 Button(Loc.t("Kopieren")) {
                     NSPasteboard.general.clearContents()
@@ -203,6 +219,33 @@ struct TranscriptWindowView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 20).padding(.vertical, 14)
+    }
+
+    /// Nachgereichtes Protokoll. Steht über den Exportknöpfen, weil es den Inhalt
+    /// des Fensters ändert und nicht nur, wohin er geht.
+    @ViewBuilder
+    private var minutesRow: some View {
+        if case .formatting(let fraction) = job.state {
+            HStack(spacing: 10) {
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear).tint(Color.shoutLive).frame(width: 160)
+                Text(Loc.t("Protokoll wird erstellt …"))
+                    .font(.system(size: 11)).foregroundStyle(Color(white: 0.62))
+                Spacer()
+            }
+        } else if job.canAddMinutes {
+            HStack(spacing: 10) {
+                Button(Loc.t("Protokoll erstellen")) { queue.addMinutes(to: job) }
+                    .buttonStyle(ConsoleButtonStyle())
+                    .disabled(!formatterReady)
+                Text(formatterReady
+                     ? Loc.t("Zusammenfassung und Kernpunkte aus diesem Text — die Datei wird dafür nicht noch einmal transkribiert.")
+                     : Loc.t("Dafür wird das Modell zum Aufbereiten gebraucht. Lade es unter „Modelle“ herunter."))
+                    .font(.system(size: 11)).foregroundStyle(Color(white: 0.45))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+        }
     }
 
     // MARK: - Sichern

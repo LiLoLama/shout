@@ -170,7 +170,7 @@ internal sealed class FilesPage : PageBase, IRefreshablePage
             existing.Activate();
             return;
         }
-        var form = new TranscriptForm(job);
+        var form = new TranscriptForm(job, queue);
         form.FormClosed += (_, _) => windows.Remove(job.Id);
         windows[job.Id] = form;
         form.Show();

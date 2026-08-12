@@ -570,6 +570,16 @@ internal sealed class ConsoleSegmented : ThemedControl
 
     public string SelectedKey => options[selected].Key;
 
+    /// <summary>Setzt die Auswahl von außen, OHNE <see cref="Changed"/> zu feuern —
+    /// der Aufrufer weiß ja bereits, was er will.</summary>
+    public void Select(string key)
+    {
+        var index = Array.FindIndex(options, o => o.Key == key);
+        if (index < 0 || index == selected) return;
+        selected = index;
+        Invalidate();
+    }
+
     private int Measure()
     {
         var total = 4;   // 2 px Polsterung je Seite

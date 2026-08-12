@@ -16,21 +16,26 @@ internal sealed class TranscriptForm : Form
     private const string KeyRaw = "raw";
 
     private readonly FileTranscriptionJob job;
-    private readonly ConsoleSegmented? switcher;
+    private readonly FileTranscriptionQueue queue;
+    private readonly ConsoleSegmented switcher;
+    private readonly Label rawLabel;
     private readonly TextBox editor;
     private readonly TextBox comparison;
     private readonly ConsoleButton compareButton;
+    private readonly ConsoleButton minutesButton;
     private readonly Label status;
     private readonly Label header;
+    private readonly Action onQueueChanged;
 
     private string active;
     private bool comparing;
 
     private bool HasBoth => job.MinutesText.Length > 0 && job.RawText.Length > 0;
 
-    public TranscriptForm(FileTranscriptionJob job)
+    public TranscriptForm(FileTranscriptionJob job, FileTranscriptionQueue queue)
     {
         this.job = job;
+        this.queue = queue;
         // Ohne Protokoll gibt es nur den Rohtext — dann ist er auch die aktive Fassung.
         active = job.MinutesText.Length > 0 ? KeyMinutes : KeyRaw;
 
@@ -60,19 +65,23 @@ internal sealed class TranscriptForm : Form
             ApplyFassung();
         };
 
-        if (HasBoth)
+        // Umschalter IMMER anlegen und nur ein-/ausblenden: Kommt das Protokoll
+        // nachträglich, muss er auftauchen können, ohne das Fenster neu zu bauen.
+        switcher = new ConsoleSegmented(
+            new[] { (KeyMinutes, Loc.T("Protokoll")), (KeyRaw, Loc.T("Rohtext")) }, active);
+        switcher.Changed += key =>
         {
-            switcher = new ConsoleSegmented(
-                new[] { (KeyMinutes, Loc.T("Protokoll")), (KeyRaw, Loc.T("Rohtext")) }, active);
-            switcher.Changed += key =>
-            {
-                // Was der Nutzer geändert hat, gehört in den Auftrag zurück, BEVOR
-                // umgeschaltet wird — sonst ist die Bearbeitung weg.
-                StoreEdits();
-                active = key;
-                ApplyFassung();
-            };
-        }
+            // Was der Nutzer geändert hat, gehört in den Auftrag zurück, BEVOR
+            // umgeschaltet wird — sonst ist die Bearbeitung weg.
+            StoreEdits();
+            active = key;
+            ApplyFassung();
+        };
+        rawLabel = new Label
+        {
+            Text = Loc.T("Rohtext"), AutoSize = true, Font = Theme.SectionLabel,
+            ForeColor = Theme.Gray(0.45), Margin = new Padding(4, 8, 0, 0),
+        };
 
         status = new Label
         {
@@ -89,6 +98,9 @@ internal sealed class TranscriptForm : Form
         saveSubtitles.Click2 += SaveSubtitles;
         saveSubtitles.Enabled = job.Segments.Count > 0;
 
+        minutesButton = new ConsoleButton(Loc.T("Protokoll erstellen"));
+        minutesButton.Click2 += () => queue.AddMinutes(job);
+
         var footnote = new Label
         {
             Text = Loc.T("Untertitel folgen immer dem ursprünglichen Transkript — Änderungen in diesem Fenster wirken sich nicht auf die Zeitmarken aus."),
@@ -102,26 +114,16 @@ internal sealed class TranscriptForm : Form
             Dock = DockStyle.Bottom, Height = 44, BackColor = Theme.Window,
             Padding = new Padding(16, 8, 16, 8), WrapContents = false,
         };
-        buttons.Controls.AddRange(new Control[] { copy, saveText, saveSubtitles });
+        buttons.Controls.AddRange(new Control[] { copy, saveText, saveSubtitles, minutesButton });
 
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top, Height = 46, BackColor = Theme.Window,
             Padding = new Padding(16, 8, 16, 8), WrapContents = false,
         };
-        if (switcher != null)
-        {
-            toolbar.Controls.Add(switcher);
-            toolbar.Controls.Add(compareButton);
-        }
-        else
-        {
-            toolbar.Controls.Add(new Label
-            {
-                Text = Loc.T("Rohtext"), AutoSize = true, Font = Theme.SectionLabel,
-                ForeColor = Theme.Gray(0.45), Margin = new Padding(4, 8, 0, 0),
-            });
-        }
+        toolbar.Controls.Add(switcher);
+        toolbar.Controls.Add(compareButton);
+        toolbar.Controls.Add(rawLabel);
 
         var split = new TableLayoutPanel
         {
@@ -141,7 +143,44 @@ internal sealed class TranscriptForm : Form
         Controls.Add(status);
         Controls.Add(buttons);
 
+        // Die Warteschlange meldet sich vom Threadpool — auf den UI-Thread wechseln.
+        onQueueChanged = () =>
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            try { BeginInvoke(new Action(RefreshFromJob)); } catch (ObjectDisposedException) { }
+        };
+        queue.Changed += onQueueChanged;
+        FormClosed += (_, _) => queue.Changed -= onQueueChanged;
+
         ApplyFassung();
+        RefreshFromJob();
+    }
+
+    /// <summary>
+    /// Holt nach, was sich am Auftrag getan hat — im Wesentlichen das nachgereichte
+    /// Protokoll: Es lässt den Umschalter erscheinen und wird gleich zur aktiven
+    /// Fassung, sonst bliebe das Fenster auf dem Rohtext stehen und der Knopf wirkte
+    /// folgenlos.
+    /// </summary>
+    private void RefreshFromJob()
+    {
+        var running = job.State == FileTranscriptionJob.Phase.Minutes;
+        if (HasBoth && !switcher.Visible)
+        {
+            active = KeyMinutes;
+            switcher.Select(KeyMinutes);
+            ApplyFassung();
+        }
+        switcher.Visible = HasBoth;
+        compareButton.Visible = HasBoth;
+        rawLabel.Visible = !HasBoth;
+
+        minutesButton.Visible = job.CanAddMinutes || running;
+        minutesButton.Enabled = job.CanAddMinutes && !running;
+        if (running)
+        {
+            status.Text = $"{Loc.T("Protokoll wird erstellt …")} {(int)Math.Round(job.Progress * 100)} %";
+        }
     }
 
     private readonly TableLayoutPanel split;

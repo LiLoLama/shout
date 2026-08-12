@@ -582,6 +582,7 @@ final class Loc: ObservableObject {
         "Die Sprecher konnten nicht getrennt werden — der Text ist trotzdem vollständig.": "The speakers could not be separated — the text is complete nonetheless.",
         "Zusätzlich zum Rohtext ein Protokoll: Zusammenfassung, Kernpunkte und der gegliederte Text. Dauert bei langen Dateien deutlich länger.": "In addition to the raw text, a set of minutes: summary, key points and the structured text. Takes considerably longer for long files.",
         "Protokoll": "Minutes",
+        "Dafür wird das Modell zum Aufbereiten gebraucht. Lade es unter „Modelle“ herunter.": "This needs the clean-up model. Download it under “Models”.",
         "Zusammenfassung": "Summary",
         "Kernpunkte": "Key points",
         "Vergleichen": "Compare",

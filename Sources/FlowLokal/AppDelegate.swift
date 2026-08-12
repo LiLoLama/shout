@@ -597,7 +597,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
 
-        let hosting = NSHostingController(rootView: TranscriptWindowView(job: job))
+        let hosting = NSHostingController(
+            rootView: TranscriptWindowView(job: job, queue: fileQueue,
+                                           formatterReady: dashboardModel.formatterReady))
         let window = NSWindow(contentViewController: hosting)
         window.title = Loc.f("shout. — %@", job.name)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]

@@ -30,9 +30,24 @@ public sealed class FileTranscriptionJob
     /// <summary>Protokoll; leer, wenn keines erstellt wurde.</summary>
     public string MinutesText { get; set; } = "";
 
+    /// <summary>Nachgereichtes Protokoll: Der Text steht schon, es fehlt nur die
+    /// Aufbereitung. Die Datei wird dafür NICHT noch einmal transkribiert.</summary>
+    public bool MinutesOnly { get; set; }
+
     public FileTranscriptionJob(string path) => Path = path;
 
     public bool IsFinished => State is Phase.Done or Phase.Failed or Phase.Cancelled;
+
+    /// <summary>Kann noch ein Protokoll nachgereicht werden? Nur wenn der Text fertig
+    /// ist und keins existiert.</summary>
+    public bool CanAddMinutes => State == Phase.Done && MinutesText.Length == 0 && RawText.Length > 0;
+
+    /// <summary>
+    /// Eingang fürs Sprachmodell: <b>ohne</b> Zeitmarken — die kosten dort nur Kontext
+    /// und tauchten sonst mitten im Protokoll wieder auf.
+    /// </summary>
+    public string MinutesInput =>
+        Segments.Count > 0 ? TranscriptLayout.RawText(Segments, timestamps: false) : RawText;
 
     /// <summary>Was angezeigt und als .txt gesichert wird.</summary>
     public string DisplayText => MinutesText.Length > 0 ? MinutesText : RawText;
@@ -107,6 +122,21 @@ public sealed class FileTranscriptionQueue
         StartIfNeeded();
     }
 
+    /// <summary>
+    /// Reicht das Protokoll nach — aus dem vorhandenen Text, ohne die Datei noch
+    /// einmal zu transkribieren. Wer die Aufbereitung ausgeschaltet hatte, müsste
+    /// sonst eine Stunde neu rechnen lassen, obwohl der Text längst dasteht.
+    /// </summary>
+    public void AddMinutes(FileTranscriptionJob job)
+    {
+        if (!job.CanAddMinutes || !formatter.IsReady) return;
+        job.MinutesOnly = true;
+        job.State = FileTranscriptionJob.Phase.Minutes;
+        job.Progress = 0;
+        Changed?.Invoke();
+        StartIfNeeded();
+    }
+
     public void Cancel(FileTranscriptionJob job)
     {
         lock (gate)
@@ -144,7 +174,13 @@ public sealed class FileTranscriptionQueue
         while (true)
         {
             FileTranscriptionJob? job;
-            lock (gate) job = jobs.FirstOrDefault(j => j.State == FileTranscriptionJob.Phase.Queued);
+            lock (gate)
+                job = jobs.FirstOrDefault(j => j.State == FileTranscriptionJob.Phase.Queued
+                                               // Nachgereichtes Protokoll steht schon
+                                               // auf „wird erstellt"; die Marke fällt
+                                               // beim Abarbeiten, deshalb wird derselbe
+                                               // Auftrag nicht zweimal gezogen.
+                                               || j.MinutesOnly);
             if (job == null) return;
             await ProcessAsync(job);
         }
@@ -157,6 +193,7 @@ public sealed class FileTranscriptionQueue
 
     private async Task ProcessAsync(FileTranscriptionJob job)
     {
+        if (job.MinutesOnly) { await AddMinutesOnlyAsync(job); return; }
         if (IsCancelled(job.Id)) { job.MarkCancelled(); Changed?.Invoke(); return; }
 
         var settings = Settings.Shared;
@@ -227,25 +264,44 @@ public sealed class FileTranscriptionQueue
 
         if (useMinutes && formatter.IsReady)
         {
-            job.State = FileTranscriptionJob.Phase.Minutes;
-            job.Progress = 0;
-            Changed?.Invoke();
-
-            // Das Modell bekommt den Text OHNE Zeitmarken — die kosten dort nur
-            // Kontext und tauchten sonst mitten im Protokoll wieder auf.
-            var input = TranscriptLayout.RawText(collected, timestamps: false);
-            var document = await formatter.MinutesAsync(input, dictionary.TermHint, fraction =>
-            {
-                job.Progress = fraction;
-                Changed?.Invoke();
-            });
+            await WriteMinutesAsync(job);
             if (IsCancelled(job.Id)) { job.MarkCancelled(); Changed?.Invoke(); return; }
-            // Nur setzen, wenn wirklich ein Protokoll herauskam. Sonst stünden im
-            // Fenster zwei identische Fassungen.
-            if (document != null) job.MinutesText = document;
         }
 
         job.State = FileTranscriptionJob.Phase.Done;
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Der nachgereichte Weg: nur die Aufbereitung, der Text steht ja schon.
+    /// </summary>
+    private async Task AddMinutesOnlyAsync(FileTranscriptionJob job)
+    {
+        job.MinutesOnly = false;
+        await WriteMinutesAsync(job);
+        // Ein Abbruch verwirft hier NICHTS: Anders als beim ersten Durchlauf ist das
+        // Transkript fertig und bleibt es — es fehlt dann nur das Protokoll. Die
+        // Marke muss trotzdem weg, sonst liefe ein zweiter Anlauf sofort ins Leere.
+        lock (gate) cancelled.Remove(job.Id);
+        job.State = FileTranscriptionJob.Phase.Done;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Erstellt das Protokoll aus dem vorhandenen Text und trägt es ein.</summary>
+    private async Task WriteMinutesAsync(FileTranscriptionJob job)
+    {
+        job.State = FileTranscriptionJob.Phase.Minutes;
+        job.Progress = 0;
+        Changed?.Invoke();
+
+        var document = await formatter.MinutesAsync(job.MinutesInput, dictionary.TermHint, fraction =>
+        {
+            job.Progress = fraction;
+            Changed?.Invoke();
+        });
+        if (IsCancelled(job.Id)) return;
+        // Nur setzen, wenn wirklich ein Protokoll herauskam. Sonst stünden im
+        // Fenster zwei identische Fassungen.
+        if (document != null) job.MinutesText = document;
     }
 }

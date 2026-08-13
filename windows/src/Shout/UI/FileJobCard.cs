@@ -15,9 +15,13 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
 
     private readonly FileTranscriptionJob job;
     private readonly ConsoleButton open;
+    private readonly ConsoleButton start;
     private readonly ConsoleButton close;
 
     public event Action<FileTranscriptionJob>? OpenRequested;
+    /// <summary>Nur für zurückgeholte Mitschnitte: Sie warten auf die Entscheidung,
+    /// ob sie verarbeitet werden sollen. Ohne diesen Weg stünden sie für immer da.</summary>
+    public event Action<FileTranscriptionJob>? StartRequested;
     public event Action<FileTranscriptionJob>? CancelRequested;
     public event Action<FileTranscriptionJob>? RemoveRequested;
 
@@ -29,6 +33,11 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
         open.Click2 += () => OpenRequested?.Invoke(job);
         open.Visible = job.State == FileTranscriptionJob.Phase.Done;
         Controls.Add(open);
+
+        start = new ConsoleButton(Loc.T("Verarbeiten"));
+        start.Click2 += () => StartRequested?.Invoke(job);
+        start.Visible = job.State == FileTranscriptionJob.Phase.Unprocessed;
+        Controls.Add(start);
 
         close = new ConsoleButton("", false, Icons.Kind.Close);
         close.Click2 += () =>
@@ -48,7 +57,8 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
         return Math.Max(h, open.Height) + PadV * 2;
     }
 
-    private int TrailingWidth() => (open.Visible ? open.Width + 8 : 0) + close.Width;
+    private int TrailingWidth() => (open.Visible ? open.Width + 8 : 0)
+                                   + (start.Visible ? start.Width + 8 : 0) + close.Width;
 
     private bool ShowsProgress =>
         job.State is FileTranscriptionJob.Phase.Transcribing or FileTranscriptionJob.Phase.Minutes;
@@ -61,6 +71,7 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
         {
             var state = job.State switch
             {
+                FileTranscriptionJob.Phase.Unprocessed => Loc.T("Noch nicht verarbeitet"),
                 FileTranscriptionJob.Phase.Queued => Loc.T("Wartet"),
                 FileTranscriptionJob.Phase.Transcribing => Loc.T("Wird transkribiert …"),
                 FileTranscriptionJob.Phase.Minutes => Loc.T("Protokoll wird erstellt …"),
@@ -87,8 +98,15 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
         if (Width <= 0) return;
         close.Location = new Point(Width - PadH - close.Width, (Height - close.Height) / 2);
         open.Visible = job.State == FileTranscriptionJob.Phase.Done;
+        start.Visible = job.State == FileTranscriptionJob.Phase.Unprocessed;
+        var right = close.Left;
         if (open.Visible)
-            open.Location = new Point(close.Left - 8 - open.Width, (Height - open.Height) / 2);
+        {
+            open.Location = new Point(right - 8 - open.Width, (Height - open.Height) / 2);
+            right = open.Left;
+        }
+        if (start.Visible)
+            start.Location = new Point(right - 8 - start.Width, (Height - start.Height) / 2);
     }
 
     protected override void OnPaint(PaintEventArgs e)

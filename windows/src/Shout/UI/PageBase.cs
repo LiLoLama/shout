@@ -27,6 +27,11 @@ internal sealed class TextBlock : ThemedControl, IAutoHeight
     /// <summary>Fußnote unter einer Karte.</summary>
     public static TextBlock Footnote(string text) => new(text, Theme.Help, Theme.Gray(0.5), 4);
 
+    /// <summary>Hinweis, der auffallen soll — dieselbe Farbe wie ein gescheiterter
+    /// Auftrag, damit die App nur eine Warnfarbe kennt.</summary>
+    public static TextBlock Warning(string text)
+        => new(text, Theme.Help, Color.FromArgb(242, 179, 51), 4);
+
     public int PreferredHeightFor(int width)
         => MeasureText(Text, font, Math.Max(40, width - indent)).Height;
 

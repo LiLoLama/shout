@@ -255,6 +255,10 @@ public sealed class TrayContext : ApplicationContext
     /// Modelle und Wörterbuch mit dem Diktat; serialisiert wird über die Sperren in
     /// <see cref="Transcriber"/> und <see cref="LlmFormatter"/>.</summary>
     public FileTranscriptionQueue FileQueue => fileQueue ??= new FileTranscriptionQueue(transcriber, formatter, dictionary);
+
+    /// <summary>Mitschnitt einer Besprechung. Gehört dem Tray-Kontext, damit eine
+    /// laufende Aufnahme das Schließen des Fensters übersteht.</summary>
+    public MeetingRecorder MeetingRecorder { get; } = new();
     private FileTranscriptionQueue? fileQueue;
 
     /// <summary>Aufnahme-Art aus den Einstellungen.</summary>

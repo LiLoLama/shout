@@ -10,7 +10,7 @@ namespace Shout.UI;
 /// </summary>
 internal sealed class DashboardForm : Form
 {
-    internal enum Tab { Aufnahme, Dateien, Woerterbuch, Verlauf, Statistik, Modelle, Sync, Unterstuetzen }
+    internal enum Tab { Aufnahme, Meeting, Dateien, Woerterbuch, Verlauf, Statistik, Modelle, Sync, Unterstuetzen }
 
     private readonly TrayContext app;
     private readonly Sidebar sidebar;
@@ -41,6 +41,7 @@ internal sealed class DashboardForm : Form
         host.Dock = DockStyle.Fill;
 
         pages[Tab.Aufnahme] = new RecordingPage(app, this);
+        pages[Tab.Meeting] = new MeetingPage(app, app.FileQueue, app.MeetingRecorder);
         pages[Tab.Dateien] = new FilesPage(app, app.FileQueue);
         pages[Tab.Woerterbuch] = new DictionaryPage(dictionary);
         var historyPage = new HistoryPage(history);
@@ -270,6 +271,7 @@ internal sealed class Sidebar : ThemedControl
     private static readonly (DashboardForm.Tab Tab, string Title, Icons.Kind Icon)[] Items =
     {
         (DashboardForm.Tab.Aufnahme, "Aufnahme & Text", Icons.Kind.Mic),
+        (DashboardForm.Tab.Meeting, "Meeting", Icons.Kind.Mic),
         (DashboardForm.Tab.Dateien, "Dateien", Icons.Kind.Insert),
         (DashboardForm.Tab.Woerterbuch, "Wörterbuch", Icons.Kind.Book),
         (DashboardForm.Tab.Verlauf, "Verlauf", Icons.Kind.History),

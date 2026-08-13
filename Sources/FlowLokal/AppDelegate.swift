@@ -738,6 +738,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Läuft noch ein Datei-Auftrag, wird nachgefragt — sonst ist die Arbeit von
     /// vielleicht einer halben Stunde stillschweigend weg.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Ein laufender Mitschnitt zuerst: Die Datei liegt zwar auf der Platte, aber
+        // ohne das Stoppen bekäme sie weder Namen noch Auftrag — eine Stunde Meeting
+        // wäre praktisch verloren.
+        if meetingRecorder.isRecording {
+            let alert = NSAlert()
+            alert.messageText = Loc.t("Es läuft noch ein Mitschnitt.")
+            alert.informativeText = Loc.t("Beim Beenden wird er gestoppt und gesichert. Du findest ihn danach unter „Meeting“.")
+            alert.addButton(withTitle: Loc.t("Stoppen und beenden"))
+            alert.addButton(withTitle: Loc.t("Abbrechen"))
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+            if let url = meetingRecorder.stop() { fileQueue.add([url], start: false) }
+        }
         guard fileQueue.hasUnfinishedJobs else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = Loc.t("Es läuft noch eine Datei-Transkription.")

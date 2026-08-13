@@ -11,7 +11,14 @@ namespace Shout.Core;
 /// </summary>
 public sealed class FileTranscriptionJob
 {
-    public enum Phase { Queued, Transcribing, Minutes, Done, Failed, Cancelled }
+    public enum Phase
+    {
+        /// <summary>Liegt bereit, aber niemand hat gesagt, was damit geschehen soll.
+        /// Nur zurückgeholte Mitschnitte landen hier — sie ungefragt erneut zu
+        /// rechnen wäre bei einer Stunde Meeting teuer.</summary>
+        Unprocessed,
+        Queued, Transcribing, Minutes, Done, Failed, Cancelled
+    }
 
     public Guid Id { get; } = Guid.NewGuid();
     public string Path { get; }
@@ -36,7 +43,10 @@ public sealed class FileTranscriptionJob
 
     public FileTranscriptionJob(string path) => Path = path;
 
-    public bool IsFinished => State is Phase.Done or Phase.Failed or Phase.Cancelled;
+    /// <summary>Ist gerade nichts zu tun? „Noch nicht verarbeitet" gehört dazu — der
+    /// Auftrag wartet auf eine Entscheidung, nicht auf Rechenzeit.</summary>
+    public bool IsFinished =>
+        State is Phase.Unprocessed or Phase.Done or Phase.Failed or Phase.Cancelled;
 
     /// <summary>Kann noch ein Protokoll nachgereicht werden? Nur wenn der Text fertig
     /// ist und keins existiert.</summary>
@@ -112,12 +122,41 @@ public sealed class FileTranscriptionQueue
         get { lock (gate) return jobs.Any(j => !j.IsFinished); }
     }
 
-    public void Add(IEnumerable<string> paths)
+    /// <summary>Nimmt Dateien auf. <paramref name="start"/> = false legt sie nur ab —
+    /// dann entscheidet der Nutzer später, was damit geschehen soll.</summary>
+    public void Add(IEnumerable<string> paths, bool start = true)
     {
         lock (gate)
         {
-            foreach (var path in paths) jobs.Add(new FileTranscriptionJob(path));
+            foreach (var path in paths)
+            {
+                var job = new FileTranscriptionJob(path);
+                if (!start) job.State = FileTranscriptionJob.Phase.Unprocessed;
+                jobs.Add(job);
+            }
         }
+        Changed?.Invoke();
+        if (start) StartIfNeeded();
+    }
+
+    /// <summary>Holt liegengebliebene Mitschnitte zurück in die Liste. Ohne das wäre
+    /// eine Aufnahme nach einem Neustart der App unauffindbar.</summary>
+    public void Restore(IEnumerable<string> paths)
+    {
+        List<string> fresh;
+        lock (gate)
+        {
+            var known = jobs.Select(j => j.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            fresh = paths.Where(p => !known.Contains(p)).ToList();
+        }
+        if (fresh.Count > 0) Add(fresh, start: false);
+    }
+
+    /// <summary>Startet einen wartenden Auftrag.</summary>
+    public void Start(FileTranscriptionJob job)
+    {
+        if (job.State != FileTranscriptionJob.Phase.Unprocessed) return;
+        job.State = FileTranscriptionJob.Phase.Queued;
         Changed?.Invoke();
         StartIfNeeded();
     }
@@ -157,6 +196,12 @@ public sealed class FileTranscriptionQueue
     {
         Cancel(job);
         lock (gate) jobs.RemoveAll(j => j.Id == job.Id);
+        // Eigene Mitschnitte gehören uns — sie tauchen nach einem Neustart sonst
+        // wieder auf. Ausgewählte Dateien liegen beim Nutzer: Finger weg.
+        if (MeetingRecorder.IsOwnRecording(job.Path))
+        {
+            try { File.Delete(job.Path); } catch { }
+        }
         Changed?.Invoke();
     }
 

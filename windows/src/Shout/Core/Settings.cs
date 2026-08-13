@@ -46,6 +46,10 @@ public sealed class Settings
     // Diktats: Sprachbefehle sind hier standardmäßig aus, weil „Punkt" in einer
     // Aufzeichnung meist ein normales Wort ist und kein Satzzeichen.
     public bool FileMinutesEnabled { get; set; } = true;
+    /// <summary>Zuletzt gewählte Tonquelle des Mitschnitts (Name aus MeetingSource).</summary>
+    public string MeetingSource { get; set; } = "Microphone";
+    /// <summary>Wurde der Hinweis auf die Rechtslage schon einmal gezeigt?</summary>
+    public bool MeetingLegalHintShown { get; set; }
     public bool FileSpeechCommandsEnabled { get; set; } = false;
 
     // Gewählte Modelle (IDs aus ModelCatalog)

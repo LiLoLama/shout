@@ -109,7 +109,8 @@ internal sealed class FilesPage : PageBase, IRefreshablePage
 
     private void PushJobs()
     {
-        var jobs = queue.Jobs;
+        // Nur eingeworfene Dateien — Mitschnitte stehen unter „Meeting".
+        var jobs = queue.Jobs.Where(j => !MeetingRecorder.IsOwnRecording(j.Path)).ToList();
         if (jobs.Count == 0) return;
 
         Push(new GroupLabel(Loc.T("Aufträge")), 20);

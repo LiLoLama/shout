@@ -3,7 +3,7 @@ import SwiftUI
 /// Hält die ausgewählte Dashboard-Seite (von Menüpunkten steuerbar).
 @MainActor
 final class DashboardModel: ObservableObject {
-    enum Tab: Hashable { case aufnahme, dateien, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
+    enum Tab: Hashable { case aufnahme, meeting, dateien, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
     @Published var tab: Tab = .aufnahme
 
     // Modell-Zustand zentral (überlebt Tab-Wechsel, damit Spinner/Auswahl
@@ -117,6 +117,7 @@ struct DashboardView: View {
             .padding(.horizontal, 18).padding(.top, 42).padding(.bottom, 20)
 
             navRow(.aufnahme, Loc.t("Aufnahme & Text"), "mic.fill")
+            navRow(.meeting, Loc.t("Meeting"), "record.circle")
             navRow(.dateien, Loc.t("Dateien"), "doc.text.below.ecg")
             navRow(.woerterbuch, Loc.t("Wörterbuch"), "text.book.closed.fill")
             navRow(.verlauf, Loc.t("Verlauf"), "clock.arrow.circlepath")
@@ -162,8 +163,13 @@ struct DashboardView: View {
             SettingsView(settings: settings, onRecordHotkey: onRecordHotkey,
                          onPersistentPillChanged: onPersistentPillChanged,
                          onPillPositionChanged: onPillPositionChanged)
+        case .meeting:
+            MeetingView(queue: files, recorder: meetingRecorder,
+                        modelReady: model.transcriberReady,
+                        formatterReady: model.formatterReady,
+                        onOpenResult: onOpenResult, onCloseResult: onCloseResult)
         case .dateien:
-            FilesView(queue: files, recorder: meetingRecorder,
+            FilesView(queue: files,
                       modelReady: model.transcriberReady,
                       formatterReady: model.formatterReady,
                       onOpenResult: onOpenResult, onCloseResult: onCloseResult)

@@ -3,6 +3,21 @@
     <channel>
         <title>shout</title>
         <item>
+            <title>1.7.0</title>
+            <pubDate>Thu, 13 Aug 2026 15:49:34 +0200</pubDate>
+            <link>https://github.com/LiLoLama/shout</link>
+            <sparkle:version>16</sparkle:version>
+            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.7.0/shout-1.7.0.dmg" length="17627196" type="application/octet-stream" sparkle:edSignature="VwgY5vMe2QMVmEo9GPE0eP0fp2kSpsCRJmNgIJ/MQcA3byyn03jNY9xHfodA2hkw2prjJQZB2qNC2C12d18yBA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.7.0/shout16-15.delta" sparkle:deltaFrom="15" length="1249614" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="npmi0GGwNNYno+/NmOM+/AwVZv00LghwQLEe5roWw0d1joQ7FnmiKyYBFcRYurN7llL5eUB+URqaS/tQXaPBAA=="/>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.7.0/shout16-14.delta" sparkle:deltaFrom="14" length="1501162" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="zlC6mbc8hwTiZY/boWYi61CpnIQhaah5ZrMPpXhC71XgAKMvxBE5ElsEqWYNnKNnfDghNMi8nmfdctQyDA5KCg=="/>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.7.0/shout16-13.delta" sparkle:deltaFrom="13" length="1544018" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="icCyvusrC0jSxRytq1LZx7FMyImXkbfv0m+AdNMlRp+d01p1rGRlcuj3/iPHrW/tfN7Zd0y65uuNQTXPVIvDCw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.6.0</title>
             <pubDate>Wed, 12 Aug 2026 14:33:29 +0200</pubDate>
             <link>https://github.com/LiLoLama/shout</link>

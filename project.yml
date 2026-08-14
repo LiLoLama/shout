@@ -284,6 +284,7 @@ targets:
       - path: Sources/FlowLokal/MeetingRecorder.swift
       # Vom MeetingRecorder mitbenutzt; nur System-Frameworks, keine Pakete.
       - path: Sources/FlowLokal/SystemAudioTap.swift
+      - path: Sources/FlowLokal/PillPlacement.swift
       - path: Sources/FlowLokal/StoreIO.swift
     settings:
       base:

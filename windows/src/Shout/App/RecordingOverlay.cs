@@ -117,19 +117,25 @@ public sealed class RecordingOverlay : Form
     public void MoveToAnchor()
     {
         var s = Settings.Shared;
-        var area = Screen.FromPoint(s.PillCustom
-            ? new Point(s.PillCustomX, s.PillCustomY)
-            : Cursor.Position).WorkingArea;
 
         if (s.PillCustom)
         {
-            var x = Math.Clamp(s.PillCustomX - Width / 2, area.Left, area.Right - Width);
-            var y = Math.Clamp(s.PillCustomY - Height / 2, area.Top, area.Bottom - Height);
+            // Der Anteil gilt relativ zum sichtbaren Bereich — so bleibt „unten
+            // Mitte" auch dann unten Mitte, wenn ein breiter Monitor abgesteckt
+            // wird. Absolut gespeichert klemmte die Position dort an den Rand.
+            EnsureFraction(s);
+            var host = Screen.FromPoint(Cursor.Position).WorkingArea;
+            var center = new Point(
+                (int)Math.Round(host.Left + s.PillFracX * host.Width),
+                (int)Math.Round(host.Top + s.PillFracY * host.Height));
+            var x = Math.Clamp(center.X - Width / 2, host.Left, Math.Max(host.Left, host.Right - Width));
+            var y = Math.Clamp(center.Y - Height / 2, host.Top, Math.Max(host.Top, host.Bottom - Height));
             Location = new Point(x, y);
             return;
         }
 
         // Ohne freie Position: auf dem Bildschirm mit dem Mauszeiger ankern.
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         var left = s.PillAnchor switch
         {
             "bottomLeft" or "topLeft" => area.Left + ScreenMargin,
@@ -140,6 +146,17 @@ public sealed class RecordingOverlay : Form
             ? area.Top + ScreenMargin
             : area.Bottom - Height - ScreenMargin;
         Location = new Point(left, top);
+    }
+
+    /// <summary>Rechnet eine noch absolut gespeicherte Position einmalig in den
+    /// Anteil um.</summary>
+    private static void EnsureFraction(Settings s)
+    {
+        if (s.PillFracX >= 0 && s.PillFracY >= 0) return;
+        var host = Screen.FromPoint(new Point(s.PillCustomX, s.PillCustomY)).WorkingArea;
+        s.PillFracX = host.Width > 0 ? (s.PillCustomX - host.Left) / (double)host.Width : 0.5;
+        s.PillFracY = host.Height > 0 ? (s.PillCustomY - host.Top) / (double)host.Height : 0.95;
+        s.Save();
     }
 
     // MARK: Zeichnen
@@ -262,6 +279,8 @@ public sealed class RecordingOverlay : Form
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
+        // Fixiert: Klicks bleiben, Ziehen nicht. Sonst rückt ein Klick daneben
+        // die Pille ungewollt weg.
         if (e.Button == MouseButtons.Left)
         {
             pointerDown = true;
@@ -280,7 +299,7 @@ public sealed class RecordingOverlay : Form
             var now = Cursor.Position;
             var dx = now.X - dragStartScreen.X;
             var dy = now.Y - dragStartScreen.Y;
-            if (!dragged && Math.Abs(dx) + Math.Abs(dy) > 3) dragged = true;
+            if (!dragged && !Settings.Shared.PillLocked && Math.Abs(dx) + Math.Abs(dy) > 3) dragged = true;
             if (dragged) Location = new Point(dragStartWindow.X + dx, dragStartWindow.Y + dy);
         }
         base.OnMouseMove(e);
@@ -303,8 +322,8 @@ public sealed class RecordingOverlay : Form
 
                 var s = Settings.Shared;
                 s.PillCustom = true;
-                s.PillCustomX = x + Width / 2;
-                s.PillCustomY = y + Height / 2;
+                s.PillFracX = area.Width > 0 ? (x + Width / 2.0 - area.Left) / area.Width : 0.5;
+                s.PillFracY = area.Height > 0 ? (y + Height / 2.0 - area.Top) / area.Height : 0.95;
                 s.Save();
             }
             else

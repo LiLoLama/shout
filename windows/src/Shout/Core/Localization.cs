@@ -105,6 +105,8 @@ public static class Loc
         ["Zeigt die Aufnahme-Pille dauerhaft am Bildschirmrand — per Klick starten, mit ✕/✓ abbrechen oder einfügen."] =
             "Keeps the recording pill at the edge of the screen — click to start, ✕ to cancel, ✓ to insert.",
         ["Position der Pille"] = "Pill position",
+        ["Pille fixieren"] = "Lock the pill",
+        ["Verhindert das Verschieben mit der Maus. Praktisch, wenn sie einmal richtig sitzt — ein Klick daneben rückt sie dann nicht mehr weg."] = "Prevents moving it with the mouse. Handy once it sits where you want it — a stray click no longer nudges it away.",
         ["Wähle eine Ecke — oder zieh die Pille einfach mit der Maus an eine beliebige Stelle."] =
             "Pick a corner — or simply drag the pill anywhere with the mouse.",
         ["Unten Mitte"] = "Bottom center",

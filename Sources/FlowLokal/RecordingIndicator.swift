@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    /// Die Pille wurde gezogen — die Einstellungen zeigen die Position an und
+    /// müssen davon erfahren.
+    static let shoutPillMoved = Notification.Name("shout.pillMoved")
+}
+
 /// Schwebende Pille unten am Bildschirm. Drei Modi:
 ///  - `.idle`      — nur sichtbar, wenn „Pille immer anzeigen" aktiv ist; klickbar zum Starten.
 ///  - `.recording` — pegel-reaktive Wellenform, flankiert von X (abbrechen) und ✓ (absenden).
@@ -16,6 +22,8 @@ final class RecordingIndicator {
     final class PillModel: ObservableObject {
         @Published var level: Float = 0
         @Published var mode: Mode = .idle
+        /// Senkrecht statt waagerecht — hängt davon ab, wo die Pille steht.
+        @Published var vertical = false
         var onStart: () -> Void = {}
         var onCancel: () -> Void = {}
         var onSubmit: () -> Void = {}
@@ -24,6 +32,23 @@ final class RecordingIndicator {
     private let model = PillModel()
     private var panel: NSPanel?
     private var persistent = false
+
+    init() {
+        // Bildschirm abgesteckt oder Auflösung geändert: neu setzen. Ohne das
+        // bliebe die Pille an einer Stelle, die es nicht mehr gibt.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.reposition() }
+        }
+        // Nach dem Ziehen kann sich die Ausrichtung ändern (Seitenkante ↔ oben/unten).
+        NotificationCenter.default.addObserver(
+            forName: .shoutPillMoved, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.reposition() }
+        }
+    }
 
     /// Aktionen der klickbaren Elemente (vom AppDelegate gesetzt).
     func setActions(start: @escaping () -> Void, cancel: @escaping () -> Void, submit: @escaping () -> Void) {
@@ -78,6 +103,12 @@ final class RecordingIndicator {
     }
 
     private func size(for mode: Mode) -> NSSize {
+        let base = baseSize(for: mode)
+        // Senkrecht ist dieselbe Pille, nur gekippt.
+        return model.vertical ? NSSize(width: base.height, height: base.width) : base
+    }
+
+    private func baseSize(for mode: Mode) -> NSSize {
         switch mode {
         case .idle:       return NSSize(width: 46, height: 30)
         case .recording:  return NSSize(width: 150, height: 34)
@@ -87,6 +118,7 @@ final class RecordingIndicator {
 
     private func applyLayout(for mode: Mode) {
         guard let panel else { return }
+        model.vertical = Self.wantsVertical()
         let s = size(for: mode)
         panel.setContentSize(s)
         panel.contentView?.frame = NSRect(origin: .zero, size: s)
@@ -97,20 +129,28 @@ final class RecordingIndicator {
 
     /// Reagiert auf eine geänderte Positions-Voreinstellung (aus den Einstellungen).
     func reposition() {
-        guard let panel else { return }
-        panel.setFrameOrigin(targetOrigin(size: panel.frame.size))
+        guard panel != nil else { return }
+        applyLayout(for: model.mode)
     }
 
     // MARK: - Position (Voreinstellung oder frei gezogen)
 
     private static let margin: CGFloat = 14
 
-    /// Ziel-Ursprung für die aktuelle Größe: frei gezogener Punkt (Mitte) oder Anker.
+    /// Ziel-Ursprung für die aktuelle Größe: frei gezogener Punkt oder Anker.
+    ///
+    /// Die freie Position steht **relativ zum Bildschirm** (Anteil 0…1 seiner
+    /// sichtbaren Fläche) und nicht als absoluter Punkt. Absolut gespeichert
+    /// wanderte die Pille beim Abstecken eines breiten Monitors an den rechten
+    /// Rand: „Mitte" eines 3440 Punkt breiten Schirms liegt bei x ≈ 1720, und
+    /// diesen Punkt gibt es auf dem eingebauten Display nicht mehr — der Code fand
+    /// keinen passenden Bildschirm und klemmte auf den Rand.
     private func targetOrigin(size s: NSSize) -> NSPoint {
         let d = UserDefaults.standard
         if d.bool(forKey: "pillCustom") {
-            let center = NSPoint(x: d.double(forKey: "pillCustomX"), y: d.double(forKey: "pillCustomY"))
-            let vf = (NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main)?.visibleFrame ?? .zero
+            let spot = Self.customSpot()
+            let vf = spot.screen.visibleFrame
+            let center = PillPlacement.center(for: spot.fraction, in: vf)
             let x = min(max(center.x - s.width / 2, vf.minX), vf.maxX - s.width)
             let y = min(max(center.y - s.height / 2, vf.minY), vf.maxY - s.height)
             return NSPoint(x: x, y: y)
@@ -126,6 +166,59 @@ final class RecordingIndicator {
         }
         let y = anchor.hasPrefix("top") ? (vf.maxY - s.height - m) : (vf.minY + m)
         return NSPoint(x: x, y: y)
+    }
+
+    /// Gemerkte freie Position: Bildschirm und Anteil darin.
+    static func customSpot() -> (screen: NSScreen, fraction: CGPoint) {
+        let d = UserDefaults.standard
+        let screen = screen(withID: d.string(forKey: "pillScreen")) ?? NSScreen.main ?? NSScreen.screens[0]
+        var fraction = CGPoint(x: d.double(forKey: "pillFracX"), y: d.double(forKey: "pillFracY"))
+
+        // Übergang von den alten, absolut gespeicherten Werten: einmalig umrechnen.
+        if d.object(forKey: "pillFracX") == nil, d.object(forKey: "pillCustomX") != nil {
+            let old = NSPoint(x: d.double(forKey: "pillCustomX"), y: d.double(forKey: "pillCustomY"))
+            let host = NSScreen.screens.first { $0.frame.contains(old) } ?? screen
+            fraction = PillPlacement.fraction(of: old, in: host.visibleFrame)
+            d.set(Double(fraction.x), forKey: "pillFracX")
+            d.set(Double(fraction.y), forKey: "pillFracY")
+            d.set(id(of: host), forKey: "pillScreen")
+        }
+        return (screen, PillPlacement.clamped(fraction))
+    }
+
+    /// Merkt sich die Position eines Fensters relativ zu seinem Bildschirm.
+    static func rememberSpot(of frame: NSRect) {
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        let host = NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main
+        guard let host else { return }
+        let fraction = PillPlacement.fraction(of: center, in: host.visibleFrame)
+        let d = UserDefaults.standard
+        d.set(true, forKey: "pillCustom")
+        d.set(Double(fraction.x), forKey: "pillFracX")
+        d.set(Double(fraction.y), forKey: "pillFracY")
+        d.set(id(of: host), forKey: "pillScreen")
+    }
+
+    /// Soll die Pille senkrecht stehen? An einer Seitenkante ja, oben oder unten
+    /// nein — dort, wo sie am wenigsten Platz wegnimmt.
+    static func wantsVertical() -> Bool {
+        switch UserDefaults.standard.string(forKey: "pillOrientation") ?? "auto" {
+        case "vertical": return true
+        case "horizontal": return false
+        default: break
+        }
+        // Feste Anker sitzen alle oben oder unten.
+        guard UserDefaults.standard.bool(forKey: "pillCustom") else { return false }
+        return PillPlacement.prefersVertical(at: customSpot().fraction)
+    }
+
+    private static func id(of screen: NSScreen) -> String {
+        String(describing: screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] ?? "")
+    }
+
+    private static func screen(withID stored: String?) -> NSScreen? {
+        guard let stored, !stored.isEmpty else { return nil }
+        return NSScreen.screens.first { id(of: $0) == stored }
     }
 
     /// Klemmt einen Fenster-Frame auf den sichtbaren Bereich seines Bildschirms.
@@ -181,15 +274,31 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let window else { super.mouseDragged(with: event); return }
+        // Fixiert: Das Fenster bleibt liegen. Sonst verschiebt ein Klick daneben
+        // die Pille ungewollt — wer sie einmal platziert hat, will das nicht.
+        guard !UserDefaults.standard.bool(forKey: "pillLocked"), let window else {
+            super.mouseDragged(with: event)
+            return
+        }
         window.performDrag(with: event)   // OS-nativer Drag-Loop bis zum Loslassen
-        // Danach: auf den sichtbaren Bereich klemmen und die Position (Mitte) sichern.
+        // Danach: auf den sichtbaren Bereich klemmen und die Position sichern.
         let clamped = RecordingIndicator.clampToScreen(window.frame)
         if clamped != window.frame { window.setFrame(clamped, display: true) }
-        let d = UserDefaults.standard
-        d.set(true, forKey: "pillCustom")
-        d.set(Double(clamped.midX), forKey: "pillCustomX")
-        d.set(Double(clamped.midY), forKey: "pillCustomY")
+        RecordingIndicator.rememberSpot(of: clamped)
+        NotificationCenter.default.post(name: .shoutPillMoved, object: nil)
+    }
+}
+
+/// HStack oder VStack, je nach Ausrichtung. Ohne das stünde jedes Layout zweimal
+/// im Code, einmal je Richtung.
+private struct Stack<Content: View>: View {
+    let vertical: Bool
+    let spacing: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if vertical { VStack(spacing: spacing) { content() } }
+        else { HStack(spacing: spacing) { content() } }
     }
 }
 
@@ -226,41 +335,51 @@ private struct RecordingPill: View {
         .help(Loc.t("Aufnahme starten"))
     }
 
-    // Aufnahme: X · Wellenform · ✓.
+    // Aufnahme: X · Wellenform · ✓ — waagerecht oder senkrecht gestapelt.
     private var recordingPill: some View {
-        HStack(spacing: 8) {
+        Stack(vertical: model.vertical, spacing: 8) {
             circleButton(system: "xmark", tint: Color(white: 0.75), action: model.onCancel)
                 .help(Loc.t("Abbrechen"))
-            HStack(spacing: 2.5) {
-                ForEach(weights.indices, id: \.self) { i in
-                    Capsule().fill(Color.shoutLive)
-                        .frame(width: 2.8, height: barHeight(i))
-                        .animation(.easeOut(duration: 0.1), value: model.level)
-                }
-            }
+            bars { barHeight($0) }
             circleButton(system: "checkmark", tint: Color.shoutLive, filled: true, action: model.onSubmit)
                 .help(Loc.t("Einfügen"))
         }
-        .padding(.horizontal, 8)
-        .frame(height: 34)
+        .padding(model.vertical ? .vertical : .horizontal, 8)
+        .frame(width: model.vertical ? 34 : nil, height: model.vertical ? nil : 34)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
+    }
+
+    /// Die Balken der Wellenform. Senkrecht wachsen sie in die Breite statt in die
+    /// Höhe — sonst stünde die Welle quer zur Pille.
+    @ViewBuilder
+    private func bars(_ length: @escaping (Int) -> CGFloat) -> some View {
+        Stack(vertical: model.vertical, spacing: 2.5) {
+            ForEach(weights.indices, id: \.self) { i in
+                Capsule().fill(Color.shoutLive)
+                    .frame(width: model.vertical ? length(i) : 2.8,
+                           height: model.vertical ? 2.8 : length(i))
+                    .animation(.easeOut(duration: 0.1), value: model.level)
+            }
+        }
     }
 
     // Verarbeiten: durchlaufende Welle.
     private var processingPill: some View {
         TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 2.5) {
+            Stack(vertical: model.vertical, spacing: 2.5) {
                 ForEach(weights.indices, id: \.self) { i in
                     let phase = sin(t * 5.5 - Double(i) * 0.7)
                     let norm = CGFloat((phase + 1) / 2)
+                    let length = minH + (maxH * 0.72 - minH) * norm
                     Capsule().fill(Color.shoutLive.opacity(0.35 + 0.65 * norm))
-                        .frame(width: 2.8, height: minH + (maxH * 0.72 - minH) * norm)
+                        .frame(width: model.vertical ? length : 2.8,
+                               height: model.vertical ? 2.8 : length)
                 }
             }
         }
-        .frame(width: 84, height: 28)
+        .frame(width: model.vertical ? 28 : 84, height: model.vertical ? 84 : 28)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
     }

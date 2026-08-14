@@ -145,6 +145,12 @@ final class Loc: ObservableObject {
         "Oben links": "Top left",
         "Oben rechts": "Top right",
         "Frei verschoben": "Moved freely",
+        "Pille fixieren": "Lock the pill",
+        "Verhindert das Verschieben mit der Maus. Praktisch, wenn sie einmal richtig sitzt — ein Klick daneben rückt sie dann nicht mehr weg.": "Prevents moving it with the mouse. Handy once it sits where you want it — a stray click no longer nudges it away.",
+        "Ausrichtung der Pille": "Orientation of the pill",
+        "„Automatisch“ stellt sie an einer Seitenkante senkrecht und oben oder unten waagerecht — dort, wo sie am wenigsten Platz wegnimmt.": "“Automatic” makes it vertical at a side edge and horizontal at the top or bottom — whichever takes up the least room.",
+        "Waagerecht": "Horizontal",
+        "Senkrecht": "Vertical",
 
         "Text": "Text",
         "Text automatisch aufräumen": "Clean up text automatically",

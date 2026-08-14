@@ -16,6 +16,9 @@ struct SettingsView: View {
     @AppStorage("persistentPill") private var persistentPill = false
     @AppStorage("pillAnchor") private var pillAnchor = "bottomCenter"
     @AppStorage("pillCustom") private var pillCustom = false
+    /// Fixiert: Die Pille lässt sich nicht mehr aus Versehen verschieben.
+    @AppStorage("pillLocked") private var pillLocked = false
+    @AppStorage("pillOrientation") private var pillOrientation = "auto"
     @AppStorage("preferredMicUID") private var micUID = ""
     @State private var devices: [AudioDevices.Device] = []
 
@@ -81,6 +84,24 @@ struct SettingsView: View {
                             Text(Loc.t("Oben links")).tag("topLeft")
                             Text(Loc.t("Oben rechts")).tag("topRight")
                             if pillCustom { Text(Loc.t("Frei verschoben")).tag("custom") }
+                        }
+                        .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 160)
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: Loc.t("Pille fixieren"),
+                             help: Loc.t("Verhindert das Verschieben mit der Maus. Praktisch, wenn sie einmal richtig sitzt — ein Klick daneben rückt sie dann nicht mehr weg.")) {
+                        Toggle("", isOn: $pillLocked).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
+                    }
+                    ConsoleDivider()
+                    FieldRow(title: Loc.t("Ausrichtung der Pille"),
+                             help: Loc.t("„Automatisch“ stellt sie an einer Seitenkante senkrecht und oben oder unten waagerecht — dort, wo sie am wenigsten Platz wegnimmt.")) {
+                        Picker("", selection: Binding(
+                            get: { pillOrientation },
+                            set: { pillOrientation = $0; onPillPositionChanged() }
+                        )) {
+                            Text(Loc.t("Automatisch")).tag("auto")
+                            Text(Loc.t("Waagerecht")).tag("horizontal")
+                            Text(Loc.t("Senkrecht")).tag("vertical")
                         }
                         .labelsHidden().pickerStyle(.menu).tint(Color.shoutLive).frame(maxWidth: 160)
                     }

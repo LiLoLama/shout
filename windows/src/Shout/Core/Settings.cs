@@ -76,8 +76,17 @@ public sealed class Settings
     /// <summary>"bottomCenter", "bottomLeft", "bottomRight", "topCenter", "topLeft", "topRight".</summary>
     public string PillAnchor { get; set; } = "bottomCenter";
     public bool PillCustom { get; set; } = false;
+    /// <summary>Alte, ABSOLUTE Position. Wird nur noch einmalig in den Anteil
+    /// umgerechnet — absolut gespeichert wanderte die Pille beim Abstecken eines
+    /// breiten Monitors an den Bildschirmrand.</summary>
     public int PillCustomX { get; set; }
     public int PillCustomY { get; set; }
+    /// <summary>Position als Anteil (0…1) der sichtbaren Fläche ihres Bildschirms.
+    /// −1 heißt „noch nicht gesetzt".</summary>
+    public double PillFracX { get; set; } = -1;
+    public double PillFracY { get; set; } = -1;
+    /// <summary>Fixiert: Die Pille lässt sich nicht mehr mit der Maus verschieben.</summary>
+    public bool PillLocked { get; set; } = false;
 
     /// <summary>Aufnahmegerät: -1 = Systemstandard, sonst NAudio-Geräteindex.</summary>
     public int InputDeviceIndex { get; set; } = -1;

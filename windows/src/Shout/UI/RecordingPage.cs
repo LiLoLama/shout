@@ -78,6 +78,9 @@ internal sealed class RecordingPage : PageBase
             app.ApplyPersistentPill();
         };
 
+        var pillLocked = new ConsoleToggle(s.PillLocked);
+        pillLocked.Changed += value => { s.PillLocked = value; s.Save(); };
+
         var pillPosition = new ConsoleDropdown(170);
         pillPosition.SetItems(PillPositionItems(), s.PillCustom ? "custom" : s.PillAnchor);
         pillPosition.Changed += key =>
@@ -114,6 +117,9 @@ internal sealed class RecordingPage : PageBase
         recording.Add(Loc.T("Position der Pille"),
                       Loc.T("Wähle eine Ecke — oder zieh die Pille einfach mit der Maus an eine beliebige Stelle."),
                       pillPosition);
+        recording.Add(Loc.T("Pille fixieren"),
+                      Loc.T("Verhindert das Verschieben mit der Maus. Praktisch, wenn sie einmal richtig sitzt — ein Klick daneben rückt sie dann nicht mehr weg."),
+                      pillLocked);
         Push(recording, 0);
 
         // MARK: Text

@@ -42,6 +42,37 @@ enum TextChunker {
         return result
     }
 
+    /// Fügt abschnittsweise formatierte Stücke wieder zu einem Text zusammen.
+    ///
+    /// Normalfall ist ein Leerzeichen (die Schnitte liegen an Satzgrenzen, der
+    /// Fließtext soll wieder einer werden). Endet ein Stück aber mit einer
+    /// Aufzählung oder beginnt das nächste mit einer, kommt ein Zeilenumbruch —
+    /// sonst klebt der Folgetext am letzten Listenpunkt („3. das Feedback Für …").
+    static func joinFormatted(_ pieces: [String]) -> String {
+        let parts = pieces.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard var result = parts.first else { return "" }
+        for piece in parts.dropFirst() {
+            let lineStart = result.lastIndex(of: "\n").map { result.index(after: $0) } ?? result.startIndex
+            let lastLine = result[lineStart...]
+            let firstLine = piece.prefix(while: { $0 != "\n" })
+            let needsBreak = isListItem(lastLine) || isListItem(firstLine)
+            result += (needsBreak ? "\n" : " ") + piece
+        }
+        return result
+    }
+
+    /// Sieht die Zeile wie ein Listenpunkt aus? („1. ", „2) ", „- ", „• ")
+    private static func isListItem<S: StringProtocol>(_ line: S) -> Bool {
+        let trimmed = line.drop(while: \.isWhitespace)
+        guard let first = trimmed.first else { return false }
+        if first == "-" || first == "•" || first == "*" { return true }
+        let digits = trimmed.prefix(while: \.isNumber)
+        guard !digits.isEmpty else { return false }
+        let after = trimmed.dropFirst(digits.count)
+        return after.first == "." || after.first == ")"
+    }
+
     /// Letzte Satzgrenze im Bereich [notBefore, before). Zurück kommt der Index des
     /// ersten Zeichens des FOLGENDEN Satzes — der Leerraum dazwischen fällt weg.
     private static func sentenceBreak(in text: Substring, before limit: Substring.Index,

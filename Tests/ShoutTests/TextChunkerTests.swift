@@ -64,4 +64,40 @@ final class TextChunkerTests: XCTestCase {
         let parts = TextChunker.chunks(of: text, targetLength: 150, minLength: 100)
         XCTAssertFalse(parts.contains { $0.hasSuffix("Dr.") })
     }
+
+    // MARK: - joinFormatted (Zusammenfügen formatierter Abschnitte)
+
+    func testJoinLeerUndEinzeln() {
+        XCTAssertEqual(TextChunker.joinFormatted([]), "")
+        XCTAssertEqual(TextChunker.joinFormatted(["Ein Satz."]), "Ein Satz.")
+    }
+
+    func testJoinFliesstextMitLeerzeichen() {
+        XCTAssertEqual(TextChunker.joinFormatted(["Erster Teil.", "Zweiter Teil."]),
+                       "Erster Teil. Zweiter Teil.")
+    }
+
+    func testJoinLeereStueckeWerdenUebersprungen() {
+        XCTAssertEqual(TextChunker.joinFormatted(["Erster Teil.", "", "  ", "Zweiter Teil."]),
+                       "Erster Teil. Zweiter Teil.")
+    }
+
+    /// Endet ein Abschnitt mit einer Aufzählung, darf der nächste nicht mit
+    /// Leerzeichen angeklebt werden — sonst klebt „3. das Feedback Für das…".
+    func testJoinNachListeKommtZeilenumbruch() {
+        let liste = "Wir brauchen:\n1. die Zahlen\n2. die Präsentation"
+        XCTAssertEqual(TextChunker.joinFormatted([liste, "Danach geht es weiter."]),
+                       liste + "\nDanach geht es weiter.")
+    }
+
+    func testJoinVorListeKommtZeilenumbruch() {
+        let liste = "1. die Zahlen\n2. die Präsentation"
+        XCTAssertEqual(TextChunker.joinFormatted(["Wir brauchen Folgendes.", liste]),
+                       "Wir brauchen Folgendes.\n" + liste)
+    }
+
+    func testJoinErkenntSpiegelstrichListen() {
+        XCTAssertEqual(TextChunker.joinFormatted(["Punkte:\n- eins\n- zwei", "Weiter im Text."]),
+                       "Punkte:\n- eins\n- zwei\nWeiter im Text.")
+    }
 }

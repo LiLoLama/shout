@@ -98,11 +98,32 @@ actor Formatter {
 
     /// Liefert bereinigten Text — oder den (getrimmten) Rohtext bei kurzem
     /// Diktat, noch nicht geladenem Modell oder jedem Fehler.
+    ///
+    /// Lange Diktate laufen abschnittsweise durchs Modell (Schnitt an
+    /// Satzgrenzen via `TextChunker`): Das kleine quantisierte Modell lässt bei
+    /// langen Eingaben sonst still Inhalt weg — typisch fehlt hinten ein ganzes
+    /// Stück. Nebeneffekt: Der Kürzungs-Schutz prüft jeden Abschnitt einzeln.
+    /// Vorher fiel erst ein Gesamtverlust von ~45 % auf; ein verschlucktes
+    /// letztes Drittel rutschte durch. Jetzt fällt ein leerer oder stark
+    /// gekürzter Abschnitt immer auf und wird durch seinen Rohtext ersetzt.
     func format(_ raw: String, bundleID: String?, termHint: String? = nil) async -> String {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isReady, let container else { return text }
+        guard isReady, container != nil else { return text }
         guard text.count >= config.minCharsForFormatting else { return text }
 
+        let parts = TextChunker.chunks(of: text)
+        var pieces: [String] = []
+        for part in parts {
+            pieces.append(await formatChunk(part, bundleID: bundleID, termHint: termHint))
+        }
+        let joined = TextChunker.joinFormatted(pieces)
+        return joined.isEmpty ? text : joined
+    }
+
+    /// Formatiert EINEN Abschnitt. Bei leerer/verdächtiger Ausgabe oder Fehler
+    /// kommt der Rohtext des Abschnitts zurück — nie stiller Inhaltsverlust.
+    private func formatChunk(_ text: String, bundleID: String?, termHint: String?) async -> String {
+        guard let container else { return text }
         do {
             let session = ChatSession(
                 container,
@@ -114,10 +135,10 @@ actor Formatter {
             guard !cleaned.isEmpty else { return text }
 
             // Kürzungs-Schutz: Das (kleine, quantisierte) Modell soll bereinigen,
-            // nicht zusammenfassen. Verliert die Ausgabe bei längeren Diktaten
-            // fast die Hälfte der Wörter, ist etwas schiefgelaufen → lieber den
-            // Rohtext einfügen als still Inhalt verlieren. (Füllwort-Entfernung
-            // und Listen-Umbau kosten legitim ~20–30 %, nie annähernd 45 %.)
+            // nicht zusammenfassen. Verliert die Ausgabe fast die Hälfte der
+            // Wörter, ist etwas schiefgelaufen → lieber den Rohtext einfügen als
+            // still Inhalt verlieren. (Füllwort-Entfernung und Listen-Umbau
+            // kosten legitim ~20–30 %, nie annähernd 45 %.)
             let inWords = text.split(whereSeparator: \.isWhitespace).count
             let outWords = cleaned.split(whereSeparator: \.isWhitespace).count
             if inWords >= 30, outWords * 100 < inWords * 55 {

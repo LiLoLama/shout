@@ -19,13 +19,19 @@ extension Notification.Name {
 /// eingefügt).
 @MainActor
 final class RecordingIndicator {
-    enum Mode { case idle, armed, recording, processing }
+    enum Mode: Equatable { case idle, armed, recording, processing }
 
     final class PillModel: ObservableObject {
         @Published var level: Float = 0
         @Published var mode: Mode = .idle
         /// Senkrecht statt waagerecht — hängt davon ab, wo die Pille steht.
         @Published var vertical = false
+        /// Wo die Kapsel im Panel klebt. Zählt nur, während das Panel für eine
+        /// Bewegung größer ist als die Kapsel: an einer Ecke muss sie an der Ecke
+        /// bleiben und in den freien Raum wachsen, statt in die Mitte zu springen.
+        @Published var align: Alignment = .center
+        /// Fährt die Kapsel zusammen, während das Panel ausblendet.
+        @Published var collapsed = false
         var onStart: () -> Void = {}
         var onCancel: () -> Void = {}
         var onSubmit: () -> Void = {}
@@ -61,23 +67,25 @@ final class RecordingIndicator {
 
     // MARK: - Modus-Steuerung
 
-    /// Aufnahme läuft: Wellenform + X/✓. Kommt sie aus dem Wartezustand des
-    /// Doppeltipps, wächst die kleine Pille in die große hinüber statt zu springen.
-    func show() {
-        model.level = 0
-        let morphing = (panel != nil && model.mode == .armed)
-        ensurePanel()
-        setMode(.recording, animated: morphing)
-    }
+    /// Aufnahme läuft: Wellenform + X/✓.
+    func show() { model.level = 0; present(.recording) }
 
     /// Verarbeiten: animierte Welle, bis eingefügt.
-    func showProcessing() { ensurePanel(); setMode(.processing) }
+    func showProcessing() { present(.processing) }
 
     /// Ruhezustand: nur bei „immer anzeigen" sichtbar (klickbarer Mic-Button).
-    func showIdle() { ensurePanel(); setMode(.idle) }
+    func showIdle() { present(.idle) }
 
     /// Erster Tipp im Doppeltipp-Modus: wartender Punkt.
-    func showArmed() { ensurePanel(); setMode(.armed) }
+    func showArmed() { present(.armed) }
+
+    /// Zeigt einen Zustand — immer in Bewegung. Entsteht die Pille gerade erst,
+    /// startet sie klein und poppt auf; stand sie schon da, formt sie sich um.
+    private func present(_ mode: Mode) {
+        if panel == nil { model.collapsed = true }
+        ensurePanel()
+        setMode(mode)
+    }
 
     /// Nach Abschluss/Abbruch: idle-Pille zeigen (wenn dauerhaft) oder ausblenden.
     func finish() { persistent ? showIdle() : hide() }
@@ -100,6 +108,7 @@ final class RecordingIndicator {
     func hide() {
         guard let panel else { return }
         self.panel = nil
+        withAnimation(.easeOut(duration: 0.17)) { model.collapsed = true }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.2
             panel.animator().alphaValue = 0
@@ -108,9 +117,19 @@ final class RecordingIndicator {
 
     // MARK: - Panel
 
-    private func setMode(_ mode: Mode, animated: Bool = false) {
-        model.mode = mode
-        applyLayout(for: mode, animated: animated)
+    /// Die eine Feder, die alle Wechsel trägt: Auftauchen, Umformen, Zusammenfahren.
+    private static let motion = Animation.spring(response: 0.3, dampingFraction: 0.72)
+
+    private func setMode(_ mode: Mode) {
+        // Reihenfolge ist wichtig: erst das Panel auf die Größe bringen, in der
+        // die Bewegung stattfindet, dann den Inhalt umschalten. Andernfalls
+        // beschneidet das noch kleine Fenster die hereinwachsende Pille — genau
+        // das ließ sie „fertig erscheinen" statt sich aufzubauen.
+        applyLayout(for: mode, from: model.mode)
+        withAnimation(Self.motion) {
+            model.collapsed = false
+            model.mode = mode
+        }
     }
 
     private func size(for mode: Mode) -> NSSize {
@@ -128,25 +147,57 @@ final class RecordingIndicator {
         }
     }
 
-    private func applyLayout(for mode: Mode, animated: Bool = false) {
+    /// Zählt Moduswechsel, damit das verspätete Nachziehen der Panel-Größe nicht
+    /// in einen neueren Wechsel hineinredet.
+    private var layoutGeneration = 0
+
+    private func applyLayout(for mode: Mode, from previous: Mode? = nil) {
         guard let panel else { return }
         model.vertical = Self.wantsVertical()
-        let s = size(for: mode)
-        if animated {
-            // Das Hosting-View wächst über seine autoresizingMask mit, deshalb
-            // reicht ein animiertes setFrame — kein Setzen der Größe von Hand.
-            let target = NSRect(origin: targetOrigin(size: s), size: s)
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
-                panel.animator().setFrame(target, display: true)
+        model.align = Self.alignment()
+        let target = size(for: mode)
+        layoutGeneration += 1
+        let generation = layoutGeneration
+
+        if let previous {
+            // Während der Bewegung ist das Panel so groß wie der größere der zwei
+            // Zustände — die Bühne für beide. Das Panel ist durchsichtig, das sieht
+            // niemand; sichtbar ist nur die Kapsel, die SwiftUI umformt.
+            let old = size(for: previous)
+            setPanelFrame(NSSize(width: max(old.width, target.width),
+                                 height: max(old.height, target.height)))
+            // Danach auf die Zielgröße nachziehen: ein zu großes Panel bliebe als
+            // unsichtbarer Klickfänger neben der Pille liegen.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                guard let self, self.panel != nil, self.layoutGeneration == generation else { return }
+                self.setPanelFrame(self.size(for: self.model.mode))
             }
         } else {
-            panel.setContentSize(s)
-            panel.contentView?.frame = NSRect(origin: .zero, size: s)
-            panel.setFrameOrigin(targetOrigin(size: s))
+            setPanelFrame(target)
         }
         // Ohne Buttons (Verarbeiten, Warten auf den zweiten Tipp) → Klicks durchreichen.
         panel.ignoresMouseEvents = (mode == .processing || mode == .armed)
+    }
+
+    private func setPanelFrame(_ s: NSSize) {
+        guard let panel else { return }
+        panel.setContentSize(s)
+        panel.contentView?.frame = NSRect(origin: .zero, size: s)
+        panel.setFrameOrigin(targetOrigin(size: s))
+    }
+
+    /// Wohin die Kapsel im Panel gehört — abgeleitet aus der eingestellten Ecke.
+    private static func alignment() -> Alignment {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: "pillCustom") else { return .center }
+        switch d.string(forKey: "pillAnchor") ?? "bottomCenter" {
+        case "bottomLeft":  return .bottomLeading
+        case "bottomRight": return .bottomTrailing
+        case "topLeft":     return .topLeading
+        case "topRight":    return .topTrailing
+        case "topCenter":   return .top
+        default:            return .bottom
+        }
     }
 
     /// Reagiert auf eine geänderte Positions-Voreinstellung (aus den Einstellungen).
@@ -324,21 +375,6 @@ private struct Stack<Content: View>: View {
     }
 }
 
-/// Lässt den Inhalt beim Erscheinen kurz aufpoppen. Das Panel selbst blendet nur
-/// seine Deckkraft ein; die Bewegung kommt von hier.
-private struct PopIn<Content: View>: View {
-    @State private var shown = false
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        content()
-            .scaleEffect(shown ? 1 : 0.7)
-            .onAppear {
-                withAnimation(.spring(response: 0.26, dampingFraction: 0.5)) { shown = true }
-            }
-    }
-}
-
 /// Die schwebende Pille (vier Layouts, textlos).
 private struct RecordingPill: View {
     @ObservedObject var model: RecordingIndicator.PillModel
@@ -356,7 +392,11 @@ private struct RecordingPill: View {
             case .processing: processingPill
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Jeder Wechsel wächst herein und fährt zusammen heraus, statt fertig
+        // aufzutauchen. Die Feder dazu setzt der Indicator (withAnimation).
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+        .scaleEffect(model.collapsed ? 0.72 : 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: model.align)
     }
 
     // Ruhezustand: klickbarer Mic-Knopf.
@@ -377,18 +417,16 @@ private struct RecordingPill: View {
     // läuft über TimelineView statt über @State-Animation — derselbe Weg wie beim
     // Verarbeiten und unabhängig davon, wie oft die Pille neu aufgebaut wird.
     private var armedPill: some View {
-        PopIn {
-            TimelineView(.animation) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                let beat = (sin(t * 9.0) + 1) / 2              // 0…1, ~1,4 Schläge/s
-                Circle().fill(Color.shoutLive)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(1.0 + 0.45 * beat)
-                    .opacity(0.55 + 0.45 * (1 - beat))
-                    .frame(width: 26, height: 26)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
-            }
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let beat = (sin(t * 9.0) + 1) / 2                  // 0…1, ~1,4 Schläge/s
+            Circle().fill(Color.shoutLive)
+                .frame(width: 8, height: 8)
+                .scaleEffect(1.0 + 0.45 * beat)
+                .opacity(0.55 + 0.45 * (1 - beat))
+                .frame(width: 26, height: 26)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
         }
     }
 

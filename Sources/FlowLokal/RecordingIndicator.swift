@@ -32,6 +32,15 @@ final class RecordingIndicator {
         @Published var align: Alignment = .center
         /// Fährt die Kapsel zusammen, während das Panel ausblendet.
         @Published var collapsed = false
+        /// Kurzer Anlauf: der Körper staucht, bevor er sich dehnt.
+        @Published var squash = false
+        /// „Bewegung reduzieren" in den Systemeinstellungen — dann ohne Federn,
+        /// ohne Puls, nur mit klaren kurzen Übergängen.
+        @Published var motionReduced = false
+
+        /// Läuft gerade etwas von sich aus? Nur dann braucht die Pille einen
+        /// Taktgeber; im Ruhezustand und bei Aufnahme genügen die Datenänderungen.
+        var beating: Bool { (mode == .armed || mode == .processing) && !motionReduced }
         var onStart: () -> Void = {}
         var onCancel: () -> Void = {}
         var onSubmit: () -> Void = {}
@@ -82,6 +91,7 @@ final class RecordingIndicator {
     /// Zeigt einen Zustand — immer in Bewegung. Entsteht die Pille gerade erst,
     /// startet sie klein und poppt auf; stand sie schon da, formt sie sich um.
     private func present(_ mode: Mode) {
+        model.motionReduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if panel == nil { model.collapsed = true }
         ensurePanel()
         setMode(mode)
@@ -108,7 +118,7 @@ final class RecordingIndicator {
     func hide() {
         guard let panel else { return }
         self.panel = nil
-        withAnimation(.easeOut(duration: 0.17)) { model.collapsed = true }
+        model.collapsed = true            // die Kapsel fährt zusammen (Sache der View)
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.2
             panel.animator().alphaValue = 0
@@ -117,18 +127,28 @@ final class RecordingIndicator {
 
     // MARK: - Panel
 
-    /// Die eine Feder, die alle Wechsel trägt: Auftauchen, Umformen, Zusammenfahren.
-    private static let motion = Animation.spring(response: 0.3, dampingFraction: 0.72)
-
+    /// Setzt den Zustand. Wie sich der Körper dabei bewegt, entscheidet die View
+    /// anhand der Werte im Modell — hier wird nur die Abfolge getaktet.
     private func setMode(_ mode: Mode) {
         // Reihenfolge ist wichtig: erst das Panel auf die Größe bringen, in der
-        // die Bewegung stattfindet, dann den Inhalt umschalten. Andernfalls
-        // beschneidet das noch kleine Fenster die hereinwachsende Pille — genau
-        // das ließ sie „fertig erscheinen" statt sich aufzubauen.
+        // die Bewegung stattfindet, dann den Zustand umschalten. Andernfalls
+        // beschneidet das noch kleine Fenster die wachsende Kapsel — genau das
+        // ließ sie „fertig erscheinen" statt sich aufzubauen.
         applyLayout(for: mode, from: model.mode)
-        withAnimation(Self.motion) {
-            model.collapsed = false
-            model.mode = mode
+        let generation = layoutGeneration
+        model.collapsed = false
+
+        // Der Start der Aufnahme ist der Moment, der Betonung verdient: kurzer
+        // Anlauf, dann dehnt sich der Körper. Alle anderen Wechsel gehen direkt.
+        let anticipate = (mode == .recording && model.mode != .recording
+                          && panel != nil && !model.motionReduced)
+        guard anticipate else { model.mode = mode; return }
+
+        model.squash = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { [weak self] in
+            guard let self, self.layoutGeneration == generation else { return }
+            self.model.squash = false
+            self.model.mode = mode
         }
     }
 
@@ -375,108 +395,161 @@ private struct Stack<Content: View>: View {
     }
 }
 
-/// Die schwebende Pille (vier Layouts, textlos).
+/// Die schwebende Pille: **ein** Körper, textlos. Kein Zustand ersetzt einen
+/// anderen — die Kapsel ändert Breite, Höhe und Inhalt, und der Punkt des
+/// Wartezustands ist derselbe Balken, der später in der Mitte der Wellenform
+/// steht. Deshalb muss beim Start nichts entstehen und nichts vergehen.
 private struct RecordingPill: View {
     @ObservedObject var model: RecordingIndicator.PillModel
 
     private let weights: [CGFloat] = [0.55, 0.78, 0.93, 1.0, 0.93, 0.78, 0.55]
+    private var mid: Int { weights.count / 2 }
+
+    private let barW: CGFloat = 2.8       // Dicke eines Balkens
+    private let dotW: CGFloat = 8         // Der wartende Punkt ist ein dicker, kurzer Balken
     private let minH: CGFloat = 2
     private let maxH: CGFloat = 20
 
     var body: some View {
-        Group {
-            switch model.mode {
-            case .idle:       idlePill
-            case .armed:      armedPill
-            case .recording:  recordingPill
-            case .processing: processingPill
-            }
+        Stack(vertical: model.vertical, spacing: 2.5) {
+            ForEach(weights.indices, id: \.self) { i in bar(i) }
         }
-        // Jeder Wechsel wächst herein und fährt zusammen heraus, statt fertig
-        // aufzutauchen. Die Feder dazu setzt der Indicator (withAnimation).
-        .transition(.scale(scale: 0.6).combined(with: .opacity))
-        .scaleEffect(model.collapsed ? 0.72 : 1)
+        .frame(width: shell.width, height: shell.height)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.09)))
+        .overlay(alignment: model.vertical ? .top : .leading) { cancelButton }
+        .overlay(alignment: model.vertical ? .bottom : .trailing) { submitButton }
+        .overlay { micButton }
+        .scaleEffect(bodyScale)
+        // Der Körper folgt dem Zustand: Anlauf (Stauchen), dann Dehnen mit
+        // leichtem Überschwingen. Reduzierte Bewegung bekommt dieselbe Abfolge
+        // ohne Federn — die Zustände bleiben unterscheidbar, es wippt nur nichts.
+        .animation(model.motionReduced ? .easeOut(duration: 0.18)
+                                       : .spring(response: 0.36, dampingFraction: 0.62),
+                   value: model.mode)
+        .animation(.easeIn(duration: 0.09), value: model.squash)
+        .animation(.easeOut(duration: 0.17), value: model.collapsed)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: model.align)
     }
 
-    // Ruhezustand: klickbarer Mic-Knopf.
-    private var idlePill: some View {
+    // MARK: - Größe des Körpers
+
+    /// Sichtbare Größe der Kapsel je Zustand, waagerecht gedacht und bei
+    /// senkrechter Pille gekippt.
+    private var shell: CGSize {
+        let base: CGSize
+        switch model.mode {
+        case .idle:       base = CGSize(width: 40, height: 26)
+        case .armed:      base = CGSize(width: 26, height: 26)
+        case .recording:  base = CGSize(width: 111, height: 34)
+        case .processing: base = CGSize(width: 84, height: 28)
+        }
+        return model.vertical ? CGSize(width: base.height, height: base.width) : base
+    }
+
+    /// Anlauf und Abgang. Beide bleiben unter 1, damit die Kapsel nie über den
+    /// Rand des Panels hinauswächst — das Überschwingen steckt in der Breite.
+    private var bodyScale: CGSize {
+        if model.collapsed { return CGSize(width: 0.72, height: 0.72) }
+        guard model.squash else { return CGSize(width: 1, height: 1) }
+        return model.vertical ? CGSize(width: 0.86, height: 0.94)
+                              : CGSize(width: 0.94, height: 0.86)
+    }
+
+    // MARK: - Die Balken (Punkt, Wellenform, Verarbeiten in einem)
+
+    private func bar(_ i: Int) -> some View {
+        // Ein Taktgeber für alles, was von sich aus läuft. Angehalten, sobald
+        // nichts pulsiert oder wandert — sonst zeichnete die Dauer-Pille im
+        // Ruhezustand für nichts 60 Bilder je Sekunde.
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !model.beating)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let length = self.length(i, at: t)
+            let thick = (i == mid && model.mode == .armed) ? dotW : barW
+            Capsule().fill(Color.shoutLive)
+                .frame(width: model.vertical ? length : thick,
+                       height: model.vertical ? thick : length)
+                .scaleEffect(pulse(i, at: t))
+                .opacity(opacity(i, at: t))
+        }
+        // Aus der Mitte heraus: der Mittelbalken zuerst, die äußeren folgen.
+        .animation(model.motionReduced
+                    ? .easeOut(duration: 0.18)
+                    : .spring(response: 0.34, dampingFraction: 0.7)
+                        .delay(Double(abs(i - mid)) * 0.035),
+                   value: model.mode)
+        .animation(.easeOut(duration: 0.1), value: model.level)
+    }
+
+    /// Länge eines Balkens im aktuellen Zustand.
+    private func length(_ i: Int, at t: TimeInterval) -> CGFloat {
+        switch model.mode {
+        case .idle:
+            return 0
+        case .armed:
+            return i == mid ? dotW : 0          // nur der Punkt steht
+        case .recording:
+            let l = CGFloat(model.level)
+            return minH + (maxH - minH) * min(1, l * weights[i])
+        case .processing:
+            return minH + (maxH * 0.72 - minH) * wave(i, at: t)
+        }
+    }
+
+    /// Der Puls des Wartezustands — nur der Punkt schlägt, ~1,4-mal je Sekunde
+    /// und damit genau einmal im Zeitfenster für den zweiten Tipp.
+    private func pulse(_ i: Int, at t: TimeInterval) -> CGFloat {
+        guard model.mode == .armed, i == mid, !model.motionReduced else { return 1 }
+        return 1.0 + 0.45 * CGFloat((sin(t * 9.0) + 1) / 2)
+    }
+
+    private func opacity(_ i: Int, at t: TimeInterval) -> Double {
+        switch model.mode {
+        case .armed:
+            guard i == mid, !model.motionReduced else { return 1 }
+            return 0.55 + 0.45 * (1 - Double((sin(t * 9.0) + 1) / 2))
+        case .processing:
+            return 0.35 + 0.65 * Double(wave(i, at: t))
+        default:
+            return 1
+        }
+    }
+
+    /// Durchlaufende Welle des Verarbeiten-Zustands, 0…1.
+    private func wave(_ i: Int, at t: TimeInterval) -> CGFloat {
+        CGFloat((sin(t * 5.5 - Double(i) * 0.7) + 1) / 2)
+    }
+
+    // MARK: - Knöpfe, die an den Rändern der Kapsel mitreiten
+
+    private var cancelButton: some View {
+        circleButton(system: "xmark", tint: Color(white: 0.75), action: model.onCancel)
+            .help(Loc.t("Abbrechen"))
+            .padding(model.vertical ? .top : .leading, 8)
+            .modifier(OnlyWhileRecording(mode: model.mode))
+    }
+
+    private var submitButton: some View {
+        circleButton(system: "checkmark", tint: Color.shoutLive, filled: true, action: model.onSubmit)
+            .help(Loc.t("Einfügen"))
+            .padding(model.vertical ? .bottom : .trailing, 8)
+            .modifier(OnlyWhileRecording(mode: model.mode))
+    }
+
+    /// Ruhezustand: derselbe Körper, nur mit Mikrofon — und klickbar wie bisher.
+    private var micButton: some View {
         Button(action: model.onStart) {
             Image(systemName: "mic.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.shoutLive)
                 .frame(width: 40, height: 26)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .help(Loc.t("Aufnahme starten"))
-    }
-
-    // Warten auf den zweiten Tipp: ein pulsierender Punkt, sonst nichts. Der Puls
-    // läuft über TimelineView statt über @State-Animation — derselbe Weg wie beim
-    // Verarbeiten und unabhängig davon, wie oft die Pille neu aufgebaut wird.
-    private var armedPill: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let beat = (sin(t * 9.0) + 1) / 2                  // 0…1, ~1,4 Schläge/s
-            Circle().fill(Color.shoutLive)
-                .frame(width: 8, height: 8)
-                .scaleEffect(1.0 + 0.45 * beat)
-                .opacity(0.55 + 0.45 * (1 - beat))
-                .frame(width: 26, height: 26)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
-        }
-    }
-
-    // Aufnahme: X · Wellenform · ✓ — waagerecht oder senkrecht gestapelt.
-    private var recordingPill: some View {
-        Stack(vertical: model.vertical, spacing: 8) {
-            circleButton(system: "xmark", tint: Color(white: 0.75), action: model.onCancel)
-                .help(Loc.t("Abbrechen"))
-            bars { barHeight($0) }
-            circleButton(system: "checkmark", tint: Color.shoutLive, filled: true, action: model.onSubmit)
-                .help(Loc.t("Einfügen"))
-        }
-        .padding(model.vertical ? .vertical : .horizontal, 8)
-        .frame(width: model.vertical ? 34 : nil, height: model.vertical ? nil : 34)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
-    }
-
-    /// Die Balken der Wellenform. Senkrecht wachsen sie in die Breite statt in die
-    /// Höhe — sonst stünde die Welle quer zur Pille.
-    @ViewBuilder
-    private func bars(_ length: @escaping (Int) -> CGFloat) -> some View {
-        Stack(vertical: model.vertical, spacing: 2.5) {
-            ForEach(weights.indices, id: \.self) { i in
-                Capsule().fill(Color.shoutLive)
-                    .frame(width: model.vertical ? length(i) : 2.8,
-                           height: model.vertical ? 2.8 : length(i))
-                    .animation(.easeOut(duration: 0.1), value: model.level)
-            }
-        }
-    }
-
-    // Verarbeiten: durchlaufende Welle.
-    private var processingPill: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            Stack(vertical: model.vertical, spacing: 2.5) {
-                ForEach(weights.indices, id: \.self) { i in
-                    let phase = sin(t * 5.5 - Double(i) * 0.7)
-                    let norm = CGFloat((phase + 1) / 2)
-                    let length = minH + (maxH * 0.72 - minH) * norm
-                    Capsule().fill(Color.shoutLive.opacity(0.35 + 0.65 * norm))
-                        .frame(width: model.vertical ? length : 2.8,
-                               height: model.vertical ? 2.8 : length)
-                }
-            }
-        }
-        .frame(width: model.vertical ? 28 : 84, height: model.vertical ? 84 : 28)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
+        .opacity(model.mode == .idle ? 1 : 0)
+        .allowsHitTesting(model.mode == .idle)
+        .animation(.easeOut(duration: 0.14), value: model.mode)
     }
 
     private func circleButton(system: String, tint: Color, filled: Bool = false,
@@ -491,9 +564,21 @@ private struct RecordingPill: View {
         }
         .buttonStyle(.plain)
     }
+}
 
-    private func barHeight(_ i: Int) -> CGFloat {
-        let l = CGFloat(model.level)
-        return minH + (maxH - minH) * min(1, l * weights[i])
+/// Zeigt einen Knopf nur während der Aufnahme: er kommt zuletzt, nachdem sich
+/// die Kapsel gedehnt hat, und geht als Erstes wieder — hinaus schneller als
+/// herein.
+private struct OnlyWhileRecording: ViewModifier {
+    let mode: RecordingIndicator.Mode
+
+    func body(content: Content) -> some View {
+        let on = (mode == .recording)
+        return content
+            .opacity(on ? 1 : 0)
+            .scaleEffect(on ? 1 : 0.5)
+            .allowsHitTesting(on)
+            .animation(on ? .easeOut(duration: 0.16).delay(0.18)
+                          : .easeOut(duration: 0.11), value: mode)
     }
 }

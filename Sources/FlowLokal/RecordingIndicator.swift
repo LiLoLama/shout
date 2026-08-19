@@ -48,6 +48,10 @@ final class RecordingIndicator {
 
     private let model = PillModel()
     private var panel: NSPanel?
+    /// Das noch ausblendende Panel. Es hängt am selben Modell wie eine neue
+    /// Pille — tauchte in diesen 0,2 s eine auf, spielte es deren
+    /// Zustandswechsel sichtbar mit, während es verschwand.
+    private var fadingPanel: NSPanel?
     private var persistent = false
 
     init() {
@@ -92,9 +96,29 @@ final class RecordingIndicator {
     /// startet sie klein und poppt auf; stand sie schon da, formt sie sich um.
     private func present(_ mode: Mode) {
         model.motionReduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        if panel == nil { model.collapsed = true }
+        guard panel == nil else { setMode(mode); return }
+
+        // Eine neue Pille muss im Zielzustand entstehen. Vorher stand im Modell
+        // noch der letzte Zustand — beim ersten Mal die Mikrofon-Pille, nach
+        // einem Diktat die Verarbeiten-Welle — und weil das Panel schon vor dem
+        // Umschalten vorne stand, war genau der für einen Moment zu sehen und
+        // verwandelte sich dann erst in den wartenden Punkt. Ob man es sah, hing
+        // daran, ob dazwischen ein Bild gezeichnet wurde: mal ja, mal nein.
+        var instantly = Transaction()
+        instantly.disablesAnimations = true
+        withTransaction(instantly) {
+            model.mode = mode
+            model.collapsed = true          // klein — poppt gleich auf
+        }
         ensurePanel()
-        setMode(mode)
+
+        // Das Aufpoppen erst im nächsten Durchlauf anstoßen. Im selben Aufruf
+        // fielen „klein" und „groß" zu einem Wert zusammen und die Bewegung
+        // fiele je nach Zeichentakt ganz aus.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.panel != nil else { return }
+            self.model.collapsed = false
+        }
     }
 
     /// Nach Abschluss/Abbruch: idle-Pille zeigen (wenn dauerhaft) oder ausblenden.
@@ -118,6 +142,7 @@ final class RecordingIndicator {
     func hide() {
         guard let panel else { return }
         self.panel = nil
+        fadingPanel = panel
         model.collapsed = true            // die Kapsel fährt zusammen (Sache der View)
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.2
@@ -326,6 +351,10 @@ final class RecordingIndicator {
 
     private func ensurePanel() {
         guard panel == nil else { return }
+        // Eine noch ausblendende Pille sofort schließen, statt sie neben der
+        // neuen weiterzeichnen zu lassen.
+        fadingPanel?.orderOut(nil)
+        fadingPanel = nil
         let s = size(for: model.mode)
 
         let hosting = FirstMouseHostingView(rootView: RecordingPill(model: model))

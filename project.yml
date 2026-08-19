@@ -273,6 +273,7 @@ targets:
     sources:
       - path: Tests/ShoutTests
       - path: Sources/FlowLokal/DoubleTapDetector.swift
+      - path: Sources/FlowLokal/TranscriptPlausibility.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift
       - path: Sources/FlowLokal/TextChunker.swift

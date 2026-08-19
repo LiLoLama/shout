@@ -67,27 +67,41 @@ actor Transcriber {
     func transcribe(_ samples: [Float], biasTerms: [String] = []) async throws -> String {
         guard pipe != nil else { throw TranscriberError.notLoaded }
 
-        let text = try await run(samples: samples, biasTerms: biasTerms)
+        let results = try await runResults(samples: samples, biasTerms: biasTerms)
+        let text = Self.joined(results)
 
-        // Der Bias-Prompt kann Whisper Inhalte verschlucken lassen — nicht nur
-        // komplett leere Ergebnisse, sondern auch teilweise (Anfang fehlt, nur
-        // letzter Satz …). Deshalb zusätzlich zur Leer-Prüfung eine Plausibilitäts-
-        // Prüfung: deutlich zu wenig Text für die Audiolänge (< 3 Zeichen/s bei
-        // > 5 s; normales Diktat liegt bei 10–15) → ohne Bias nachziehen, das
-        // längere Ergebnis gewinnt. Nur sinnvoll, wenn Bias angewandt wurde
-        // (im Auto-Sprachmodus ist er in run() deaktiviert).
+        // Der Bias-Prompt kann Whisper Audio überspringen lassen. Verschluckt es
+        // ALLES, fällt das über die Textlänge auf — verschluckt es nur den Anfang,
+        // nicht: ein Diktat, dem das erste Drittel fehlt, hat immer noch 9 von 13
+        // Zeichen je Sekunde und sieht nach Länge unauffällig aus. Deshalb zählt
+        // hier zusätzlich die ZEITMARKE des ersten Abschnitts.
+        //
+        // Nur sinnvoll, wenn ein Bias-Prompt angewandt wurde (im Auto-Sprachmodus
+        // ist er in runResults() abgeschaltet) — sonst gibt es nichts nachzuziehen.
         let auto = (UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de") == "auto"
+        guard !auto, !biasTerms.isEmpty else { return text }
+
         let seconds = Double(samples.count) / 16_000.0
-        let suspicious = seconds > 5 && Double(text.count) < seconds * 3
-        if !auto, !biasTerms.isEmpty, text.isEmpty || suspicious {
-            let unbiased = try await run(samples: samples, biasTerms: [])
-            if unbiased.count > text.count {
-                NSLog("shout: Bias-Transkript verdächtig kurz (%d Zeichen für %.0f s) → ohne Bias: %d Zeichen",
-                      text.count, seconds, unbiased.count)
-                return unbiased
-            }
+        let firstStart = results.flatMap(\.segments).first.map { Double($0.start) }
+
+        let reason: String?
+        if text.isEmpty {
+            reason = "leer"
+        } else if TranscriptPlausibility.swallowedStart(firstSegmentStart: firstStart, audioSeconds: seconds) {
+            reason = String(format: "Anfang übersprungen — erster Abschnitt erst bei %.1f s von %.0f s",
+                            firstStart ?? 0, seconds)
+        } else if TranscriptPlausibility.tooLittleText(characters: text.count, audioSeconds: seconds) {
+            reason = String(format: "zu wenig Text — %d Zeichen für %.0f s", text.count, seconds)
+        } else {
+            reason = nil
         }
-        return text
+        guard let reason else { return text }
+
+        let unbiased = try await run(samples: samples, biasTerms: [])
+        guard unbiased.count > text.count else { return text }
+        NSLog("shout: Bias-Transkript verdächtig (%@) → ohne Bias %d statt %d Zeichen",
+              reason, unbiased.count, text.count)
+        return unbiased
     }
 
     /// Wie `transcribe`, liefert aber die Abschnitte mit Zeitmarken — Grundlage für
@@ -108,8 +122,12 @@ actor Transcriber {
     }
 
     private func run(samples: [Float], biasTerms: [String]) async throws -> String {
-        let results = try await runResults(samples: samples, biasTerms: biasTerms)
-        return results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.joined(try await runResults(samples: samples, biasTerms: biasTerms))
+    }
+
+    /// Fenster-Ergebnisse zu einem Text zusammenziehen.
+    private static func joined(_ results: [TranscriptionResult]) -> String {
+        results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func runResults(samples: [Float], biasTerms: [String]) async throws -> [TranscriptionResult] {

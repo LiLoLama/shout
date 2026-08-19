@@ -22,16 +22,24 @@ struct SettingsView: View {
     @AppStorage("preferredMicUID") private var micUID = ""
     @State private var devices: [AudioDevices.Device] = []
 
+    /// Erklärt die gewählte Aufnahme-Art in einem Satz.
+    private var modeHelp: String {
+        switch settings.mode {
+        case .hold: return Loc.t("Taste gedrückt halten, beim Loslassen wird eingefügt.")
+        case .toggle: return Loc.t("Einmal drücken zum Starten, nochmal zum Stoppen.")
+        case .doubleTap: return Loc.t("Zweimal kurz tippen zum Starten, einmal tippen zum Stoppen.")
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 ConsolePanel(title: Loc.t("Aufnahme")) {
-                    FieldRow(title: Loc.t("Aufnahme-Art"),
-                             help: settings.mode == .hold
-                                ? Loc.t("Taste gedrückt halten, beim Loslassen wird eingefügt.")
-                                : Loc.t("Einmal drücken zum Starten, nochmal zum Stoppen.")) {
+                    FieldRow(title: Loc.t("Aufnahme-Art"), help: modeHelp) {
                         ConsoleSegmented(selection: $settings.mode,
-                                         options: [(.hold, Loc.t("Halten")), (.toggle, Loc.t("Umschalten"))])
+                                         options: [(.hold, Loc.t("Halten")),
+                                                   (.toggle, Loc.t("Umschalten")),
+                                                   (.doubleTap, Loc.t("Doppeltipp"))])
                     }
                     ConsoleDivider()
                     FieldRow(title: Loc.t("So startest du"),
@@ -45,7 +53,7 @@ struct SettingsView: View {
                     }
                     ConsoleDivider()
                     FieldRow(title: Loc.t("Von selbst aufhören"),
-                             help: Loc.t("Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus).")) {
+                             help: Loc.t("Stoppt automatisch nach kurzer Sprechpause (im Umschalt- und Doppeltipp-Modus).")) {
                         Toggle("", isOn: $settings.autoStop).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
                     }
                     if settings.autoStop {

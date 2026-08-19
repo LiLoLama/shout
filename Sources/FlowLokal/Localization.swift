@@ -96,6 +96,7 @@ final class Loc: ObservableObject {
         "Bereit · %@": "Ready · %@",
         "%@ halten": "hold %@",
         "%@ drücken": "press %@",
+        "%@ doppelt tippen": "double-tap %@",
         "Aufnahme läuft …": "Recording…",
         "Verarbeite …": "Processing…",
         "shout. — Korrigieren": "shout. — Correct",
@@ -120,15 +121,18 @@ final class Loc: ObservableObject {
             "Hold the key down; the text is inserted when you let go.",
         "Einmal drücken zum Starten, nochmal zum Stoppen.":
             "Press once to start, press again to stop.",
+        "Zweimal kurz tippen zum Starten, einmal tippen zum Stoppen.":
+            "Tap twice quickly to start, tap once to stop.",
         "Halten": "Hold",
         "Umschalten": "Toggle",
+        "Doppeltipp": "Double-tap",
         "So startest du": "How to start",
         "Drück die Taste, mit der du diktieren willst.": "Press the key you want to dictate with.",
         "Ändern": "Change",
         "Taste drücken …": "Press a key…",
         "Von selbst aufhören": "Stop by itself",
-        "Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus).":
-            "Stops automatically after a short pause (in toggle mode).",
+        "Stoppt automatisch nach kurzer Sprechpause (im Umschalt- und Doppeltipp-Modus).":
+            "Stops automatically after a short pause (in toggle and double-tap mode).",
         "Pause bis Stopp": "Pause before stopping",
         "Pille immer anzeigen": "Always show the pill",
         "Zeigt die Aufnahme-Pille dauerhaft am Bildschirmrand — per Klick starten, mit ✕/✓ abbrechen oder einfügen.":

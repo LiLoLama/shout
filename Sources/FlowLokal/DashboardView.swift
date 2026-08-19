@@ -78,11 +78,7 @@ struct DashboardView: View {
 
     // MARK: - Seitenleiste
 
-    private var statusText: String {
-        settings.mode == .hold
-            ? Loc.f("%@ halten", settings.hotkeyDescription)
-            : Loc.f("%@ drücken", settings.hotkeyDescription)
-    }
+    private var statusText: String { settings.triggerDescription }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {

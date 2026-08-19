@@ -69,6 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Verzeichnis öffnete jeder Doppelklick ein weiteres Fenster derselben Datei.
     private var transcriptWindows: [UUID: NSWindow] = [:]
 
+    /// Zeitlogik der Aufnahme-Art „Doppeltipp".
+    private var doubleTap = DoubleTapDetector()
+
     // Hotkey-Aufnahme (Recorder in den Einstellungen)
     private var isCapturingHotkey = false
     private var captureKeyDownSeen = false
@@ -161,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.handleLearnedCorrection(wrong: wrong, right: right)
         }
 
-        // Auto-Stopp: Stille erkannt → Aufnahme beenden (nur im Umschalt-Modus aktiv).
+        // Auto-Stopp: Stille erkannt → Aufnahme beenden (nicht im Halten-Modus).
         recorder.onSilence = { [weak self] in
             guard let self, self.state == .recording else { return }
             self.stopAndProcess()
@@ -485,10 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             statusMenuItem?.title = Loc.t("Modell wird geladen …")
         case .idle:
             button.title = "🎙️"
-            let trigger = settings.mode == .hold
-                ? Loc.f("%@ halten", settings.hotkeyDescription)
-                : Loc.f("%@ drücken", settings.hotkeyDescription)
-            statusMenuItem?.title = Loc.f("Bereit — %@", trigger)
+            statusMenuItem?.title = Loc.f("Bereit — %@", settings.triggerDescription)
         case .recording:
             button.title = "🔴"
             statusMenuItem?.title = Loc.t("Aufnahme läuft …")
@@ -1033,6 +1033,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard down else { return }   // nur der Tastendruck zählt
             if state == .idle { startRecording() }
             else if state == .recording { stopAndProcess() }
+        case .doubleTap:
+            guard down else { return }   // Loslassen bedeutet hier nichts
+            // systemUptime läuft in derselben Zeitbasis wie NSEvent.timestamp
+            // und ist monoton — Systemzeit-Sprünge können nichts anrichten.
+            let now = ProcessInfo.processInfo.systemUptime
+            switch doubleTap.handleDown(at: now, isRecording: state == .recording) {
+            case .start: if state == .idle { startRecording() }
+            case .stop: stopAndProcess()
+            case .none: break
+            }
         }
     }
 
@@ -1073,8 +1083,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Aktuelles Mikrofon aus den Einstellungen (Menü oder Dashboard) übernehmen.
         let micUID = UserDefaults.standard.string(forKey: micUIDKey)
         recorder.preferredDeviceUID = (micUID?.isEmpty == false) ? micUID : nil
-        // Auto-Stopp nur im Umschalt-Modus sinnvoll (im Halten-Modus stoppt das Loslassen).
-        recorder.autoStopEnabled = (settings.mode == .toggle && settings.autoStop)
+        // Auto-Stopp nur sinnvoll, wenn die Taste nicht gehalten wird — im
+        // Halten-Modus stoppt ja das Loslassen.
+        recorder.autoStopEnabled = (settings.mode != .hold && settings.autoStop)
         recorder.silenceSeconds = settings.silenceSeconds
         do {
             try recorder.start()

@@ -1,14 +1,15 @@
 import AppKit
 import Combine
 
-/// Aufnahme-Einstellungen: Modus (Halten/Umschalten), Hotkey, Auto-Stopp.
+/// Aufnahme-Einstellungen: Modus (Halten/Umschalten/Doppeltipp), Hotkey, Auto-Stopp.
 /// Persistiert in UserDefaults.
 @MainActor
 final class RecordingSettings: ObservableObject {
 
     enum Mode: String {
-        case hold      // Taste halten (Push-to-talk)
-        case toggle    // einmal drücken = läuft, nochmal = stopp
+        case hold        // Taste halten (Push-to-talk)
+        case toggle      // einmal drücken = läuft, nochmal = stopp
+        case doubleTap   // zweimal kurz tippen = läuft, einmal tippen = stopp
     }
 
     @Published var mode: Mode { didSet { d.set(mode.rawValue, forKey: K.mode) } }
@@ -82,6 +83,16 @@ final class RecordingSettings: ObservableObject {
     }
 
     // MARK: - Anzeige
+
+    /// Der Auslöser-Hinweis für Statusmenü und Seitenleiste: „rechte ⌥ halten",
+    /// „rechte ⌥ drücken" bzw. „rechte ⌥ doppelt tippen".
+    var triggerDescription: String {
+        switch mode {
+        case .hold: return Loc.f("%@ halten", hotkeyDescription)
+        case .toggle: return Loc.f("%@ drücken", hotkeyDescription)
+        case .doubleTap: return Loc.f("%@ doppelt tippen", hotkeyDescription)
+        }
+    }
 
     var hotkeyDescription: String {
         if isModifierOnly { return Self.modifierName(forKeyCode: keyCode) }

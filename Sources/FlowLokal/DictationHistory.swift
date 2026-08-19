@@ -9,10 +9,15 @@ final class DictationHistory: ObservableObject {
         var id = UUID()
         var text: String
         var date: Date
+        /// Rohtext der Spracherkennung — vor gesprochenen Befehlen, KI-Aufbereitung
+        /// und Korrekturen. `nil`, wenn identisch mit `text` (nichts wurde verändert)
+        /// oder bei Einträgen aus älteren Versionen.
+        var raw: String?
 
-        init(text: String, date: Date) {
+        init(text: String, date: Date, raw: String? = nil) {
             self.text = text
             self.date = date
+            self.raw = raw
         }
 
         // Tolerantes Decoding: fehlende Felder → Default statt „Datei defekt".
@@ -21,6 +26,7 @@ final class DictationHistory: ObservableObject {
             id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
             text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
             date = try c.decodeIfPresent(Date.self, forKey: .date) ?? Date()
+            raw = try c.decodeIfPresent(String.self, forKey: .raw)
         }
     }
 
@@ -36,10 +42,14 @@ final class DictationHistory: ObservableObject {
         }
     }
 
-    func add(_ text: String) {
+    func add(_ text: String, raw: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        entries.insert(Entry(text: trimmed, date: Date()), at: 0)
+        // Rohtext nur behalten, wenn er sich vom Ergebnis unterscheidet — sonst
+        // stünde in der Oberfläche zweimal dasselbe.
+        let rawTrimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let storedRaw = (rawTrimmed?.isEmpty == false && rawTrimmed != trimmed) ? rawTrimmed : nil
+        entries.insert(Entry(text: trimmed, date: Date(), raw: storedRaw), at: 0)
         if entries.count > maxEntries { entries.removeLast(entries.count - maxEntries) }
         save()
     }

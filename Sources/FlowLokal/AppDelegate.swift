@@ -1128,7 +1128,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 injector.paste(final, keepInClipboard: keepInClipboard)
                 sounds.play(.done)
                 lastInsertedText = final
-                history.add(final)
+                // Rohtext mitgeben: Im Verlauf lässt sich so nachsehen, was die
+                // Spracherkennung WIRKLICH geliefert hat — unverzichtbar, um
+                // fehlenden Inhalt der richtigen Stufe zuzuordnen (Whisper vs.
+                // Aufbereitung).
+                history.add(final, raw: raw)
                 let words = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
                 stats.record(words: words, seconds: Double(samples.count) / 16_000.0)
 

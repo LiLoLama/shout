@@ -281,7 +281,7 @@ final class MobileEngine: ObservableObject {
                 AppGroup.setPendingDictation(final)
                 lastResult = final
                 sounds.play(.done)
-                history.add(final)
+                history.add(final, raw: raw)
                 let words = final.split(whereSeparator: { $0.isWhitespace }).count
                 stats.record(words: words, seconds: Double(samples.count) / 16_000.0)
             } catch {

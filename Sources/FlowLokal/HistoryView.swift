@@ -6,6 +6,9 @@ struct HistoryView: View {
     @ObservedObject var history: DictationHistory
     let onInsert: (String) -> Void
 
+    /// Einträge, deren Roh-Transkript gerade aufgeklappt ist.
+    @State private var expandedRaw: Set<UUID> = []
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -42,10 +45,13 @@ struct HistoryView: View {
             Text(Self.time.string(from: entry.date))
                 .font(.system(size: 12, design: .monospaced)).foregroundStyle(Color(white: 0.5))
                 .frame(width: 48, alignment: .leading)
-            Text(entry.text)
-                .font(.system(size: 13.5)).foregroundStyle(Color(white: 0.9))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(entry.text)
+                    .font(.system(size: 13.5)).foregroundStyle(Color(white: 0.9))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let raw = entry.raw { rawSection(raw, id: entry.id) }
+            }
             HStack(spacing: 8) {
                 Button { onInsert(entry.text) } label: { Image(systemName: "arrow.down.doc") }
                     .help(Loc.t("Am Cursor einfügen (in der zuletzt aktiven App)"))
@@ -59,6 +65,42 @@ struct HistoryView: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(white: 0.165)))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.07)))
+    }
+
+    /// Roh-Transkript der Spracherkennung, auf-/zuklappbar. Sichtbar nur, wenn es
+    /// sich vom Ergebnis unterscheidet (sonst speichert der Verlauf gar kein `raw`).
+    private func rawSection(_ raw: String, id: UUID) -> some View {
+        let expanded = expandedRaw.contains(id)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button {
+                    if expanded { expandedRaw.remove(id) } else { expandedRaw.insert(id) }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(expanded ? Loc.t("Original ausblenden") : Loc.t("Original anzeigen"))
+                            .font(.system(size: 11.5))
+                    }
+                }
+                .buttonStyle(.plain).foregroundStyle(Color(white: 0.55))
+                .help(Loc.t("Rohtext der Spracherkennung — vor Befehlen, Aufbereitung und Korrekturen."))
+                if expanded {
+                    Button { copy(raw) } label: { Image(systemName: "doc.on.doc") }
+                        .buttonStyle(.borderless).foregroundStyle(Color(white: 0.5))
+                        .font(.system(size: 11))
+                        .help(Loc.t("Original in die Zwischenablage kopieren"))
+                }
+            }
+            if expanded {
+                Text(raw)
+                    .font(.system(size: 12.5)).foregroundStyle(Color(white: 0.62))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(white: 0.12)))
+            }
+        }
     }
 
     private var emptyState: some View {

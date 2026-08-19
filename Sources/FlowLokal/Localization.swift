@@ -217,6 +217,11 @@ final class Loc: ObservableObject {
             "Insert at the cursor (in the last active app)",
         "In die Zwischenablage kopieren": "Copy to the clipboard",
         "Löschen": "Delete",
+        "Original anzeigen": "Show original",
+        "Original ausblenden": "Hide original",
+        "Rohtext der Spracherkennung — vor Befehlen, Aufbereitung und Korrekturen.":
+            "Raw speech-recognition text — before commands, cleanup and corrections.",
+        "Original in die Zwischenablage kopieren": "Copy the original to the clipboard",
 
         // MARK: - Statistiken
 

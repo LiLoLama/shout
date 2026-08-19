@@ -7,8 +7,10 @@ extension Notification.Name {
     static let shoutPillMoved = Notification.Name("shout.pillMoved")
 }
 
-/// Schwebende Pille unten am Bildschirm. Drei Modi:
+/// Schwebende Pille unten am Bildschirm. Vier Modi:
 ///  - `.idle`      — nur sichtbar, wenn „Pille immer anzeigen" aktiv ist; klickbar zum Starten.
+///  - `.armed`     — nur im Doppeltipp-Modus: der erste Tipp ist da, ein pulsierender
+///                   Punkt wartet auf den zweiten. Nimmt keine Klicks an.
 ///  - `.recording` — pegel-reaktive Wellenform, flankiert von X (abbrechen) und ✓ (absenden).
 ///  - `.processing`— animierte Welle, bis der fertige Text eingefügt ist.
 ///
@@ -17,7 +19,7 @@ extension Notification.Name {
 /// eingefügt).
 @MainActor
 final class RecordingIndicator {
-    enum Mode { case idle, recording, processing }
+    enum Mode { case idle, armed, recording, processing }
 
     final class PillModel: ObservableObject {
         @Published var level: Float = 0
@@ -59,14 +61,23 @@ final class RecordingIndicator {
 
     // MARK: - Modus-Steuerung
 
-    /// Aufnahme läuft: Wellenform + X/✓.
-    func show() { model.level = 0; ensurePanel(); setMode(.recording) }
+    /// Aufnahme läuft: Wellenform + X/✓. Kommt sie aus dem Wartezustand des
+    /// Doppeltipps, wächst die kleine Pille in die große hinüber statt zu springen.
+    func show() {
+        model.level = 0
+        let morphing = (panel != nil && model.mode == .armed)
+        ensurePanel()
+        setMode(.recording, animated: morphing)
+    }
 
     /// Verarbeiten: animierte Welle, bis eingefügt.
     func showProcessing() { ensurePanel(); setMode(.processing) }
 
     /// Ruhezustand: nur bei „immer anzeigen" sichtbar (klickbarer Mic-Button).
     func showIdle() { ensurePanel(); setMode(.idle) }
+
+    /// Erster Tipp im Doppeltipp-Modus: wartender Punkt.
+    func showArmed() { ensurePanel(); setMode(.armed) }
 
     /// Nach Abschluss/Abbruch: idle-Pille zeigen (wenn dauerhaft) oder ausblenden.
     func finish() { persistent ? showIdle() : hide() }
@@ -97,9 +108,9 @@ final class RecordingIndicator {
 
     // MARK: - Panel
 
-    private func setMode(_ mode: Mode) {
+    private func setMode(_ mode: Mode, animated: Bool = false) {
         model.mode = mode
-        applyLayout(for: mode)
+        applyLayout(for: mode, animated: animated)
     }
 
     private func size(for mode: Mode) -> NSSize {
@@ -111,20 +122,31 @@ final class RecordingIndicator {
     private func baseSize(for mode: Mode) -> NSSize {
         switch mode {
         case .idle:       return NSSize(width: 46, height: 30)
+        case .armed:      return NSSize(width: 34, height: 30)
         case .recording:  return NSSize(width: 150, height: 34)
         case .processing: return NSSize(width: 84, height: 28)
         }
     }
 
-    private func applyLayout(for mode: Mode) {
+    private func applyLayout(for mode: Mode, animated: Bool = false) {
         guard let panel else { return }
         model.vertical = Self.wantsVertical()
         let s = size(for: mode)
-        panel.setContentSize(s)
-        panel.contentView?.frame = NSRect(origin: .zero, size: s)
-        panel.setFrameOrigin(targetOrigin(size: s))
-        // Im Verarbeiten-Modus keine Buttons → Klicks durchreichen.
-        panel.ignoresMouseEvents = (mode == .processing)
+        if animated {
+            // Das Hosting-View wächst über seine autoresizingMask mit, deshalb
+            // reicht ein animiertes setFrame — kein Setzen der Größe von Hand.
+            let target = NSRect(origin: targetOrigin(size: s), size: s)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                panel.animator().setFrame(target, display: true)
+            }
+        } else {
+            panel.setContentSize(s)
+            panel.contentView?.frame = NSRect(origin: .zero, size: s)
+            panel.setFrameOrigin(targetOrigin(size: s))
+        }
+        // Ohne Buttons (Verarbeiten, Warten auf den zweiten Tipp) → Klicks durchreichen.
+        panel.ignoresMouseEvents = (mode == .processing || mode == .armed)
     }
 
     /// Reagiert auf eine geänderte Positions-Voreinstellung (aus den Einstellungen).
@@ -302,7 +324,22 @@ private struct Stack<Content: View>: View {
     }
 }
 
-/// Die schwebende Pille (drei Layouts, textlos).
+/// Lässt den Inhalt beim Erscheinen kurz aufpoppen. Das Panel selbst blendet nur
+/// seine Deckkraft ein; die Bewegung kommt von hier.
+private struct PopIn<Content: View>: View {
+    @State private var shown = false
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .scaleEffect(shown ? 1 : 0.7)
+            .onAppear {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.5)) { shown = true }
+            }
+    }
+}
+
+/// Die schwebende Pille (vier Layouts, textlos).
 private struct RecordingPill: View {
     @ObservedObject var model: RecordingIndicator.PillModel
 
@@ -314,6 +351,7 @@ private struct RecordingPill: View {
         Group {
             switch model.mode {
             case .idle:       idlePill
+            case .armed:      armedPill
             case .recording:  recordingPill
             case .processing: processingPill
             }
@@ -333,6 +371,25 @@ private struct RecordingPill: View {
         }
         .buttonStyle(.plain)
         .help(Loc.t("Aufnahme starten"))
+    }
+
+    // Warten auf den zweiten Tipp: ein pulsierender Punkt, sonst nichts. Der Puls
+    // läuft über TimelineView statt über @State-Animation — derselbe Weg wie beim
+    // Verarbeiten und unabhängig davon, wie oft die Pille neu aufgebaut wird.
+    private var armedPill: some View {
+        PopIn {
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let beat = (sin(t * 9.0) + 1) / 2              // 0…1, ~1,4 Schläge/s
+                Circle().fill(Color.shoutLive)
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(1.0 + 0.45 * beat)
+                    .opacity(0.55 + 0.45 * (1 - beat))
+                    .frame(width: 26, height: 26)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
+            }
+        }
     }
 
     // Aufnahme: X · Wellenform · ✓ — waagerecht oder senkrecht gestapelt.

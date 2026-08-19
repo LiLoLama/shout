@@ -9,10 +9,18 @@ import Foundation
 /// diesen Modus gar nicht, deshalb kennt der Detektor nur `handleDown`.
 struct DoubleTapDetector {
 
-    enum Action: Equatable { case none, start, stop }
+    enum Action: Equatable {
+        /// Erster Tipp erkannt — jetzt wartet der zweite (Pille zeigt das an).
+        case armed
+        /// Nichts zu tun (Druck innerhalb der Sperrfrist).
+        case ignored
+        case start
+        case stop
+    }
 
-    /// Maximaler Abstand zwischen den zwei Anschlägen.
-    var window: TimeInterval = 0.4
+    /// Maximaler Abstand zwischen den zwei Anschlägen. Bewusst nicht knapper:
+    /// in dieser Zeit blendet die Pille auf, pulst sichtbar und wieder weg.
+    var window: TimeInterval = 0.7
 
     /// Sperrfrist nach dem Start: ein versehentlicher dritter schneller Tipp
     /// soll die gerade begonnene Aufnahme nicht sofort wieder beenden.
@@ -27,7 +35,7 @@ struct DoubleTapDetector {
     mutating func handleDown(at now: TimeInterval, isRecording: Bool) -> Action {
         if isRecording {
             // Innerhalb der Sperrfrist zählt der Druck als Teil des Doppeltipps.
-            if let started = startedAt, now - started < guardTime { return .none }
+            if let started = startedAt, now - started < guardTime { return .ignored }
             lastDown = nil
             startedAt = nil
             return .stop
@@ -39,6 +47,6 @@ struct DoubleTapDetector {
         }
         // Zu langsam (oder erster Tipp überhaupt) → das ist der neue erste Tipp.
         lastDown = now
-        return .none
+        return .armed
     }
 }

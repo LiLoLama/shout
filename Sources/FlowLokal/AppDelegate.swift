@@ -71,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Zeitlogik der Aufnahme-Art „Doppeltipp".
     private var doubleTap = DoubleTapDetector()
+    /// Läuft ab, wenn der zweite Tipp ausbleibt — blendet die wartende Pille weg.
+    private var armedTimer: Timer?
 
     // Hotkey-Aufnahme (Recorder in den Einstellungen)
     private var isCapturingHotkey = false
@@ -1039,11 +1041,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // und ist monoton — Systemzeit-Sprünge können nichts anrichten.
             let now = ProcessInfo.processInfo.systemUptime
             switch doubleTap.handleDown(at: now, isRecording: state == .recording) {
+            case .armed: if state == .idle { armPill() }
             case .start: if state == .idle { startRecording() }
             case .stop: stopAndProcess()
-            case .none: break
+            case .ignored: break
             }
         }
+    }
+
+    // MARK: - Wartezustand des Doppeltipps
+
+    /// Erster Tipp: Pille erscheint als pulsierender Punkt und wartet auf den zweiten.
+    private func armPill() {
+        recIndicator.showArmed()
+        armedTimer?.invalidate()
+        armedTimer = Timer.scheduledTimer(withTimeInterval: doubleTap.window, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.armExpired() }
+        }
+    }
+
+    /// Der zweite Tipp kam nicht: Pille wieder ausblenden (bzw. zurück zur
+    /// Dauer-Pille). Der Detektor braucht kein Aufräumen — sein Zeitfenster ist
+    /// abgelaufen, der nächste Tipp zählt von sich aus als neuer erster.
+    private func armExpired() {
+        armedTimer = nil
+        guard state == .idle else { return }
+        recIndicator.finish()
+    }
+
+    /// Beendet den Wartezustand, ohne die Pille anzufassen — sie wird vom
+    /// Aufrufer sowieso auf den nächsten Zustand gesetzt.
+    private func disarmPill() {
+        armedTimer?.invalidate()
+        armedTimer = nil
     }
 
     // MARK: - Hotkey aufnehmen (aus den Einstellungen)
@@ -1078,6 +1108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Aufnahme-Steuerung
 
     private func startRecording() {
+        disarmPill()
         // Ziel-App merken, solange sie noch im Vordergrund ist.
         targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         // Aktuelles Mikrofon aus den Einstellungen (Menü oder Dashboard) übernehmen.

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import WhisperKit
 
 enum TranscriberError: Error { case notLoaded }
@@ -12,6 +13,9 @@ enum TranscriberError: Error { case notLoaded }
 /// den Zustand zerreißen, und es sind nie zwei WhisperKit-Modelle gleichzeitig
 /// in der Initialisierung.
 actor Transcriber {
+
+    /// Abfragbar per `log show --predicate 'subsystem == "com.inthezone.flowlokal"'`.
+    private static let log = Logger(subsystem: "com.inthezone.flowlokal", category: "diktat")
 
     /// Gewähltes Modell aus den Einstellungen (Modell-Empfehler). Fällt auf die
     /// macOS-Speed-Variante von large-v3-turbo zurück (Apple Neural Engine).
@@ -61,59 +65,40 @@ actor Transcriber {
     /// sonst spürbar langsamer (Graph-Kompilierung passiert beim ersten Lauf).
     func warmUp() async {
         guard pipe != nil else { return }
-        _ = try? await run(samples: [Float](repeating: 0, count: 16_000), biasTerms: [])
+        _ = try? await run(samples: [Float](repeating: 0, count: 16_000))
     }
 
-    func transcribe(_ samples: [Float], biasTerms: [String] = []) async throws -> String {
+    func transcribe(_ samples: [Float]) async throws -> String {
         guard pipe != nil else { throw TranscriberError.notLoaded }
 
-        let results = try await runResults(samples: samples, biasTerms: biasTerms)
+        let results = try await runResults(samples: samples)
         let text = Self.joined(results)
 
-        // Der Bias-Prompt kann Whisper Audio überspringen lassen. Verschluckt es
-        // ALLES, fällt das über die Textlänge auf — verschluckt es nur den Anfang,
-        // nicht: ein Diktat, dem das erste Drittel fehlt, hat immer noch 9 von 13
-        // Zeichen je Sekunde und sieht nach Länge unauffällig aus. Deshalb zählt
-        // hier zusätzlich die ZEITMARKE des ersten Abschnitts.
-        //
-        // Nur sinnvoll, wenn ein Bias-Prompt angewandt wurde (im Auto-Sprachmodus
-        // ist er in runResults() abgeschaltet) — sonst gibt es nichts nachzuziehen.
-        let auto = (UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de") == "auto"
-        guard !auto, !biasTerms.isEmpty else { return text }
-
+        // Wachhund ohne Reparatur: Seit der Wörterbuch-Prompt nicht mehr in den
+        // Decoder geht (er ließ Whisper Audio überspringen — bis zu 45 % eines
+        // Diktats), gibt es keinen zweiten, anders konfigurierten Durchgang mehr,
+        // der etwas retten könnte (Temperatur 0 → identisches Ergebnis). Bleibt
+        // ein Transkript trotzdem verdächtig, soll das im Log sichtbar sein:
+        // über Logger, nicht NSLog — NSLog dieser App erreicht das System-Log
+        // nachweislich nicht (12-h-Abfrage am 21.08.2026: null Zeilen).
         let seconds = Double(samples.count) / 16_000.0
         let firstStart = results.flatMap(\.segments).first.map { Double($0.start) }
-
-        let reason: String?
-        if text.isEmpty {
-            reason = "leer"
-        } else if TranscriptPlausibility.swallowedStart(firstSegmentStart: firstStart, audioSeconds: seconds) {
-            reason = String(format: "Anfang übersprungen — erster Abschnitt erst bei %.1f s von %.0f s",
-                            firstStart ?? 0, seconds)
+        if TranscriptPlausibility.swallowedStart(firstSegmentStart: firstStart, audioSeconds: seconds) {
+            Self.log.warning("Transkript verdächtig: erster Abschnitt erst bei \(firstStart ?? 0, format: .fixed(precision: 1)) s von \(seconds, format: .fixed(precision: 0)) s")
         } else if TranscriptPlausibility.tooLittleText(characters: text.count, audioSeconds: seconds) {
-            reason = String(format: "zu wenig Text — %d Zeichen für %.0f s", text.count, seconds)
-        } else {
-            reason = nil
+            Self.log.warning("Transkript verdächtig: nur \(text.count) Zeichen für \(seconds, format: .fixed(precision: 0)) s Audio")
         }
-        guard let reason else { return text }
-
-        let unbiased = try await run(samples: samples, biasTerms: [])
-        guard unbiased.count > text.count else { return text }
-        NSLog("shout: Bias-Transkript verdächtig (%@) → ohne Bias %d statt %d Zeichen",
-              reason, unbiased.count, text.count)
-        return unbiased
+        return text
     }
 
     /// Wie `transcribe`, liefert aber die Abschnitte mit Zeitmarken — Grundlage für
     /// Untertitel bei der Datei-Transkription.
     ///
-    /// Ohne die Plausibilitätsprüfung aus `transcribe`: Die vergleicht Textlänge mit
-    /// Audiolänge und zieht im Verdachtsfall einen zweiten Durchgang nach. Bei einem
-    /// Diktat ist das billig, bei einer Datei würde es die Laufzeit verdoppeln — und
-    /// eine Aufnahme mit langen Sprechpausen sieht dort regelmäßig „verdächtig" aus.
-    func transcribeSegments(_ samples: [Float], biasTerms: [String] = []) async throws -> [TranscriptSegment] {
+    /// Ohne den Wachhund aus `transcribe`: Eine Datei mit langen Sprechpausen
+    /// sähe dort regelmäßig „verdächtig" aus, ohne dass etwas fehlt.
+    func transcribeSegments(_ samples: [Float]) async throws -> [TranscriptSegment] {
         guard pipe != nil else { throw TranscriberError.notLoaded }
-        let results = try await runResults(samples: samples, biasTerms: biasTerms)
+        let results = try await runResults(samples: samples)
         return results.flatMap(\.segments).map {
             TranscriptSegment(text: TranscriptLayout.stripSpecialTokens($0.text),
                               start: Double($0.start),
@@ -121,8 +106,8 @@ actor Transcriber {
         }
     }
 
-    private func run(samples: [Float], biasTerms: [String]) async throws -> String {
-        Self.joined(try await runResults(samples: samples, biasTerms: biasTerms))
+    private func run(samples: [Float]) async throws -> String {
+        Self.joined(try await runResults(samples: samples))
     }
 
     /// Fenster-Ergebnisse zu einem Text zusammenziehen.
@@ -130,7 +115,7 @@ actor Transcriber {
         results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func runResults(samples: [Float], biasTerms: [String]) async throws -> [TranscriptionResult] {
+    private func runResults(samples: [Float]) async throws -> [TranscriptionResult] {
         guard let pipe else { throw TranscriberError.notLoaded }
 
         let lang = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de"
@@ -146,22 +131,14 @@ actor Transcriber {
         // Transkription arbeitet aber mit den Segmenten und bekam sie voll ab.
         options.skipSpecialTokens = true
 
-        // Wörterbuch-Begriffe als Konditionierungs-Prompt → Whisper erkennt
-        // Eigennamen/Fachbegriffe schon beim Transkribieren besser.
-        // Im Auto-Modus deaktiviert (Prompt-Prefill kollidiert mit der Spracherkennung).
-        if !auto, !biasTerms.isEmpty, let tokenizer = pipe.tokenizer {
-            let promptText = " " + biasTerms.joined(separator: ", ")
-            let specialBegin = tokenizer.specialTokens.specialTokenBegin
-            let tokens = tokenizer.encode(text: promptText).filter { $0 < specialBegin }
-            if !tokens.isEmpty {
-                // Bewusst knapp (64 statt 200): Je größer der Prompt, desto eher
-                // „verschluckt" Whisper Audio-Anfänge oder lässt Inhalte aus.
-                // Das Wörterbuch wächst durch Auto-Lernen — ohne Deckel wird das
-                // Problem mit der Zeit schleichend schlimmer.
-                options.promptTokens = Array(tokens.prefix(64))
-                options.usePrefillPrompt = true
-            }
-        }
+        // BEWUSST KEIN Wörterbuch-Prompt (promptTokens/usePrefillPrompt) mehr:
+        // Whisper behandelt ihn als vorangehenden Text und überspringt dann
+        // gelegentlich Audio — am 19./21.08.2026 nachgewiesen: derselbe
+        // Sample-Puffer ergab mit Prompt < 178 Zeichen, ohne 773; ein
+        // 104-s-Diktat verlor ~45 % seines Anfangs. Schon 6 Begriffe reichten,
+        // und der Prompt fährt in JEDEM 30-s-Fenster erneut mit. Eigennamen
+        // korrigiert weiterhin das Wörterbuch (Korrekturen + Formatter-Hinweis)
+        // NACH der Erkennung, ohne sie zu gefährden.
 
         return try await pipe.transcribe(audioArray: samples, decodeOptions: options)
     }

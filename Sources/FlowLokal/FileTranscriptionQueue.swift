@@ -323,7 +323,6 @@ final class FileTranscriptionQueue: ObservableObject {
         let useCommands = job.options.commands
         let useMinutes = job.options.minutes
         let useSpeakers = job.options.speakers
-        let bias = dictionary.contents.terms
 
         job.state = .transcribing(progress: 0)
 
@@ -347,7 +346,7 @@ final class FileTranscriptionQueue: ObservableObject {
                 if cancelled.contains(job.id) { job.markCancelled(); return }
                 if useSpeakers { allSamples.append(contentsOf: block.samples) }
 
-                let raw = try await transcriber.transcribeSegments(block.samples, biasTerms: bias)
+                let raw = try await transcriber.transcribeSegments(block.samples)
                 for segment in raw {
                     var text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !text.isEmpty else { continue }

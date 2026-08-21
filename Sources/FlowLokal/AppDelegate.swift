@@ -1152,7 +1152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             defer { state = .idle; recIndicator.finish() }
             guard !samples.isEmpty else { return }
             do {
-                let raw = try await transcriber.transcribe(samples, biasTerms: dictionary.contents.terms)
+                let raw = try await transcriber.transcribe(samples)
                 var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !output.isEmpty else { return }
 

@@ -41,17 +41,27 @@ public sealed class Transcriber : IDisposable
     public async Task WarmUpAsync()
     {
         if (factory == null) return;
-        try { _ = await TranscribeAsync(new float[16_000], null); }
+        try { _ = await TranscribeAsync(new float[16_000]); }
         catch { /* Warm-up darf still scheitern */ }
     }
 
     /// <summary>
-    /// Transkribiert 16-kHz-Mono-Samples. <paramref name="biasTerms"/> (das
-    /// persönliche Wörterbuch) geht als Initial-Prompt an Whisper — bekannte
-    /// Eigennamen werden dadurch deutlich öfter richtig geschrieben.
+    /// Transkribiert 16-kHz-Mono-Samples.
+    ///
+    /// BEWUSST OHNE Wörterbuch-Prompt (<c>WithPrompt</c>): Whisper behandelt ihn
+    /// als vorangehenden Text und überspringt dann Audio — am Mac am 19./21.08.2026
+    /// nachgewiesen, wo dieselbe Stelle denselben Fehler hatte: derselbe
+    /// Sample-Puffer ergab mit Prompt &lt; 178 Zeichen, ohne 773; einem
+    /// 104-Sekunden-Diktat fehlten ~45 % seines Anfangs. Schon sechs Begriffe
+    /// reichten, und der Prompt fährt in JEDEM 30-Sekunden-Fenster erneut mit,
+    /// weshalb es lange Aufnahmen häufiger trifft. Der Schaden ist nicht
+    /// zuverlässig erkennbar (Whisper stempelt den ersten Abschnitt auch nach dem
+    /// Überspringen auf 0,00 s), deshalb ist die Ursache entfernt statt abgefedert.
+    ///
+    /// Eigennamen richtet weiterhin das Wörterbuch: Korrekturen ersetzen nach der
+    /// Erkennung, und die Begriffe gehen als TermHint in die Aufbereitung.
     /// </summary>
-    public async Task<string> TranscribeAsync(float[] samples, IReadOnlyList<string>? biasTerms,
-                                              CancellationToken cancel = default)
+    public async Task<string> TranscribeAsync(float[] samples, CancellationToken cancel = default)
     {
         if (factory == null) throw new InvalidOperationException("Modell ist nicht geladen.");
         if (samples.Length == 0) return "";
@@ -64,9 +74,6 @@ public sealed class Transcriber : IDisposable
             var language = Settings.Shared.Language;
             if (language == "auto") builder = builder.WithLanguageDetection();
             else builder = builder.WithLanguage(language);
-
-            if (biasTerms is { Count: > 0 })
-                builder = builder.WithPrompt(string.Join(", ", biasTerms));
 
             await using var processor = builder.Build();
             var text = new StringBuilder();
@@ -83,9 +90,10 @@ public sealed class Transcriber : IDisposable
     /// <summary>
     /// Wie <see cref="TranscribeAsync"/>, liefert aber die Abschnitte mit Zeitmarken —
     /// Grundlage für Untertitel und die Gliederung bei der Datei-Transkription.
+    /// Ebenfalls ohne Wörterbuch-Prompt, aus demselben Grund.
     /// </summary>
     public async Task<List<TranscriptSegment>> TranscribeSegmentsAsync(
-        float[] samples, IReadOnlyList<string>? biasTerms, CancellationToken cancel = default)
+        float[] samples, CancellationToken cancel = default)
     {
         if (factory == null) throw new InvalidOperationException("Modell ist nicht geladen.");
         var result = new List<TranscriptSegment>();
@@ -99,9 +107,6 @@ public sealed class Transcriber : IDisposable
             var language = Settings.Shared.Language;
             if (language == "auto") builder = builder.WithLanguageDetection();
             else builder = builder.WithLanguage(language);
-
-            if (biasTerms is { Count: > 0 })
-                builder = builder.WithPrompt(string.Join(", ", biasTerms));
 
             await using var processor = builder.Build();
             await foreach (var segment in processor.ProcessAsync(samples, cancel))

@@ -5,7 +5,8 @@ import Combine
 ///
 /// Zwei Bestandteile:
 ///  - `terms`: Eigennamen/Fachbegriffe. Werden dem Formatting-LLM als „exakt so
-///    schreiben"-Hinweis mitgegeben (und später als Whisper-Bias).
+///    schreiben"-Hinweis mitgegeben. NICHT mehr als Whisper-Bias-Prompt: der
+///    ließ Whisper Audio überspringen (siehe Transcriber.runResults).
 ///  - `corrections`: gelernte Paare falsch→richtig. Werden nach dem Transkript
 ///    automatisch ersetzt (wortgenau, Groß-/Kleinschreibung egal).
 ///

@@ -5,8 +5,9 @@ namespace Shout.Core;
 
 /// <summary>
 /// Persönliches Wörterbuch — 1:1-Port der Mac-Logik:
-///  - terms: Eigennamen/Fachbegriffe (gehen als Bias-Prompt an Whisper und als
-///    „exakt so schreiben"-Hinweis an das Formatting-LLM).
+///  - terms: Eigennamen/Fachbegriffe (gehen als „exakt so schreiben"-Hinweis an
+///    das Formatting-LLM — NICHT mehr als Bias-Prompt an Whisper, der ließ
+///    Whisper Audio überspringen; siehe Transcriber.TranscribeAsync).
 ///  - corrections: gelernte Paare falsch→richtig, wortgenau (case-insensitive)
 ///    auf den fertigen Text angewendet.
 /// JSON-Feldnamen identisch zum Mac (Backup-kompatibel).

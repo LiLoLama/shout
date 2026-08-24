@@ -244,7 +244,6 @@ public sealed class FileTranscriptionQueue
         var settings = Settings.Shared;
         var useCommands = settings.FileSpeechCommandsEnabled;
         var useMinutes = settings.FileMinutesEnabled;
-        var bias = dictionary.Data.Terms;
 
         job.State = FileTranscriptionJob.Phase.Transcribing;
         job.Progress = 0;
@@ -261,7 +260,7 @@ public sealed class FileTranscriptionQueue
             {
                 if (IsCancelled(job.Id)) { job.MarkCancelled(); Changed?.Invoke(); return; }
 
-                var raw = await transcriber.TranscribeSegmentsAsync(block.Samples, bias);
+                var raw = await transcriber.TranscribeSegmentsAsync(block.Samples);
                 foreach (var segment in raw)
                 {
                     var text = segment.Text.Trim();

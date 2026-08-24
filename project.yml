@@ -152,6 +152,8 @@ targets:
         includes:
           - Localization.swift
           - Transcriber.swift
+          # Von Transcriber gebraucht (Wachhund für verdächtige Transkripte).
+          - TranscriptPlausibility.swift
           - Formatter.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.

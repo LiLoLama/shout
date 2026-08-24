@@ -421,7 +421,7 @@ public sealed class TrayContext : ApplicationContext
         {
             if (samples.Length == 0) return;
 
-            var raw = await transcriber.TranscribeAsync(samples, dictionary.Data.Terms);
+            var raw = await transcriber.TranscribeAsync(samples);
             var output = raw.Trim();
             if (output.Length == 0) return;
 

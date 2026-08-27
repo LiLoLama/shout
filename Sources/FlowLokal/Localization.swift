@@ -24,12 +24,25 @@ final class Loc: ObservableObject {
     @Published private(set) var language: String
 
     private init() {
+        #if os(iOS)
+        let sharedDefaults = UserDefaults(suiteName: "group.com.inthezone.shout")
+        let appValue = UserDefaults.standard.string(forKey: Self.storageKey)
+        let shared = sharedDefaults?.string(forKey: Self.storageKey)
+        language = Self.resolve(shared ?? appValue)
+        if shared == nil { sharedDefaults?.set(appValue ?? "system", forKey: Self.storageKey) }
+        #else
         language = Self.resolve(UserDefaults.standard.string(forKey: Self.storageKey))
+        #endif
     }
 
     /// Übernimmt die Auswahl aus den Einstellungen ("system", "de", "en").
     func apply(_ raw: String) {
         UserDefaults.standard.set(raw, forKey: Self.storageKey)
+        #if os(iOS)
+        // Haupt-App und Tastatur-Erweiterung besitzen getrennte Standard-Container.
+        // Die App Group hält ihre Oberflächensprache dennoch synchron.
+        UserDefaults(suiteName: "group.com.inthezone.shout")?.set(raw, forKey: Self.storageKey)
+        #endif
         language = Self.resolve(raw)
     }
 
@@ -411,6 +424,9 @@ final class Loc: ObservableObject {
         "Aufnahme stoppen": "Stop recording",
         "Fertig — zurück zu deiner App wischen": "Done — swipe back to your app",
         "Dann in der shout-Tastatur auf Einfügen tippen.": "Then tap Insert in the shout keyboard.",
+        "Schritt 1 fertig — zurück zu deiner App": "Step 1 complete — return to your app",
+        "Schritt 2: In der shout-Tastatur auf Einfügen tippen.":
+            "Step 2: Tap Insert in the shout. keyboard.",
         "In Zwischenablage kopiert": "Copied to the clipboard",
         "Kopiert ✓": "Copied ✓",
         "Teilen": "Share",
@@ -418,16 +434,33 @@ final class Loc: ObservableObject {
         // MARK: - iOS: Verlauf und Wörterbuch
 
         "Deine Diktate erscheinen hier.": "Your dictations appear here.",
+        "Erstes Diktat aufnehmen": "Record your first dictation",
+        "Alle Diktate löschen?": "Delete all dictations?",
+        "%d Diktate löschen": "Delete %d dictations",
+        "Du kannst das Löschen direkt danach rückgängig machen.":
+            "You can undo the deletion immediately afterwards.",
+        "Alle Diktate gelöscht": "All dictations deleted",
+        "Diktat gelöscht": "Dictation deleted",
         "Begriffe": "Terms",
+        "Noch keine Begriffe": "No terms yet",
         "Eigennamen und Fachbegriffe, die shout. richtig schreiben soll.":
             "Proper nouns and technical terms shout. should spell correctly.",
         "Korrektur hinzufügen": "Add correction",
+        "Noch keine Korrekturen": "No corrections yet",
         "Diese Ersetzungen werden nach jeder Transkription angewendet.":
             "These replacements are applied after every transcription.",
 
         // MARK: - iOS: Einstellungen
 
         "Diktat": "Dictation",
+        "Diktieren & Sprache": "Dictation & language",
+        "Sprache, Aufbereitung, Befehle und Auto-Stopp":
+            "Language, cleanup, commands and auto-stop",
+        "Sprachmodelle": "Speech models",
+        "shout.-Tastatur": "shout. keyboard",
+        "Einrichten und Vollzugriff verstehen": "Set up and understand Full Access",
+        "Backup & Übertragung": "Backup & transfer",
+        "Daten zwischen Mac und iPhone übertragen": "Transfer data between Mac and iPhone",
         "Sprache": "Language",
         "Aufbereitungs-Modell lädt … %d %%": "Cleanup model loading… %d%%",
         "Sprachbefehle („Komma“, „neue Zeile“ …)": "Spoken commands (“comma”, “new line”…)",
@@ -442,8 +475,22 @@ final class Loc: ObservableObject {
         "Aktiv": "Active",
         "Laden": "Download",
         "Wird geladen … %d %%": "Downloading… %d%%",
+        "Schnell": "Fast",
+        "Ausgewogen": "Balanced",
+        "Sehr genau": "Very accurate",
+        "Maximale Genauigkeit": "Maximum accuracy",
+        "Beste Aufbereitung": "Best cleanup",
         "Backup exportieren (teilen)": "Export backup (share)",
         "Backup importieren": "Import backup",
+        "Letzte Sicherheitskopie teilen": "Share latest safety backup",
+        "Backup importieren?": "Import backup?",
+        "Daten ersetzen und importieren": "Replace data and import",
+        "Das Backup ersetzt %d Wörterbuch-Einträge, %d Diktate, Statistiken und geteilte Einstellungen. Vorher wird automatisch eine lokale Sicherheitskopie erstellt.":
+            "The backup replaces %d dictionary entries, %d dictations, statistics and shared settings. A local safety backup is created first.",
+        "Eine Sicherheitskopie der vorherigen Daten wurde lokal gespeichert.":
+            "A safety backup of the previous data was saved locally.",
+        "Import ersetzt Wörterbuch, Verlauf, Statistiken und geteilte Einstellungen. Direkt davor legt shout. automatisch eine lokale Sicherheitskopie an.":
+            "Import replaces the dictionary, history, statistics and shared settings. shout. automatically creates a local safety backup immediately beforehand.",
         "Daten (Mac ↔ iPhone)": "Data (Mac ↔ iPhone)",
         "Am Mac unter „Sync & Geräte“ exportieren, per AirDrop aufs iPhone senden und hier importieren — übernimmt Wörterbuch, Verlauf, Statistiken und Einstellungen. Achtung: Import ersetzt die aktuellen Daten.":
             "Export on the Mac under “Sync & devices”, send it to the iPhone via AirDrop and import it here — this takes over the dictionary, history, statistics and settings. Careful: importing replaces the current data.",
@@ -453,17 +500,39 @@ final class Loc: ObservableObject {
         "Entwicklung unterstützen": "Support development",
         "shout. ist frei und quelloffen (GPL-3.0). Ich bemühe mich, die App aktuell zu halten und zu erweitern — Unterstützung ist freiwillig und hilft sehr. ❤️":
             "shout. is free and open source (GPL-3.0). I do my best to keep it current and extend it — support is voluntary and helps a lot. ❤️",
+        "Einrichten": "Set up",
+        "1. Einstellungen → Allgemein → Tastatur → Tastaturen öffnen":
+            "1. Open Settings → General → Keyboard → Keyboards",
+        "2. shout. auswählen und „Vollen Zugriff erlauben“ aktivieren":
+            "2. Select shout. and enable Allow Full Access",
+        "3. In einem Textfeld über die Globe-Taste zu shout. wechseln":
+            "3. In a text field, use the Globe key to switch to shout.",
+        "Vollzugriff wird nur benötigt, damit App und Tastatur das fertige Diktat über den gemeinsamen lokalen Speicher austauschen können. shout. überträgt keine Tastatureingaben und keine Diktate ins Internet.":
+            "Full Access is only needed so the app and keyboard can exchange the finished dictation through shared local storage. shout. does not send keystrokes or dictations to the internet.",
+        "Ablauf": "Flow",
+        "Aufnehmen → zurückkehren → einfügen": "Record → return → insert",
+        "Die Aufnahme findet in shout. statt, weil iOS Tastatur-Erweiterungen keinen Mikrofonzugriff erlaubt.":
+            "Recording happens in shout. because iOS does not allow keyboard extensions to access the microphone.",
 
         // MARK: - iOS: Erststart
 
-        "Diktieren direkt auf deinem iPhone — die Spracherkennung läuft komplett lokal. Keine Cloud, keine Konten, nichts verlässt dein Gerät.":
-            "Dictate right on your iPhone — speech recognition runs entirely locally. No cloud, no accounts, nothing leaves your device.",
+        "Diktieren direkt auf deinem Gerät — die Spracherkennung läuft komplett lokal. Keine Cloud, keine Konten, nichts verlässt dein Gerät.":
+            "Dictate right on your device — speech recognition runs entirely locally. No cloud, no accounts, nothing leaves your device.",
         "Mikrofon erlaubt": "Microphone allowed",
+        "Mikrofon noch nicht erlaubt": "Microphone not allowed yet",
         "Für die Aufnahme deiner Diktate.": "To record your dictations.",
+        "Für die Aufnahme deiner Diktate. Du kannst das auch später entscheiden.":
+            "To record your dictations. You can decide this later.",
+        "Du kannst shout. ansehen und den Zugriff später beim ersten Diktat erlauben.":
+            "You can explore shout. and allow access later when you record your first dictation.",
         "Sprachmodell geladen": "Speech model loaded",
         "Sprachmodell lädt …": "Speech model loading…",
         "%@ · %@ — einmalig, danach offline.": "%@ · %@ — once, then offline.",
         "Erlauben": "Allow",
+        "Einstellungen öffnen": "Open Settings",
+        "App ansehen": "Explore the app",
+        "Mikrofonzugriff wird erst benötigt, wenn du wirklich aufnimmst.":
+            "Microphone access is only needed when you actually record.",
 
         // MARK: - iOS: Engine-Meldungen
 
@@ -473,13 +542,53 @@ final class Loc: ObservableObject {
             "You can only switch models while nothing is being recorded.",
         "Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv.":
             "The model could not be loaded (offline?). The previous one stays active.",
+        "Kein Mikrofon-Zugriff. Öffne die Einstellungen und erlaube das Mikrofon für shout.":
+            "No microphone access. Open Settings and allow the microphone for shout.",
+        "Aufnahme konnte nicht gestartet werden: %@": "Recording could not start: %@",
+        "Keine Aufnahme erkannt. Versuch es erneut.": "No recording detected. Try again.",
+        "Kein gesprochener Inhalt erkannt. Versuch es erneut.":
+            "No spoken content detected. Try again.",
+        "Die Verarbeitung ist fehlgeschlagen. Versuch es erneut.":
+            "Processing failed. Try again.",
 
         // MARK: - iOS: Diktier-Tastatur
 
-        "Für das Einfügen bitte Vollzugriff erlauben:\nEinstellungen → Allgemein → Tastatur → shout.":
-            "Please allow full access for inserting:\nSettings → General → Keyboard → shout.",
+        "1 Aufnehmen · 2 Hier einfügen": "1 Record · 2 Insert here",
+        "In shout. aufnehmen": "Record in shout.",
+        "Öffnet shout. für die Aufnahme. Kehre danach zu diesem Textfeld zurück.":
+            "Opens shout. to record. Return to this text field afterwards.",
+        "Diktat einfügen": "Insert dictation",
+        "Fügt das zuletzt in shout. aufgenommene Diktat in dieses Textfeld ein.":
+            "Inserts the dictation most recently recorded in shout. into this text field.",
+        "Vollzugriff einrichten": "Set up Full Access",
+        "Nächste Tastatur": "Next keyboard",
+        "Zeilenumbruch": "Return",
+        "Zum Einfügen fehlt noch Vollzugriff": "Full Access is still needed to insert",
+        "Öffne die Anleitung. shout. verarbeitet weiterhin alles lokal auf deinem Gerät.":
+            "Open the guide. shout. still processes everything locally on your device.",
+        "Bereit zum Einfügen": "Ready to insert",
+        "shout. wird geöffnet …": "Opening shout.…",
+        "Nimm dort auf und kehre danach zu diesem Textfeld zurück.":
+            "Record there, then return to this text field.",
+        "Aufnahme läuft in shout.": "Recording in shout.",
+        "Stoppe dort die Aufnahme und kehre anschließend hierher zurück.":
+            "Stop the recording there, then return here.",
+        "Diktat wird verarbeitet …": "Processing dictation…",
+        "Kehre gleich zu diesem Textfeld zurück.": "Return to this text field in a moment.",
+        "Kein neues Diktat": "No new dictation",
+        "Öffne shout. und versuch die Aufnahme erneut.": "Open shout. and try recording again.",
+        "Aufnahme verworfen": "Recording discarded",
+        "Du kannst jederzeit ein neues Diktat aufnehmen.": "You can record a new dictation at any time.",
+        "Das letzte Diktat ist abgelaufen": "The last dictation has expired",
+        "Nimm ein neues Diktat auf, damit nichts Veraltetes eingefügt wird.":
+            "Record a new dictation so nothing outdated is inserted.",
+        "Diktat eingefügt": "Dictation inserted",
+        "Du kannst direkt weiterarbeiten oder erneut aufnehmen.":
+            "You can keep working or record again.",
+        "Zuerst in shout. aufnehmen": "First, record in shout.",
+        "Danach zurückkehren und hier auf Einfügen tippen.":
+            "Then return and tap Insert here.",
         "Leerzeichen": "Space",
-        "Einfügen: „%@“": "Insert: “%@”",
 
         // MARK: - Modell-Beschreibungen (iOS-Katalog)
 
@@ -546,6 +655,15 @@ final class Loc: ObservableObject {
         "Das Modell zum Aufbereiten ist noch nicht geladen. Bis dahin kommt das Rohtranskript.": "The clean-up model is not loaded yet. Until then you get the raw transcript.",
         "Alles läuft auf diesem Gerät — nichts wird hochgeladen. Aufnahmen und fertige Transkripte bleiben liegen, bis du sie hier entfernst.": "Everything runs on this device — nothing is uploaded. Recordings and finished transcripts stay until you remove them here.",
         "Datei konnte nicht geöffnet werden": "The file could not be opened",
+        "Aufnahme entfernen?": "Remove recording?",
+        "Die Aufnahme und ihr Transkript werden vom Gerät entfernt. Das lässt sich nicht rückgängig machen.":
+            "The recording and its transcript are removed from the device. This cannot be undone.",
+        "Der Auftrag und sein Transkript werden aus shout. entfernt. Die ursprüngliche Datei bleibt erhalten.":
+            "The job and its transcript are removed from shout. The original file remains.",
+        "Auftrag abbrechen": "Cancel job",
+        "Textfassung": "Text version",
+        "Transkript kopieren": "Copy transcript",
+        "Transkript teilen": "Share transcript",
         "OK": "OK",
         "Protokoll wird erstellt …": "Creating minutes…",
 
@@ -588,6 +706,13 @@ final class Loc: ObservableObject {
         "Kurz vorweg": "One thing first",
         "Ein Gespräch mitzuschneiden ist ohne Einverständnis der anderen Beteiligten in Deutschland und Österreich strafbar. Frag kurz, bevor du aufnimmst.": "In Germany and Austria, recording a conversation without the consent of everyone involved is a criminal offence. Ask before you hit record.",
         "Verstanden": "Got it",
+        "Aufnahme verwerfen?": "Discard recording?",
+        "Aufnahme verwerfen": "Discard recording",
+        "Weiter aufnehmen": "Keep recording",
+        "Die bisherige Aufnahme wird gelöscht. Das lässt sich nicht rückgängig machen.":
+            "The recording so far will be deleted. This cannot be undone.",
+        "Mikrofonpegel": "Microphone level",
+        "%d Prozent": "%d percent",
         "Wie soll die Aufnahme heißen?": "What should the recording be called?",
         "Du kannst sie auch später in der Liste umbenennen.": "You can also rename it later in the list.",
         "Name": "Name",

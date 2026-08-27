@@ -31,7 +31,7 @@ private struct RootView: View {
             MobileFilesView(engine: engine, queue: engine.fileQueue)
                 .tabItem { Label(Loc.t("Meetings"), systemImage: "record.circle") }
                 .tag(1)
-            MobileHistoryView(history: engine.history)
+            MobileHistoryView(history: engine.history) { selectedTab = 0 }
                 .tabItem { Label(Loc.t("Verlauf"), systemImage: "clock.arrow.circlepath") }
                 .tag(2)
             MobileDictionaryView(dictionary: engine.dictionary)
@@ -49,9 +49,21 @@ private struct RootView: View {
         }
         // Aus der shout-Tastatur geöffnet: auf den Diktier-Tab und aufnehmen.
         .onOpenURL { url in
-            guard url.scheme == "shout", url.host == "dictate" else { return }
+            guard url.scheme == "shout" else { return }
+            switch url.host {
+            case "dictate":
+                selectedTab = 0
+                engine.requestDictation(fromKeyboard: true)
+            case "keyboard-settings":
+                selectedTab = 4
+            default:
+                break
+            }
+        }
+        // Action Button/Siri verwendet eine Notification statt einer URL. Auch
+        // dort muss die sichtbare Oberfläche zur laufenden Aufnahme passen.
+        .onReceive(NotificationCenter.default.publisher(for: .shoutStartDictation)) { _ in
             selectedTab = 0
-            engine.requestDictation(fromKeyboard: true)
         }
     }
 }

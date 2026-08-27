@@ -34,6 +34,7 @@ final class MobileEngine: ObservableObject {
     /// Protokoll — der Schalter auf der Dateien-Seite bleibt dann ausgegraut.
     @Published private(set) var formatterReady = false
     @Published var modelNote: String?
+    @Published private(set) var failureNeedsSettings = false
 
     /// Wurde diese Aufnahme von der shout-Tastatur (via shout://dictate) angestoßen?
     /// Dann zeigt der Home-Screen den Hinweis, zurück in die App zu wischen und
@@ -123,6 +124,7 @@ final class MobileEngine: ObservableObject {
             } catch {
                 NSLog("shout: Modell-Ladefehler: \(error)")
                 state = .failed(Loc.t("Sprachmodell konnte nicht geladen werden. Internet prüfen und erneut versuchen."))
+                if cameFromKeyboard { AppGroup.setPhase(.failed) }
             }
             asrProgress = nil
             asrLoadingID = nil
@@ -196,7 +198,9 @@ final class MobileEngine: ObservableObject {
     func toggleRecording() {
         cameFromKeyboard = false   // manueller Start → kein Tastatur-Rückkehr-Hinweis
         switch state {
-        case .idle: startRecording()
+        case .idle:
+            AppGroup.reset()
+            startRecording()
         case .recording: stopAndProcess()
         default: break
         }
@@ -206,10 +210,15 @@ final class MobileEngine: ObservableObject {
     /// Startet sofort, wenn bereit — sonst nach dem Modell-Laden.
     func requestDictation(fromKeyboard: Bool = false) {
         cameFromKeyboard = fromKeyboard
+        if fromKeyboard {
+            AppGroup.clearPending()
+            AppGroup.setPhase(.openingApp)
+        }
         switch state {
         case .idle: startRecording()
         case .loadingModel: pendingAutoStart = true
-        default: break
+        default:
+            if fromKeyboard { AppGroup.setPhase(.failed) }
         }
     }
 
@@ -219,7 +228,9 @@ final class MobileEngine: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 guard granted else {
-                    self.state = .failed("Kein Mikrofon-Zugriff. Bitte in den Einstellungen erlauben.")
+                    self.failureNeedsSettings = true
+                    self.state = .failed(Loc.t("Kein Mikrofon-Zugriff. Öffne die Einstellungen und erlaube das Mikrofon für shout."))
+                    if self.cameFromKeyboard { AppGroup.setPhase(.failed) }
                     return
                 }
                 self.beginRecording()
@@ -228,15 +239,21 @@ final class MobileEngine: ObservableObject {
     }
 
     private func beginRecording() {
+        failureNeedsSettings = false
+        // Ein neuer Versuch darf niemals ein Ergebnis aus einer früheren Sitzung
+        // als vermeintlich frisches Keyboard-Diktat stehen lassen.
+        AppGroup.clearPending()
         recorder.autoStopEnabled = UserDefaults.standard.bool(forKey: "autoStopEnabled")
         recorder.silenceSeconds = UserDefaults.standard.object(forKey: "silenceSeconds") as? Double ?? 1.5
         do {
             try recorder.start()
             state = .recording
+            if cameFromKeyboard { AppGroup.setPhase(.recording) }
             sounds.play(.start)
         } catch {
             sounds.play(.error)
-            state = .failed("Aufnahme konnte nicht gestartet werden: \(error.localizedDescription)")
+            state = .failed(Loc.f("Aufnahme konnte nicht gestartet werden: %@", error.localizedDescription))
+            if cameFromKeyboard { AppGroup.setPhase(.failed) }
         }
     }
 
@@ -245,6 +262,7 @@ final class MobileEngine: ObservableObject {
         _ = recorder.stop()
         state = .idle
         level = 0
+        if cameFromKeyboard { AppGroup.setPhase(.cancelled) }
         sounds.play(.error)
     }
 
@@ -254,16 +272,23 @@ final class MobileEngine: ObservableObject {
         level = 0
         sounds.play(.stop)
         state = .working
+        if cameFromKeyboard { AppGroup.setPhase(.processing) }
         let useFormatting = formattingEnabled
         let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled")
 
         Task {
             defer { if state == .working { state = .idle } }
-            guard !samples.isEmpty else { return }
+            guard !samples.isEmpty else {
+                failDictation(Loc.t("Keine Aufnahme erkannt. Versuch es erneut."))
+                return
+            }
             do {
                 let raw = try await transcriber.transcribe(samples)
                 var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !output.isEmpty else { return }
+                guard !output.isEmpty else {
+                    failDictation(Loc.t("Kein gesprochener Inhalt erkannt. Versuch es erneut."))
+                    return
+                }
 
                 if useCommands { output = SpeechCommands.apply(to: output) }
                 if useFormatting {
@@ -272,7 +297,10 @@ final class MobileEngine: ObservableObject {
                 output = dictionary.applyCorrections(to: output)
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !final.isEmpty else { return }
+                guard !final.isEmpty else {
+                    failDictation(Loc.t("Kein gesprochener Inhalt erkannt. Versuch es erneut."))
+                    return
+                }
 
                 // iOS-Weg: automatisch in die Zwischenablage (systemweites Einfügen
                 // in fremde Apps gibt es auf iOS nicht) UND in die App Group, damit
@@ -287,12 +315,19 @@ final class MobileEngine: ObservableObject {
             } catch {
                 NSLog("shout: Verarbeitung fehlgeschlagen: \(error)")
                 sounds.play(.error)
+                failDictation(Loc.t("Die Verarbeitung ist fehlgeschlagen. Versuch es erneut."))
             }
         }
     }
 
+    private func failDictation(_ message: String) {
+        state = .failed(message)
+        if cameFromKeyboard { AppGroup.setPhase(.failed) }
+    }
+
     /// Aus dem Fehlerzustand zurück (nach Berechtigungs-/Netzproblem).
     func recover() {
+        failureNeedsSettings = false
         if transcriberReady { state = .idle } else { loadModels() }
     }
 
@@ -329,12 +364,46 @@ final class MobileEngine: ObservableObject {
         guard let bundle = try? decoder.decode(BackupBundle.self, from: data) else {
             return Loc.t("Ungültige Backup-Datei.")
         }
+        let safetyBackupCreated = createSafetyBackup()
         dictionary.replaceContents(bundle.dictionary)
         history.replaceEntries(bundle.history)
         stats.replaceData(bundle.stats)
         if let f = bundle.settings.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let vp = bundle.settings.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
-        return Loc.f("Importiert: %d Begriffe, %d Diktate.",
-                     bundle.dictionary.terms.count, bundle.history.count)
+        let result = Loc.f("Importiert: %d Begriffe, %d Diktate.",
+                           bundle.dictionary.terms.count, bundle.history.count)
+        return safetyBackupCreated
+            ? result + " " + Loc.t("Eine Sicherheitskopie der vorherigen Daten wurde lokal gespeichert.")
+            : result
+    }
+
+    private func createSafetyBackup() -> Bool {
+        guard let temporaryURL = exportBundleURL(),
+              let data = try? Data(contentsOf: temporaryURL) else { return false }
+        let name = "backup-before-import-\(Int(Date().timeIntervalSince1970)).json"
+        let destination = StoreIO.directory().appendingPathComponent(name)
+        do {
+            try data.write(to: destination, options: .atomic)
+            return true
+        } catch {
+            NSLog("shout: Sicherheitskopie vor Import fehlgeschlagen: \(error)")
+            return false
+        }
+    }
+
+    func latestSafetyBackupURL() -> URL? {
+        let directory = StoreIO.directory()
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+        return files
+            .filter { $0.lastPathComponent.hasPrefix("backup-before-import-") && $0.pathExtension == "json" }
+            .max { lhs, rhs in
+                let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return left < right
+            }
     }
 }

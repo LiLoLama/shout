@@ -11,6 +11,8 @@ struct MeetingRecordView: View {
     let onFinished: (URL) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var clockSize: CGFloat = 56
     /// Einmaliger Hinweis auf die Rechtslage. Ein Mitschnitt eines Gesprächs ohne
     /// Einverständnis der anderen ist in Deutschland und Österreich strafbar, und
     /// eine App, die genau dieses Werkzeug in die Hand gibt, sollte das einmal sagen.
@@ -21,6 +23,7 @@ struct MeetingRecordView: View {
     @State private var finished: URL?
     @State private var naming = false
     @State private var name = ""
+    @State private var confirmCancel = false
 
     var body: some View {
         NavigationStack {
@@ -28,10 +31,10 @@ struct MeetingRecordView: View {
                 Spacer()
 
                 Text(Self.clock(recorder.duration))
-                    .font(.system(size: 56, weight: .light, design: .rounded))
+                    .font(.system(size: min(clockSize, 76), weight: .light, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(recorder.isPaused ? .secondary : .primary)
-                    .contentTransition(.numericText())
+                    .contentTransition(reduceMotion ? .identity : .numericText())
 
                 Text(status)
                     .font(.footnote)
@@ -57,8 +60,7 @@ struct MeetingRecordView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(Loc.t("Abbrechen"), role: .destructive) {
-                        recorder.cancel()
-                        dismiss()
+                        if recorder.isRecording { confirmCancel = true } else { dismiss() }
                     }
                 }
             }
@@ -87,6 +89,16 @@ struct MeetingRecordView: View {
             } message: {
                 Text(Loc.t("Du kannst sie auch später in der Liste umbenennen."))
             }
+            .confirmationDialog(Loc.t("Aufnahme verwerfen?"),
+                                isPresented: $confirmCancel, titleVisibility: .visible) {
+                Button(Loc.t("Aufnahme verwerfen"), role: .destructive) {
+                    recorder.cancel()
+                    dismiss()
+                }
+                Button(Loc.t("Weiter aufnehmen"), role: .cancel) {}
+            } message: {
+                Text(Loc.t("Die bisherige Aufnahme wird gelöscht. Das lässt sich nicht rückgängig machen."))
+            }
         }
     }
 
@@ -106,11 +118,14 @@ struct MeetingRecordView: View {
                 Capsule()
                     .fill(Color.shoutLive)
                     .frame(width: geo.size.width * CGFloat(recorder.isPaused ? 0 : recorder.level))
-                    .animation(.linear(duration: 0.1), value: recorder.level)
+                    .animation(reduceMotion ? nil : .linear(duration: 0.1), value: recorder.level)
             }
         }
         .frame(height: 6)
         .padding(.horizontal, 48)
+        .accessibilityElement()
+        .accessibilityLabel(Loc.t("Mikrofonpegel"))
+        .accessibilityValue(Loc.f("%d Prozent", Int((recorder.isPaused ? 0 : recorder.level) * 100)))
     }
 
     private var controls: some View {
@@ -124,6 +139,7 @@ struct MeetingRecordView: View {
                     .background(Circle().fill(Color.secondary.opacity(0.16)))
             }
             .disabled(!recorder.isRecording)
+            .accessibilityLabel(recorder.isPaused ? Loc.t("Fortsetzen") : Loc.t("Pause"))
 
             Button {
                 guard let url = recorder.stop() else { dismiss(); return }
@@ -138,6 +154,7 @@ struct MeetingRecordView: View {
                     .background(Circle().fill(Color.shoutLive))
             }
             .disabled(!recorder.isRecording)
+            .accessibilityLabel(Loc.t("Stoppen"))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)

@@ -22,6 +22,7 @@ struct MobileFilesView: View {
     @State private var renaming: FileTranscriptionJob?
     @State private var showRename = false
     @State private var newName = ""
+    @State private var pendingRemoval: FileTranscriptionJob?
 
     var body: some View {
         NavigationStack {
@@ -85,6 +86,22 @@ struct MobileFilesView: View {
             } message: {
                 Text(pickerError ?? "")
             }
+            .confirmationDialog(Loc.t("Aufnahme entfernen?"),
+                                isPresented: .init(get: { pendingRemoval != nil },
+                                                   set: { if !$0 { pendingRemoval = nil } }),
+                                titleVisibility: .visible) {
+                Button(Loc.t("Entfernen"), role: .destructive) {
+                    if let job = pendingRemoval { queue.remove(job) }
+                    pendingRemoval = nil
+                }
+                Button(Loc.t("Abbrechen"), role: .cancel) { pendingRemoval = nil }
+            } message: {
+                if let job = pendingRemoval, MeetingRecorder.isOwnRecording(job.url) {
+                    Text(Loc.t("Die Aufnahme und ihr Transkript werden vom Gerät entfernt. Das lässt sich nicht rückgängig machen."))
+                } else {
+                    Text(Loc.t("Der Auftrag und sein Transkript werden aus shout. entfernt. Die ursprüngliche Datei bleibt erhalten."))
+                }
+            }
         }
     }
 
@@ -146,7 +163,7 @@ struct MobileFilesView: View {
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if job.isFinished {
                             Button(role: .destructive) {
-                                queue.remove(job)
+                                pendingRemoval = job
                             } label: {
                                 Label(Loc.t("Entfernen"), systemImage: "trash")
                             }
@@ -196,7 +213,10 @@ private struct MobileJobRow: View {
                     Spacer(minLength: 8)
                     Text(Loc.t("Verarbeiten"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.shoutLive)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.shoutLive.opacity(0.15)))
                 }
                 .contentShape(Rectangle())
             }
@@ -215,6 +235,9 @@ private struct MobileJobRow: View {
                         Image(systemName: "xmark.circle.fill")
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel(Loc.t("Auftrag abbrechen"))
                 }
             }
         }
@@ -400,11 +423,13 @@ private struct MobileTranscriptView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 if hasBoth {
-                    Picker("", selection: $active) {
+                    Picker(Loc.t("Textfassung"), selection: $active) {
                         Text(Loc.t("Protokoll")).tag(Fassung.protokoll)
                         Text(Loc.t("Rohtext")).tag(Fassung.roh)
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel(Loc.t("Textfassung"))
                 }
 
                 minutesInvitation
@@ -448,9 +473,11 @@ private struct MobileTranscriptView: View {
                     Image(systemName: "doc.on.doc")
                 }
                 .disabled(text.isEmpty)
+                .accessibilityLabel(Loc.t("Transkript kopieren"))
 
                 if let file = exportFile() {
                     ShareLink(item: file) { Image(systemName: "square.and.arrow.up") }
+                        .accessibilityLabel(Loc.t("Transkript teilen"))
                 }
             }
         }

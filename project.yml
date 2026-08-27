@@ -6,6 +6,13 @@ options:
   createIntermediateGroups: true
 
 schemes:
+  promptlab:
+    build:
+      targets:
+        promptlab: all
+    run:
+      config: Debug
+
   ShoutMobile:
     build:
       # Implizite Abhängigkeiten MÜSSEN an sein, sonst baut Xcode das MLX-
@@ -155,6 +162,9 @@ targets:
           # Von Transcriber gebraucht (Wachhund für verdächtige Transkripte).
           - TranscriptPlausibility.swift
           - Formatter.swift
+          # Von Formatter gebraucht (Prompts + Netz gegen Antwort-statt-Formatierung).
+          - FormattingGuard.swift
+          - FormatterPrompt.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.
           - TranscriptSegment.swift
@@ -269,6 +279,32 @@ targets:
 
   # Reine Logik-Tests: kompiliert NUR die abhängigkeitsfreien Dateien mit, damit
   # die Tests ohne WhisperKit/MLX in Sekunden laufen (und ohne Host-App).
+  promptlab:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Support/promptlab
+      - path: Sources/FlowLokal/FormatterPrompt.swift
+      - path: Sources/FlowLokal/FormattingGuard.swift
+      - path: Sources/FlowLokal/Localization.swift
+    dependencies:
+      - package: mlxlm
+        product: MLXLLM
+      - package: mlxlm
+        product: MLXLMCommon
+      - package: mlxlm
+        product: MLXHuggingFace
+      - package: huggingface
+        product: HuggingFace
+      - package: transformers
+        product: Tokenizers
+      - package: mlxcore
+        product: MLX
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+
   ShoutTests:
     type: bundle.unit-test
     platform: macOS
@@ -276,6 +312,8 @@ targets:
       - path: Tests/ShoutTests
       - path: Sources/FlowLokal/DoubleTapDetector.swift
       - path: Sources/FlowLokal/TranscriptPlausibility.swift
+      - path: Sources/FlowLokal/FormattingGuard.swift
+      - path: Sources/FlowLokal/FormatterPrompt.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift
       - path: Sources/FlowLokal/TextChunker.swift

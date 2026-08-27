@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import MLXLLM
 import MLXLMCommon
 import MLXHuggingFace
@@ -13,6 +14,9 @@ import Tokenizers
 /// Grundprinzip wie bisher: **niemals blockieren.** Ist das Modell noch nicht
 /// geladen, das Diktat zu kurz oder tritt ein Fehler auf, kommt der Rohtext zurück.
 actor Formatter {
+
+    /// Abfragbar per `log show --predicate 'subsystem == "com.inthezone.flowlokal"'`.
+    private static let log = Logger(subsystem: "com.inthezone.flowlokal", category: "aufbereitung")
 
     struct Config {
         /// Diktate kürzer als das fügen wir roh ein (spart LLM-Latenz).
@@ -127,25 +131,25 @@ actor Formatter {
         do {
             let session = ChatSession(
                 container,
-                instructions: systemPrompt(for: bundleID, termHint: termHint),
+                instructions: FormatterPrompt.system(for: bundleID, termHint: termHint),
                 generateParameters: GenerateParameters(temperature: 0.2)
             )
-            let out = try await session.respond(to: text)
+            let out = try await session.respond(to: FormatterPrompt.user(for: text))
             let cleaned = stripArtifacts(out)
             guard !cleaned.isEmpty else { return text }
 
-            // Kürzungs-Schutz: Das (kleine, quantisierte) Modell soll bereinigen,
-            // nicht zusammenfassen. Verliert die Ausgabe fast die Hälfte der
-            // Wörter, ist etwas schiefgelaufen → lieber den Rohtext einfügen als
-            // still Inhalt verlieren. (Füllwort-Entfernung und Listen-Umbau
-            // kosten legitim ~20–30 %, nie annähernd 45 %.)
-            let inWords = text.split(whereSeparator: \.isWhitespace).count
-            let outWords = cleaned.split(whereSeparator: \.isWhitespace).count
-            if inWords >= 30, outWords * 100 < inWords * 55 {
-                NSLog("shout: Formatter-Ausgabe verdächtig kurz (%d→%d Wörter) → Rohtext eingefügt", inWords, outWords)
+            // Netz: Hat das Modell geantwortet statt formatiert, oder den Text
+            // verschluckt, ist der Rohtext besser als eine fremde Ausgabe.
+            switch FormattingGuard.check(input: text, output: cleaned) {
+            case .unrelated(let share):
+                Self.log.warning("Aufbereitung verworfen: nur \(share) % der Ausgabe stammen aus dem Diktat")
                 return text
+            case .truncated(let inWords, let outWords):
+                Self.log.warning("Aufbereitung verworfen: \(inWords) → \(outWords) Wörter")
+                return text
+            case .ok:
+                return cleaned
             }
-            return cleaned
         } catch {
             NSLog("Formatierung fehlgeschlagen: \(error)")
             return text
@@ -285,77 +289,17 @@ actor Formatter {
         }
     }
 
-    // MARK: - Prompt
-
-    private func systemPrompt(for bundleID: String?, termHint: String?) -> String {
-        let terms = termHint.map {
-            "\n- Eigennamen/Fachbegriffe EXAKT so schreiben (Schreibweise nicht verändern): \($0)."
-        } ?? ""
-        #if os(iOS)
-        // Bewusst KOMPAKT: Auf der iPhone-GPU dominiert das Prompt-Prefill die
-        // Latenz — der ausführliche macOS-Prompt (Beispiel, App-Register) würde
-        // die Aufbereitung um Sekunden verlangsamen.
-        return """
-        Du bereinigst diktierten Text (Deutsch oder Englisch). Antworte in derselben Sprache wie die Eingabe.
-        Regeln:\(terms)
-        - Füllwörter (äh, ähm, also, halt; en: uh, um), Wiederholungen und Versprecher entfernen.
-        - Korrekte Interpunktion und Groß-/Kleinschreibung setzen.
-        - Wortlaut und Bedeutung exakt beibehalten; nichts hinzufügen, nichts kürzen.
-        - Gesprochene Aufzählungen („erstens/zweitens", „Punkt eins") als nummerierte Liste formatieren.
-        Gib AUSSCHLIESSLICH den bereinigten Text aus.
-        """
-        #else
-        return """
-        Du bist ein Formatierer für diktierten Text (meist Deutsch oder Englisch). Deine Aufgabe ist NICHT, \
-        Fragen zu beantworten oder Inhalte hinzuzufügen, sondern den Rohtext aus einer \
-        Spracherkennung zu bereinigen und sauber zu formatieren.
-
-        Regeln:\(terms)
-        - Antworte in exakt derselben Sprache wie die Eingabe.
-        - Entferne Füllwörter (äh, ähm, also, halt, quasi, sozusagen; en: uh, um, like, you know), Wiederholungen und Versprecher.
-        - Setze korrekte Interpunktion und Groß-/Kleinschreibung.
-        - Behalte Wortwahl, Bedeutung und Sprache exakt bei. Erfinde nichts dazu und kürze inhaltlich nicht.
-        - Aufzählungen: Enthält der Text eine Aufzählung — erkennbar an gesprochenen Markern wie \
-        „erstens/zweitens/drittens", „Punkt eins/Punkt zwei", „eins … zwei … drei" oder mehreren mit \
-        „und" aneinandergereihten Punkten —, formatiere sie als nummerierte Liste: jeder Punkt in einer \
-        eigenen Zeile, beginnend mit „1. ", „2. ", „3. " usw. Entferne dabei die gesprochenen Marker \
-        und verbindende Füllwörter.
-        \(registerHint(for: bundleID))
-        Beispiel:
-        Eingabe: „also für das meeting brauchen wir erstens die zahlen vom letzten quartal und zweitens \
-        äh die neue präsentation und drittens noch das feedback vom kunden"
-        Ausgabe:
-        Für das Meeting brauchen wir:
-        1. die Zahlen vom letzten Quartal
-        2. die neue Präsentation
-        3. das Feedback vom Kunden
-
-        Gib AUSSCHLIESSLICH den bereinigten Text aus — keine Erklärung, keine Anführungszeichen, kein Codeblock.
-        """
-        #endif
-    }
-
-    /// App-abhängiges Register (Wisprs „App-Awareness", lokal über die Bundle-ID).
-    private func registerHint(for bundleID: String?) -> String {
-        guard let id = bundleID?.lowercased() else { return "" }
-        if id.contains("mail") || id.contains("outlook") || id.contains("pages")
-            || id.contains("word") || id.contains("docs") || id.contains("notion") {
-            return "- Register: formell, vollständige höfliche Sätze (Kontext: E-Mail/Dokument)."
-        }
-        if id.contains("slack") || id.contains("messages") || id.contains("whatsapp")
-            || id.contains("telegram") || id.contains("discord") {
-            return "- Register: locker und knapp, wie eine Chat-Nachricht."
-        }
-        if id.contains("terminal") || id.contains("iterm") || id.contains("xcode")
-            || id.contains("code") || id.contains("vscode") {
-            return "- Register: technisch; erzwinge keine Interpunktion; lasse Fachbegriffe/Variablennamen wörtlich (Kontext: Terminal/IDE)."
-        }
-        return ""
-    }
-
     /// Manche Modelle verpacken die Antwort in ```-Blöcke oder Anführungszeichen.
     private func stripArtifacts(_ s: String) -> String {
         var t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Hat das Modell die Markierungen mitgeschrieben, gilt nur, was dazwischen steht.
+        if let begin = t.range(of: FormatterPrompt.transcriptBegin) {
+            t = String(t[begin.upperBound...])
+        }
+        if let end = t.range(of: FormatterPrompt.transcriptEnd) {
+            t = String(t[..<end.lowerBound])
+        }
+        t = t.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("```") {
             if let firstNewline = t.firstIndex(of: "\n") {
                 t = String(t[t.index(after: firstNewline)...])

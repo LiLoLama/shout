@@ -1,6 +1,7 @@
 # Externe Anbieter für Aufbereitung und Transkription (macOS + iOS)
 
-Stand: 2026-09-01 · Status: entworfen, nicht umgesetzt
+Stand: 2026-09-01 · Status: **umgesetzt** (macOS + iOS); Windows offen.
+Umsetzungsplan: `docs/superpowers/plans/2026-09-01-externe-anbieter.md`
 
 ## Ziel
 
@@ -214,10 +215,16 @@ den echten Token-Zahlen — die Zählung braucht kein Netz und ist exakt.
 wird meist pro Minute abgerechnet), aufgeschlüsselt nach Anbieter und Modell. In
 der Statistik-Ansicht erscheint „Diesen Monat · 128.000 Token · ca. $0,42".
 
-Die neuen Zähler kommen als **optionale** Felder in `StatsStore.Data`; damit
-bleibt `BackupBundle.version` bei 1 und ältere Backups lesen sich unverändert
-ein (fehlende Felder werden `nil`). Dasselbe gilt für die neuen Felder in
-`SettingsSnapshot`.
+**Abweichung bei der Umsetzung (01.09.2026): eigene Datei statt `StatsStore`.**
+Der Entwurf wollte die Zähler als optionale Felder in `StatsStore.Data`. Beim
+Bauen sprachen drei Dinge dagegen: Ausgaben sind gerätebezogen — über die
+Sicherungsdatei auf ein zweites Gerät getragen und dort addiert ergäben sie eine
+Zahl, die nichts beschreibt; `BackupBundle` bleibt so ganz unverändert bei
+Version 1, ohne neues Feld und ohne Migrationspfad; und die Engines sind Actors
+und können in einen eigenen Speicher ohne Kopplung an `StatsStore` melden. Der
+Verbrauch liegt daher in `anbieter-verbrauch.json`, die Preistabelle in
+`anbieter-preise.json`, beide neben `stats.json`. Die neuen Felder in
+`SettingsSnapshot` bleiben wie geplant optional.
 
 **Anzeige in USD.** Alle Anbieter rechnen in USD ab.
 
@@ -258,14 +265,23 @@ Die Transcriptions-Endpunkte begrenzen die Dateigröße (bei OpenAI 25 MB). WAV 
 **13 Minuten je Aufruf**. Für Diktate ist das folgenlos, für die
 Datei-Transkription nicht: dort sind Aufnahmen von einer Stunde der Normalfall.
 
-`RemoteSpeechEngine` schneidet deshalb selbst: Fenster von 10 Minuten mit 2
-Sekunden Überlappung, Schnitt an der leisesten Stelle innerhalb der letzten 15
-Sekunden des Fensters (dieselbe Idee wie die vorhandene Stille-Erkennung, nur
-ohne Schwellwert-Logik). Die Zeitstempel der zurückgegebenen Segmente werden um
-den Fenster-Versatz verschoben, damit `.srt` weiter stimmt; Segmente aus dem
-Überlappungsbereich werden verworfen. Fenster laufen der Reihe nach, nicht
+`RemoteSpeechEngine` schneidet deshalb selbst: Fenster von 10 Minuten, Schnitt an
+der leisesten Stelle innerhalb der letzten 15 Sekunden des Fensters. Die
+Zeitstempel der zurückgegebenen Segmente werden um den Fenster-Versatz
+verschoben, damit `.srt` weiter stimmt. Fenster laufen der Reihe nach, nicht
 parallel — sonst reißt ein Ratenlimit den ganzen Auftrag ab, und der
 Fortschrittsbalken der Warteschlange braucht ohnehin eine Reihenfolge.
+
+**Abweichung bei der Umsetzung (01.09.2026): keine Überlappung.** Der Entwurf
+sah 2 Sekunden Überlappung vor, aus der die doppelten Segmente wieder entfernt
+werden. Beim Bauen fiel auf, dass diese Entfernung eine Heuristik wäre, die im
+Zweifel echten Inhalt verwirft — genau der Fehler, den dieses Programm nicht
+machen darf. Wird an der leisesten Stelle getrennt, braucht es die Überlappung
+ohnehin nicht. Der Preis: Wird über zehn Minuten durchgehend gesprochen, findet
+sich im Suchbereich keine Pause und ein einzelnes Wort am Übergang kann
+verstümmelt werden. Das ist selten und sichtbar, während stiller Inhaltsverlust
+weder das eine noch das andere ist. Ein Test hält fest, dass die Fenster
+lückenlos **und** ohne Überlappung abdecken.
 
 Ein Fenster, das dauerhaft scheitert, lässt den Auftrag scheitern (statt eine
 Lücke im Transkript zu hinterlassen) — die Regel darunter greift dann.

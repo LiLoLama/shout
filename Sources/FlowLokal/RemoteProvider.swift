@@ -273,6 +273,14 @@ struct RemoteConfig: Codable, Equatable, Sendable {
     }
 }
 
+/// Die echten Token-Zahlen einer Antwort. Grundlage der Kostenanzeige — dort
+/// wird gezählt, nicht geschätzt.
+struct TokenUsage: Sendable, Equatable {
+    let prompt: Int
+    let completion: Int
+    var total: Int { prompt + completion }
+}
+
 /// Fehler eines Anbieter-Aufrufs.
 ///
 /// Bewusst **ohne** fertige Anzeigetexte: Die Oberfläche ist zweisprachig und
@@ -297,6 +305,10 @@ enum RemoteProviderError: Error, Equatable {
     case malformedResponse
     /// Zeitgrenze überschritten.
     case timedOut
+    /// Gar keine Verbindung — Netz weg, Host unbekannt, oder der lokale Server
+    /// (Ollama, LM Studio) läuft nicht. Eigener Fall, weil die Abhilfe eine
+    /// völlig andere ist als bei einem abgelehnten Schlüssel.
+    case cannotConnect(code: Int)
 
     /// Kurzform fürs Log. Enthält nie den Schlüssel und nie den Antwortrumpf,
     /// weil manche Anbieter darin die Anfrage samt Kopfzeilen spiegeln.
@@ -312,6 +324,69 @@ enum RemoteProviderError: Error, Equatable {
         case .http(let status): return "HTTP \(status)"
         case .malformedResponse: return "Antwort nicht verwertbar"
         case .timedOut: return "Zeitgrenze überschritten"
+        case .cannotConnect(let code): return "keine Verbindung (\(code))"
         }
+    }
+}
+
+/// Gemeinsame Auswertung der Antworten — von Text- und Audio-Engine benutzt,
+/// damit beide dieselben Fehler auf dieselbe Weise unterscheiden.
+enum RemoteHTTP {
+
+    /// Wirft den passenden Fehler, wenn der Status kein Erfolg ist.
+    ///
+    /// Die Unterscheidung bei 404 ist wichtig: Mit Modellhinweis im Rumpf ist es
+    /// ein veraltetes Modell (der häufigste Fall, wenn eine Vorlage
+    /// hinterherhängt), ohne Hinweis eine falsche Adresse. Beides braucht eine
+    /// andere Abhilfe, und ein pauschales „404" schickt Leute ans falsche Ende.
+    static func check(status: Int, body: Data, headers: [AnyHashable: Any],
+                      model: String) throws {
+        guard !(200..<300).contains(status) else { return }
+
+        switch status {
+        case 401, 403:
+            throw RemoteProviderError.unauthorized
+        case 402:
+            throw RemoteProviderError.noCredit
+        case 404:
+            if message(from: body).lowercased().contains("model") {
+                throw RemoteProviderError.unknownModel(model)
+            }
+            throw RemoteProviderError.http(status: 404)
+        case 429:
+            let retry = (headers["Retry-After"] as? String).flatMap(TimeInterval.init)
+            throw RemoteProviderError.rateLimited(retryAfter: retry)
+        default:
+            throw RemoteProviderError.http(status: status)
+        }
+    }
+
+    /// Übersetzt Netzfehler. Zeitüberschreitung bekommt einen eigenen Fall, weil
+    /// der Router beim Diktat darauf eine harte Grenze setzt.
+    static func translate(_ error: Error) -> RemoteProviderError {
+        if let known = error as? RemoteProviderError { return known }
+        guard let urlError = error as? URLError else { return .malformedResponse }
+        if urlError.code == .timedOut { return .timedOut }
+        return .cannotConnect(code: urlError.errorCode)
+    }
+
+    /// `error.message` aus dem Antwortrumpf — nur zur Fallunterscheidung, nie
+    /// zur Anzeige und nie ins Log: Manche Anbieter spiegeln darin die Anfrage
+    /// samt Kopfzeilen, und dann stünde der Schlüssel im Protokoll.
+    static func message(from body: Data) -> String {
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        else { return "" }
+        if let error = json["error"] as? [String: Any],
+           let text = error["message"] as? String { return text }
+        if let text = json["message"] as? String { return text }
+        return ""
+    }
+
+    static func usage(from json: [String: Any]) -> TokenUsage? {
+        guard let usage = json["usage"] as? [String: Any],
+              let prompt = usage["prompt_tokens"] as? Int,
+              let completion = usage["completion_tokens"] as? Int
+        else { return nil }
+        return TokenUsage(prompt: prompt, completion: completion)
     }
 }

@@ -373,6 +373,8 @@ final class Loc: ObservableObject {
         "Günstig. Keine Transkription.": "Inexpensive. No transcription.",
         "Über die OpenAI-Kompatibilitätsschicht. Keine Transkription.":
             "Via the OpenAI compatibility layer. No transcription.",
+        "Über die OpenAI-Kompatibilitätsschicht, die Anthropic selbst als Testweg und nicht als Dauerlösung bezeichnet. Keine Transkription.":
+            "Via the OpenAI compatibility layer, which Anthropic itself calls a way to test rather than a long-term solution. No transcription.",
         "Schlüssel aus der xAI-Konsole. Ein SuperGrok-Abo gilt hier NICHT — Abos enthalten keinen API-Zugang.":
             "Key from the xAI console. A SuperGrok subscription does NOT count here — subscriptions include no API access.",
         "Läuft auf deinem eigenen Rechner — auch auf einem anderen im eigenen Netz. Dann verlässt nichts dein Netzwerk.":

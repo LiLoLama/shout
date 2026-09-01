@@ -107,8 +107,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.flowlokal
         # Datei-/Produktname ohne Punkt (sonst "shout..app"); Anzeigename mit Punkt.
         PRODUCT_NAME: "shout"
-        MARKETING_VERSION: "1.9.0"
-        CURRENT_PROJECT_VERSION: "27"
+        MARKETING_VERSION: "1.10.0"
+        CURRENT_PROJECT_VERSION: "28"
         # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"

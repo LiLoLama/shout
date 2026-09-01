@@ -13,7 +13,8 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 
 ## 🟠 Externe Anbieter — Windows fehlt noch
 - [ ] **Windows nachziehen.** Mac und iOS können Aufbereitung und Transkription je einzeln auf einen selbst gewählten OpenAI-kompatiblen Anbieter umstellen (`Sources/FlowLokal/RemoteProvider.swift` und die Engine-Schicht darunter). Der C#-Port hat dieselben zwei Schnittstellen (`windows/src/Shout/Core/Formatter.cs`, `Transcriber.cs`) und dieselben Aufrufstellen (`TrayContext`, `FileTranscriptionQueue`); der Vorlagen-Katalog ist reine Daten und wird gespiegelt. Statt der Keychain kommt DPAPI (`ProtectedData`), und der WAV-Weg ist dort einfacher, weil die Aufnahme schon als WAV 16 kHz Mono vorliegt. **Bis dahin besteht ein bewusster Funktionsversatz zwischen den Plattformen.**
-- [ ] **Basis-URLs und Modell-IDs der Vorlagen nachprüfen.** Bestätigt sind EURouter (`https://api.eurouter.ai/v1`) und xAI (`https://api.x.ai/v1`); die übrigen stammen aus der gängigen Dokumentation und sollten vor dem nächsten Release einmal gegen die Anbieterseiten geprüft werden. Eine falsche Adresse in einer mitgelieferten Vorlage sieht wie ein Fehler der App aus.
+- [x] **Basis-URLs der Vorlagen geprüft** (01.09.2026, alle elf gegen die Dokumentation des jeweiligen Anbieters).
+- [ ] **Modell-IDs der Vorlagen aktuell halten.** Die Adressen sind stabil, die Modell-IDs nicht — sie veralten zwischen Releases. Der „Modelle laden"-Knopf und das freie Modellfeld sind die Notausgänge, aber die Vorschläge sollten bei jedem Release einmal gesichtet werden.
 - [ ] **Agent-CLI als dritte Engine** (`codex exec`, `claude -p`) — zurückgestellt, Begründung im Entwurf unter „Abo-Anmeldung": 2–10 s Vorlauf machen sie fürs Live-Diktat unbrauchbar, für Datei-Transkripte und Protokolle wäre sie tauglich. macOS only.
 
 ## 🟠 Verteilung / Auslieferung

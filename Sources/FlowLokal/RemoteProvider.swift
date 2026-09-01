@@ -52,11 +52,10 @@ struct ProviderTemplate: Identifiable, Hashable, Sendable {
 
 /// Die mitgelieferten Vorlagen.
 ///
-/// **Prüfstand der Basis-Adressen:** `eurouter` und `xai` sind am 01.09.2026
-/// gegen die Dokumentation der Anbieter geprüft. Die übrigen stammen aus der
-/// gängigen Dokumentation und sind vor dem Ausliefern einmal nachzuprüfen — eine
-/// falsche Adresse in einer mitgelieferten Vorlage ist schlimmer als keine
-/// Vorlage, weil der Fehlschlag dann wie ein Fehler der App aussieht.
+/// **Prüfstand der Basis-Adressen: alle am 01.09.2026 gegen die Dokumentation
+/// des jeweiligen Anbieters geprüft.** Eine falsche Adresse in einer
+/// mitgelieferten Vorlage ist schlimmer als keine Vorlage, weil der Fehlschlag
+/// dann wie ein Fehler der App aussieht.
 ///
 /// Die Modell-IDs sind Startwerte für die Auswahl und veralten schneller als die
 /// Adressen; der „Modelle laden"-Knopf und das freie Modellfeld sind die
@@ -126,7 +125,13 @@ enum ProviderCatalog {
             chatModels: ["claude-sonnet-4.5", "claude-haiku-4.5"],
             audioModels: [],
             canAudio: false, needsKey: true,
-            note: "Über die OpenAI-Kompatibilitätsschicht. Keine Transkription."),
+            // Anthropic bezeichnet diese Schicht in der eigenen Dokumentation
+            // ausdrücklich als Weg zum Ausprobieren und Vergleichen, nicht als
+            // Dauerlösung. Das gehört an die Vorlage: Wer seinen Arbeitsalltag
+            // darauf baut, soll es vorher wissen.
+            note: "Über die OpenAI-Kompatibilitätsschicht, die Anthropic selbst "
+                + "als Testweg und nicht als Dauerlösung bezeichnet. Keine "
+                + "Transkription."),
 
         ProviderTemplate(
             id: "gemini", name: "Google Gemini",

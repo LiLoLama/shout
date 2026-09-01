@@ -142,10 +142,14 @@ actor Formatter {
     private func formatChunk(_ text: String, bundleID: String?, termHint: String?) async -> String {
         guard let engine else { return text }
         do {
-            let out = try await engine.respond(
-                system: FormatterPrompt.system(for: bundleID, termHint: termHint),
-                user: FormatterPrompt.user(for: text),
-                temperature: 0.2)
+            let system = FormatterPrompt.system(for: bundleID, termHint: termHint)
+            let user = FormatterPrompt.user(for: text)
+            // Beim Diktat KEIN Wiederholungsversuch: Der Mensch steht mit dem
+            // Finger auf der Taste, und ein zweiter Anlauf verdoppelt die
+            // Wartezeit, statt sie zu retten.
+            let out = try await withDeadline(await engine.callTimeout) {
+                try await engine.respond(system: system, user: user, temperature: 0.2)
+            }
             let cleaned = stripArtifacts(out)
             guard !cleaned.isEmpty else { return text }
 
@@ -262,16 +266,43 @@ actor Formatter {
     /// Ein Aufruf ans Modell. Ohne den Kürzungs-Schutz aus `format` — der ist fürs
     /// Diktat gedacht und würde hier JEDE Zusammenfassung verwerfen, weil sie
     /// naturgemäß deutlich kürzer ist als die Eingabe.
+    /// Die Zeitgrenze für Hintergrundarbeit — Protokolle und Sprachprofil.
+    ///
+    /// Achtfach die Diktat-Grenze (bei einem Anbieter: 15 s → 120 s). Das ist
+    /// kein runder Daumenwert: Die Abschnitte sind hier doppelt so groß, das
+    /// Modell soll gliedern statt putzen, und niemand wartet mit dem Finger auf
+    /// der Taste. Lokal bleibt es bei `nil`, also ohne Grenze.
+    private func backgroundTimeout(_ engine: any TextEngine) async -> TimeInterval? {
+        await engine.callTimeout.map { $0 * 8 }
+    }
+
     private func respond(system: String, user: String, temperature: Float) async -> String? {
         guard let engine else { return nil }
-        do {
-            let out = stripArtifacts(try await engine.respond(system: system, user: user,
-                                                             temperature: temperature))
-            return out.isEmpty ? nil : out
-        } catch {
-            NSLog("shout: Protokoll-Aufruf fehlgeschlagen: \(error)")
-            return nil
+        let deadline = await backgroundTimeout(engine)
+
+        // EIN Wiederholungsversuch, und nur bei Ursachen, die von selbst
+        // weggehen. Das läuft im Hintergrund, da ist ein zweiter Anlauf billiger
+        // als ein fehlender Protokollabschnitt. Bei einem Ratenlimit wird die
+        // vom Anbieter genannte Wartezeit eingehalten, höchstens aber 10 s —
+        // länger würde die Warteschlange stehen.
+        for versuch in 0...1 {
+            do {
+                let out = stripArtifacts(try await withDeadline(deadline) {
+                    try await engine.respond(system: system, user: user, temperature: temperature)
+                })
+                return out.isEmpty ? nil : out
+            } catch {
+                let fehler = error as? RemoteProviderError
+                guard versuch == 0, fehler?.isTransient == true else {
+                    NSLog("shout: Protokoll-Aufruf fehlgeschlagen: \(fehler?.logDescription ?? "\(error)")")
+                    return nil
+                }
+                if case .rateLimited(let after) = fehler, let after {
+                    try? await Task.sleep(nanoseconds: UInt64(min(after, 10) * 1_000_000_000))
+                }
+            }
         }
+        return nil
     }
 
     @MainActor

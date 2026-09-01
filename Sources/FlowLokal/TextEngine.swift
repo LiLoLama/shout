@@ -39,6 +39,14 @@ protocol TextEngine: Actor {
     /// Untergrenze für den Schnitt an Satzgrenzen (siehe `TextChunker`).
     var chunkMinLength: Int { get }
 
+    /// Harte Obergrenze für EINEN Diktat-Aufruf, oder `nil` für „keine".
+    ///
+    /// Die Grenze gehört der Engine, nicht dem Router: Ein großes lokales Modell
+    /// auf einem langsamen Mac darf sich Zeit nehmen — es hängt nicht, es rechnet
+    /// — und wurde bisher auch nie abgeschnitten. Ein Anbieter dagegen kann
+    /// wirklich hängen, und dann steht der Mensch mit dem Finger auf der Taste.
+    var callTimeout: TimeInterval? { get }
+
     /// Lädt bzw. verbindet. `reset` erzwingt einen Neuaufbau, auch wenn schon
     /// etwas geladen ist (Modellwechsel zur Laufzeit).
     ///
@@ -54,4 +62,22 @@ protocol TextEngine: Actor {
     /// Ein Aufruf ans Modell. Wirft bei jedem Fehler; der Router entscheidet,
     /// was das für den Text bedeutet.
     func respond(system: String, user: String, temperature: Float) async throws -> String
+}
+
+/// Führt `operation` aus und bricht nach `seconds` ab. Bei `nil` läuft sie ohne
+/// Grenze — so verhält sich das lokale Modell weiter wie bisher.
+func withDeadline<T: Sendable>(_ seconds: TimeInterval?,
+                               operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    guard let seconds, seconds > 0 else { return try await operation() }
+    return try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw RemoteProviderError.timedOut
+        }
+        // Wer zuerst fertig ist, gewinnt; der andere wird abgebrochen.
+        let result = try await group.next()!
+        group.cancelAll()
+        return result
+    }
 }

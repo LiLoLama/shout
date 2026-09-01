@@ -310,6 +310,18 @@ enum RemoteProviderError: Error, Equatable {
     /// völlig andere ist als bei einem abgelehnten Schlüssel.
     case cannotConnect(code: Int)
 
+    /// Lohnt ein zweiter Versuch? Nur bei Ursachen, die von selbst weggehen.
+    /// Ein abgelehnter Schlüssel oder ein unbekanntes Modell wird beim zweiten
+    /// Mal genauso abgelehnt — das wäre nur Wartezeit und, bei Erfolg, Geld.
+    var isTransient: Bool {
+        switch self {
+        case .timedOut, .rateLimited, .cannotConnect: return true
+        case .http(let status): return status >= 500
+        case .missingKey, .invalidBaseURL, .unauthorized, .noCredit,
+             .unknownModel, .malformedResponse: return false
+        }
+    }
+
     /// Kurzform fürs Log. Enthält nie den Schlüssel und nie den Antwortrumpf,
     /// weil manche Anbieter darin die Anfrage samt Kopfzeilen spiegeln.
     var logDescription: String {
@@ -388,5 +400,40 @@ enum RemoteHTTP {
               let completion = usage["completion_tokens"] as? Int
         else { return nil }
         return TokenUsage(prompt: prompt, completion: completion)
+    }
+}
+
+/// Was für einen Schritt benutzt werden soll. Die Entscheidung steht hier statt
+/// in `EngineFactory`, damit sie prüfbar ist — die Fabrik selbst kennt die
+/// konkreten Engines und liegt deshalb nicht im Testziel.
+enum EngineSelection: Equatable {
+    case local
+    case remote(config: RemoteConfig, template: ProviderTemplate)
+}
+
+extension EngineSelection {
+
+    /// Trifft die Wahl aus Einstellung, gespeicherter Konfiguration und der
+    /// Frage, ob ein Schlüssel hinterlegt ist.
+    ///
+    /// **Ohne Schlüssel wird lokal gearbeitet, nicht gescheitert.** Das ist die
+    /// Regel, die einen importierten Sicherungsstand abfängt: Die Konfiguration
+    /// reist im Backup mit (sie ist harmlos), der Schlüssel nicht. Auf dem neuen
+    /// Gerät stünde sonst „Anbieter" in den Einstellungen, und jedes Diktat
+    /// liefe in einen 401 — oder schlimmer, es ginge Text an einen Anbieter, für
+    /// den der Mensch auf diesem Gerät nie einen Schlüssel eingetragen hat.
+    static func decide(for purpose: EnginePurpose,
+                       defaults: UserDefaults = .standard,
+                       hasKey: (String) -> Bool = { ProviderKeychain.has(templateID: $0) })
+    -> EngineSelection {
+        guard defaults.string(forKey: purpose.engineKey) == "remote",
+              let config = RemoteConfig.load(purpose: purpose, from: defaults),
+              let template = ProviderCatalog.template(id: config.templateID),
+              config.chatURL != nil
+        else { return .local }
+
+        if purpose == .audio, !template.canAudio { return .local }
+        if template.needsKey, !hasKey(template.id) { return .local }
+        return .remote(config: config, template: template)
     }
 }

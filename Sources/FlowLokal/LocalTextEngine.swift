@@ -34,6 +34,11 @@ actor LocalTextEngine: TextEngine {
     let chunkTargetLength = 1500
     let chunkMinLength = 1000
 
+    /// Keine Grenze — ein lokales Modell hängt nicht, es rechnet. Auf einem
+    /// langsamen Rechner mit einem großen Modell dauert ein Abschnitt eben, und
+    /// abgeschnitten wurde das noch nie.
+    let callTimeout: TimeInterval? = nil
+
     // MARK: - Modell laden
 
     /// Lädt (und beim ersten Mal: downloadet) das aktuell gewählte Modell in den

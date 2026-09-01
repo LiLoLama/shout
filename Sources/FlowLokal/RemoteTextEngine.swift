@@ -63,6 +63,11 @@ actor RemoteTextEngine: TextEngine {
     let chunkTargetLength = 6000
     let chunkMinLength = 4000
 
+    /// Etwas über der Zeitgrenze der Anfrage selbst: Normalerweise schlägt die
+    /// `URLRequest`-Grenze zuerst zu und liefert einen genauen Fehler; diese hier
+    /// ist das Netz darunter, falls die Sitzung wirklich hängt.
+    var callTimeout: TimeInterval? { timeout + 2 }
+
     /// Nichts zu laden — der Fortschritt ist sofort vollständig, damit die
     /// Oberfläche keinen hängenden Balken zeigt.
     func prepare(reset: Bool, onProgress: (@Sendable (Double) -> Void)?) async {

@@ -15,12 +15,17 @@ actor StubTextEngine: TextEngine {
     private let fallback: String?
     /// Künstliche Verzögerung je Aufruf — für die Zeitgrenzen-Tests.
     private let delay: Duration?
+    /// Welcher Fehler geworfen wird. Ohne das wäre nicht unterscheidbar, ob ein
+    /// Fehlschlag einen zweiten Versuch verdient (Zeitüberschreitung) oder nicht
+    /// (abgelehnter Schlüssel).
+    private var fehler: RemoteProviderError?
 
     private(set) var isReady: Bool
     private(set) var isLoading = false
     let displayName: String
     let chunkTargetLength: Int
     let chunkMinLength: Int
+    let callTimeout: TimeInterval?
 
     /// Jede an `respond` übergebene Nutzer-Eingabe, in Aufrufreihenfolge.
     private(set) var recordedPrompts: [String] = []
@@ -35,6 +40,7 @@ actor StubTextEngine: TextEngine {
          displayName: String = "Attrappe",
          chunkTargetLength: Int = 1500,
          chunkMinLength: Int = 1000,
+         callTimeout: TimeInterval? = nil,
          delay: Duration? = nil) {
         self.answers = answers
         self.fallback = fallback
@@ -42,6 +48,7 @@ actor StubTextEngine: TextEngine {
         self.displayName = displayName
         self.chunkTargetLength = chunkTargetLength
         self.chunkMinLength = chunkMinLength
+        self.callTimeout = callTimeout
         self.delay = delay
     }
 
@@ -57,8 +64,13 @@ actor StubTextEngine: TextEngine {
         recordedPrompts.append(user)
         if let delay { try await Task.sleep(for: delay) }
         let answer = answers.isEmpty ? fallback : answers.removeFirst()
-        guard let answer else { throw StubError.gewollt }
+        guard let answer else { throw fehler ?? StubError.gewollt }
         return answer
+    }
+
+    /// Legt fest, welcher Fehler bei einem Fehlschlag geworfen wird.
+    func setzeFehler(_ neu: RemoteProviderError?) {
+        fehler = neu
     }
 
     enum StubError: Error { case gewollt }

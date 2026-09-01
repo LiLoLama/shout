@@ -16,7 +16,15 @@ enum EngineFactory {
     /// ihrem eigenen Actor-Kontext aufrufen. Sie liest nur Einstellungen und
     /// baut einen neuen Actor — kein geteilter Zustand.
     @Sendable static func text() -> any TextEngine {
-        LocalTextEngine()
+        switch EngineSelection.decide(for: .text) {
+        case .local:
+            return LocalTextEngine()
+        case .remote(let config, let template):
+            return RemoteTextEngine(config: config,
+                                    key: ProviderKeychain.read(for: template.id),
+                                    needsKey: template.needsKey,
+                                    providerName: template.name)
+        }
     }
 
     @Sendable static func speech() -> any SpeechEngine {

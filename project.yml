@@ -180,6 +180,7 @@ targets:
           - ProviderText.swift
           - WAVEncoder.swift
           - AudioWindows.swift
+          - RemoteSpeechEngine.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.
           - TranscriptSegment.swift
@@ -342,6 +343,7 @@ targets:
       - path: Sources/FlowLokal/ProviderText.swift
       - path: Sources/FlowLokal/WAVEncoder.swift
       - path: Sources/FlowLokal/AudioWindows.swift
+      - path: Sources/FlowLokal/RemoteSpeechEngine.swift
       - path: Sources/FlowLokal/Localization.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift

@@ -23,6 +23,19 @@ actor LocalSpeechEngine: SpeechEngine {
     private var pipe: WhisperKit?
     private(set) var loadedModel: String?
 
+    /// Darf beim Laden heruntergeladen werden?
+    ///
+    /// `false` ist der Rückfall-Modus: Scheitert die Erkennung bei einem
+    /// Anbieter, soll ein bereits vorhandenes lokales Modell einspringen — aber
+    /// **niemals** mitten im Diktat einen Multi-GB-Download anstoßen. Ohne
+    /// Download schlägt das Laden dann einfach fehl, und der Aufrufer nimmt den
+    /// anderen Weg.
+    private let allowDownload: Bool
+
+    init(allowDownload: Bool = true) {
+        self.allowDownload = allowDownload
+    }
+
     var isReady: Bool { pipe != nil }
     var displayName: String { loadedModel ?? modelName }
 
@@ -34,6 +47,13 @@ actor LocalSpeechEngine: SpeechEngine {
             loadedModel = nil
         }
         let name = modelName
+        guard allowDownload else {
+            // Nur aus dem Cache. Fehlt das Modell, wirft WhisperKit — genau so
+            // ist es gemeint.
+            pipe = try await WhisperKit(WhisperKitConfig(model: name, download: false))
+            loadedModel = name
+            return
+        }
         #if os(iOS)
         // iOS: Zwei-Schritt-Weg (erst Download mit echtem Fortschritt, dann aus dem
         // Ordner laden) — auf dem iPhone (Mobilfunk!) muss der Nutzer den Download

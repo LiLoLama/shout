@@ -333,6 +333,8 @@ final class Loc: ObservableObject {
         "Keine Verbindung. Stimmt die Adresse — und läuft der Server?":
             "No connection. Is the address right — and is the server running?",
         "Unbekannter Fehler.": "Unknown error.",
+        "Die Erkennung ist fehlgeschlagen. Die Aufnahme liegt unter „Dateien“ und lässt sich dort erneut versuchen.":
+            "Recognition failed. The recording is under “Files” and can be retried there.",
         "Ein Schritt läuft bei einem Anbieter. Was dorthin geht, verlässt dein Gerät; abgerechnet wird beim Anbieter. Der andere Schritt und alles Übrige bleibt lokal.":
             "One step runs at a provider. Whatever goes there leaves your device; the provider does the billing. The other step and everything else stays local.",
 

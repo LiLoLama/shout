@@ -28,6 +28,22 @@ enum EngineFactory {
     }
 
     @Sendable static func speech() -> any SpeechEngine {
-        LocalSpeechEngine()
+        switch EngineSelection.decide(for: .audio) {
+        case .local:
+            return LocalSpeechEngine()
+        case .remote(let config, let template):
+            return RemoteSpeechEngine(config: config,
+                                      key: ProviderKeychain.read(for: template.id),
+                                      needsKey: template.needsKey,
+                                      providerName: template.name)
+        }
+    }
+
+    /// Ersatz-Erkenner, wenn die Erkennung beim Anbieter scheitert: ein lokales
+    /// Modell, das **nur aus dem Cache** lädt — nie ein Download mitten im
+    /// Diktat. Wird lokal gearbeitet, gibt es nichts zum Ausweichen.
+    @Sendable static func speechFallback() -> (any SpeechEngine)? {
+        guard case .remote = EngineSelection.decide(for: .audio) else { return nil }
+        return LocalSpeechEngine(allowDownload: false)
     }
 }

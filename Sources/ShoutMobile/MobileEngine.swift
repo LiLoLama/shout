@@ -51,7 +51,8 @@ final class MobileEngine: ObservableObject {
     let stats = StatsStore()
 
     private let recorder = AudioRecorder()
-    private let transcriber = Transcriber(makeEngine: EngineFactory.speech)
+    private let transcriber = Transcriber(makeEngine: EngineFactory.speech,
+                                              makeFallback: EngineFactory.speechFallback)
     private let formatter = Formatter(makeEngine: EngineFactory.text)
 
     /// Warteschlange der Datei-Transkriptionen. Teilt sich Modelle und Wörterbuch

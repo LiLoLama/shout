@@ -24,8 +24,19 @@ actor Transcriber {
     private let makeEngine: @Sendable () -> any SpeechEngine
     private var engine: (any SpeechEngine)?
 
-    init(makeEngine: @escaping @Sendable () -> any SpeechEngine) {
+    /// Ersatz-Erkenner für den Fall, dass der Anbieter scheitert — ein lokales
+    /// Modell, das **nur aus dem Cache** lädt. Liefert `nil`, wenn ohnehin lokal
+    /// gearbeitet wird; dann gibt es nichts, worauf man zurückfallen könnte.
+    ///
+    /// Die Richtung ist wichtig: **extern → lokal** ist immer unbedenklich, der
+    /// umgekehrte Weg passiert nie von selbst.
+    private let makeFallback: @Sendable () -> (any SpeechEngine)?
+    private var fallback: (any SpeechEngine)?
+
+    init(makeEngine: @escaping @Sendable () -> any SpeechEngine,
+         makeFallback: @escaping @Sendable () -> (any SpeechEngine)? = { nil }) {
         self.makeEngine = makeEngine
+        self.makeFallback = makeFallback
     }
 
     /// Diktier-Sprache aus den Einstellungen. `nil` heißt: automatisch erkennen.
@@ -69,9 +80,7 @@ actor Transcriber {
     // MARK: - Diktat
 
     func transcribe(_ samples: [Float]) async throws -> String {
-        guard let engine else { throw TranscriberError.notLoaded }
-
-        let result = try await engine.transcribe(samples: samples, language: language)
+        let result = try await erkenne(samples)
 
         // Wachhund ohne Reparatur: Seit der Wörterbuch-Prompt nicht mehr in den
         // Decoder geht (er ließ Whisper Audio überspringen — bis zu 45 % eines
@@ -96,7 +105,47 @@ actor Transcriber {
     /// Ohne den Wachhund aus `transcribe`: Eine Datei mit langen Sprechpausen
     /// sähe dort regelmäßig „verdächtig" aus, ohne dass etwas fehlt.
     func transcribeSegments(_ samples: [Float]) async throws -> [TranscriptSegment] {
+        try await erkenne(samples).segments
+    }
+
+    /// Erkennt — und weicht bei einem Fehler des Anbieters auf ein vorhandenes
+    /// lokales Modell aus.
+    ///
+    /// Scheitert auch der Rückfall, wird der **ursprüngliche** Fehler geworfen:
+    /// „Schlüssel abgelehnt" hilft weiter, „lokales Modell nicht gefunden" führt
+    /// in die Irre, denn das lokale Modell war nie die Absicht des Nutzers.
+    private func erkenne(_ samples: [Float]) async throws -> SpeechResult {
         guard let engine else { throw TranscriberError.notLoaded }
-        return try await engine.transcribe(samples: samples, language: language).segments
+        do {
+            return try await engine.transcribe(samples: samples, language: language)
+        } catch let ursprung {
+            guard let ersatz = await fallbackEngine() else { throw ursprung }
+            Self.log.warning("Erkennung beim Anbieter fehlgeschlagen, lokales Modell übernimmt")
+            do {
+                return try await ersatz.transcribe(samples: samples, language: language)
+            } catch {
+                // Bewusst `ursprung` und nicht der Fehler des Rückfalls: Ein
+                // implizit gebundenes `error` wäre hier der zweite Fehler, und
+                // damit stünde in der Oberfläche „lokales Modell nicht gefunden"
+                // statt „Schlüssel abgelehnt".
+                throw ursprung
+            }
+        }
+    }
+
+    /// Baut den Rückfall bei Bedarf und lädt ihn aus dem Cache. `nil`, wenn es
+    /// keinen gibt oder kein Modell auf der Platte liegt.
+    private func fallbackEngine() async -> (any SpeechEngine)? {
+        if let fallback, await fallback.isReady { return fallback }
+        guard let neu = makeFallback() else { return nil }
+        do {
+            try await neu.prepare(reset: false, onProgress: nil)
+        } catch {
+            Self.log.warning("Kein lokales Ersatzmodell verfügbar: \(error.localizedDescription)")
+            return nil
+        }
+        guard await neu.isReady else { return nil }
+        fallback = neu
+        return neu
     }
 }

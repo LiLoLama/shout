@@ -172,6 +172,8 @@ targets:
           - SpeechEngine.swift
           - LocalSpeechEngine.swift
           - EngineFactory.swift
+          # Anbieter-Anbindung (OpenAI-kompatibel).
+          - RemoteProvider.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.
           - TranscriptSegment.swift
@@ -327,6 +329,7 @@ targets:
       - path: Sources/FlowLokal/Formatter.swift
       - path: Sources/FlowLokal/SpeechEngine.swift
       - path: Sources/FlowLokal/Transcriber.swift
+      - path: Sources/FlowLokal/RemoteProvider.swift
       - path: Sources/FlowLokal/Localization.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift

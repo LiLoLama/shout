@@ -1,78 +1,86 @@
 import Foundation
 import OSLog
-import WhisperKit
 
 enum TranscriberError: Error { case notLoaded }
 
-/// Dünne Hülle um WhisperKit. Lädt beim ersten Start das Modell
-/// (wird von WhisperKit automatisch von Hugging Face heruntergeladen und
-/// danach lokal gecached) und transkribiert Float-Samples auf Deutsch.
+/// **Router** über einem austauschbaren Spracherkenner. Ob WhisperKit im
+/// eigenen Prozess läuft (`LocalSpeechEngine`) oder ein selbst gewählter
+/// Anbieter erkennt (`RemoteSpeechEngine`), weiß diese Klasse nicht.
 ///
-/// `actor`, damit Laden (load/reload) und Transkribieren serialisiert werden:
-/// Ein Modellwechsel kann so nicht parallel zu einer laufenden Transkription
-/// den Zustand zerreißen, und es sind nie zwei WhisperKit-Modelle gleichzeitig
-/// in der Initialisierung.
+/// Was hier bleibt, gilt damit für jeden Erkenner: die Sprachwahl aus den
+/// Einstellungen und der Plausibilitäts-Wachhund.
+///
+/// `actor`, damit Laden und Transkribieren serialisiert werden: Ein Modellwechsel
+/// kann so nicht parallel zu einer laufenden Transkription den Zustand
+/// zerreißen.
 actor Transcriber {
 
     /// Abfragbar per `log show --predicate 'subsystem == "com.inthezone.flowlokal"'`.
     private static let log = Logger(subsystem: "com.inthezone.flowlokal", category: "diktat")
 
-    /// Gewähltes Modell aus den Einstellungen (Modell-Empfehler). Fällt auf die
-    /// macOS-Speed-Variante von large-v3-turbo zurück (Apple Neural Engine).
-    private var modelName: String {
-        UserDefaults.standard.string(forKey: "asrModel") ?? ModelCatalog.defaultASR
+    /// Baut den Erkenner. Als Closure hereingegeben, damit diese Datei WhisperKit
+    /// nicht kennt und im Testziel liegen kann — vorher war der Wachhund nicht
+    /// prüfbar. Die Auswahl trifft `EngineFactory`.
+    private let makeEngine: @Sendable () -> any SpeechEngine
+    private var engine: (any SpeechEngine)?
+
+    /// Ersatz-Erkenner für den Fall, dass der Anbieter scheitert — ein lokales
+    /// Modell, das **nur aus dem Cache** lädt. Liefert `nil`, wenn ohnehin lokal
+    /// gearbeitet wird; dann gibt es nichts, worauf man zurückfallen könnte.
+    ///
+    /// Die Richtung ist wichtig: **extern → lokal** ist immer unbedenklich, der
+    /// umgekehrte Weg passiert nie von selbst.
+    private let makeFallback: @Sendable () -> (any SpeechEngine)?
+    private var fallback: (any SpeechEngine)?
+
+    init(makeEngine: @escaping @Sendable () -> any SpeechEngine,
+         makeFallback: @escaping @Sendable () -> (any SpeechEngine)? = { nil }) {
+        self.makeEngine = makeEngine
+        self.makeFallback = makeFallback
     }
 
-    private var pipe: WhisperKit?
+    /// Diktier-Sprache aus den Einstellungen. `nil` heißt: automatisch erkennen.
+    private var language: String? {
+        let lang = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de"
+        return lang == "auto" ? nil : lang
+    }
 
-    var isReady: Bool { pipe != nil }
-    /// Name des aktuell geladenen Modells (für die UI).
-    private(set) var loadedModel: String?
+    var isReady: Bool {
+        get async { await engine?.isReady ?? false }
+    }
+
+    var activeModelName: String {
+        get async {
+            guard let engine, await engine.isReady else { return "—" }
+            return await engine.displayName
+        }
+    }
+
+    // MARK: - Laden
 
     /// Lädt das gewählte Modell (Cache-first, offline-fähig wie gehabt).
     func load(onProgress: (@Sendable (Double) -> Void)? = nil) async throws {
-        let name = modelName
-        #if os(iOS)
-        // iOS: Zwei-Schritt-Weg (erst Download mit echtem Fortschritt, dann aus dem
-        // Ordner laden) — auf dem iPhone (Mobilfunk!) muss der Nutzer den Download
-        // sehen. Fallback auf den kombinierten Weg, falls der Download-Pfad hakt.
-        do {
-            let folder = try await WhisperKit.download(variant: name) { progress in
-                onProgress?(progress.fractionCompleted)
-            }
-            pipe = try await WhisperKit(WhisperKitConfig(modelFolder: folder.path, download: false))
-        } catch {
-            NSLog("shout: Zwei-Schritt-Load fehlgeschlagen (\(error)) → Fallback")
-            pipe = try await WhisperKit(WhisperKitConfig(model: name))
-        }
-        #else
-        pipe = try await WhisperKit(WhisperKitConfig(model: name))
-        #endif
-        loadedModel = name
+        if engine == nil { engine = makeEngine() }
+        try await engine?.prepare(reset: false, onProgress: onProgress)
     }
 
     /// Wechselt zur Laufzeit auf das aktuell gewählte Modell. Wirft bei Fehler,
     /// damit der Aufrufer den Status korrekt setzen (und ggf. zurückrollen) kann.
-    /// Durch die Actor-Isolation laufen konkurrierende Aufrufe serialisiert.
+    /// Baut den Erkenner neu, weil sich nicht nur das Modell, sondern die **Art**
+    /// geändert haben kann (auf diesem Gerät ↔ Anbieter).
     func reload(onProgress: (@Sendable (Double) -> Void)? = nil) async throws {
-        pipe = nil
-        loadedModel = nil
-        try await load(onProgress: onProgress)
+        engine = makeEngine()
+        try await engine?.prepare(reset: true, onProgress: onProgress)
     }
 
-    /// „Aufwärmen": eine kurze Stumm-Transkription direkt nach dem Laden, damit
-    /// die ANE-/GPU-Graphen schon kompiliert sind. Das ERSTE echte Diktat ist
-    /// sonst spürbar langsamer (Graph-Kompilierung passiert beim ersten Lauf).
     func warmUp() async {
-        guard pipe != nil else { return }
-        _ = try? await run(samples: [Float](repeating: 0, count: 16_000))
+        await engine?.warmUp(language: language)
     }
+
+    // MARK: - Diktat
 
     func transcribe(_ samples: [Float]) async throws -> String {
-        guard pipe != nil else { throw TranscriberError.notLoaded }
-
-        let results = try await runResults(samples: samples)
-        let text = Self.joined(results)
+        let result = try await erkenne(samples)
 
         // Wachhund ohne Reparatur: Seit der Wörterbuch-Prompt nicht mehr in den
         // Decoder geht (er ließ Whisper Audio überspringen — bis zu 45 % eines
@@ -82,13 +90,13 @@ actor Transcriber {
         // über Logger, nicht NSLog — NSLog dieser App erreicht das System-Log
         // nachweislich nicht (12-h-Abfrage am 21.08.2026: null Zeilen).
         let seconds = Double(samples.count) / 16_000.0
-        let firstStart = results.flatMap(\.segments).first.map { Double($0.start) }
+        let firstStart = result.segments.first.map(\.start)
         if TranscriptPlausibility.swallowedStart(firstSegmentStart: firstStart, audioSeconds: seconds) {
             Self.log.warning("Transkript verdächtig: erster Abschnitt erst bei \(firstStart ?? 0, format: .fixed(precision: 1)) s von \(seconds, format: .fixed(precision: 0)) s")
-        } else if TranscriptPlausibility.tooLittleText(characters: text.count, audioSeconds: seconds) {
-            Self.log.warning("Transkript verdächtig: nur \(text.count) Zeichen für \(seconds, format: .fixed(precision: 0)) s Audio")
+        } else if TranscriptPlausibility.tooLittleText(characters: result.text.count, audioSeconds: seconds) {
+            Self.log.warning("Transkript verdächtig: nur \(result.text.count) Zeichen für \(seconds, format: .fixed(precision: 0)) s Audio")
         }
-        return text
+        return result.text
     }
 
     /// Wie `transcribe`, liefert aber die Abschnitte mit Zeitmarken — Grundlage für
@@ -97,49 +105,47 @@ actor Transcriber {
     /// Ohne den Wachhund aus `transcribe`: Eine Datei mit langen Sprechpausen
     /// sähe dort regelmäßig „verdächtig" aus, ohne dass etwas fehlt.
     func transcribeSegments(_ samples: [Float]) async throws -> [TranscriptSegment] {
-        guard pipe != nil else { throw TranscriberError.notLoaded }
-        let results = try await runResults(samples: samples)
-        return results.flatMap(\.segments).map {
-            TranscriptSegment(text: TranscriptLayout.stripSpecialTokens($0.text),
-                              start: Double($0.start),
-                              end: Double($0.end))
+        try await erkenne(samples).segments
+    }
+
+    /// Erkennt — und weicht bei einem Fehler des Anbieters auf ein vorhandenes
+    /// lokales Modell aus.
+    ///
+    /// Scheitert auch der Rückfall, wird der **ursprüngliche** Fehler geworfen:
+    /// „Schlüssel abgelehnt" hilft weiter, „lokales Modell nicht gefunden" führt
+    /// in die Irre, denn das lokale Modell war nie die Absicht des Nutzers.
+    private func erkenne(_ samples: [Float]) async throws -> SpeechResult {
+        guard let engine else { throw TranscriberError.notLoaded }
+        do {
+            return try await engine.transcribe(samples: samples, language: language)
+        } catch let ursprung {
+            guard let ersatz = await fallbackEngine() else { throw ursprung }
+            Self.log.warning("Erkennung beim Anbieter fehlgeschlagen, lokales Modell übernimmt")
+            do {
+                return try await ersatz.transcribe(samples: samples, language: language)
+            } catch {
+                // Bewusst `ursprung` und nicht der Fehler des Rückfalls: Ein
+                // implizit gebundenes `error` wäre hier der zweite Fehler, und
+                // damit stünde in der Oberfläche „lokales Modell nicht gefunden"
+                // statt „Schlüssel abgelehnt".
+                throw ursprung
+            }
         }
     }
 
-    private func run(samples: [Float]) async throws -> String {
-        Self.joined(try await runResults(samples: samples))
-    }
-
-    /// Fenster-Ergebnisse zu einem Text zusammenziehen.
-    private static func joined(_ results: [TranscriptionResult]) -> String {
-        results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func runResults(samples: [Float]) async throws -> [TranscriptionResult] {
-        guard let pipe else { throw TranscriberError.notLoaded }
-
-        let lang = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "de"
-        let auto = (lang == "auto")
-
-        var options = DecodingOptions(language: auto ? nil : lang, detectLanguage: auto)
-        // Kein Prefill-Cache: verhindert, dass Decoder-Zustand über Aufnahmen
-        // hinweg „hängen bleibt" (Ursache für leere Folge-Transkriptionen).
-        options.usePrefillCache = false
-        // WhisperKit dekodiert die Steuermarken sonst in den SEGMENT-Text hinein
-        // („<|de|>", „<|0.00|>", „<|endoftext|>"). Beim Diktat fiel das nie auf, weil
-        // `TranscriptionResult.text` sie ohnehin herausfiltert — die Datei-
-        // Transkription arbeitet aber mit den Segmenten und bekam sie voll ab.
-        options.skipSpecialTokens = true
-
-        // BEWUSST KEIN Wörterbuch-Prompt (promptTokens/usePrefillPrompt) mehr:
-        // Whisper behandelt ihn als vorangehenden Text und überspringt dann
-        // gelegentlich Audio — am 19./21.08.2026 nachgewiesen: derselbe
-        // Sample-Puffer ergab mit Prompt < 178 Zeichen, ohne 773; ein
-        // 104-s-Diktat verlor ~45 % seines Anfangs. Schon 6 Begriffe reichten,
-        // und der Prompt fährt in JEDEM 30-s-Fenster erneut mit. Eigennamen
-        // korrigiert weiterhin das Wörterbuch (Korrekturen + Formatter-Hinweis)
-        // NACH der Erkennung, ohne sie zu gefährden.
-
-        return try await pipe.transcribe(audioArray: samples, decodeOptions: options)
+    /// Baut den Rückfall bei Bedarf und lädt ihn aus dem Cache. `nil`, wenn es
+    /// keinen gibt oder kein Modell auf der Platte liegt.
+    private func fallbackEngine() async -> (any SpeechEngine)? {
+        if let fallback, await fallback.isReady { return fallback }
+        guard let neu = makeFallback() else { return nil }
+        do {
+            try await neu.prepare(reset: false, onProgress: nil)
+        } catch {
+            Self.log.warning("Kein lokales Ersatzmodell verfügbar: \(error.localizedDescription)")
+            return nil
+        }
+        guard await neu.isReady else { return nil }
+        fallback = neu
+        return neu
     }
 }

@@ -9,6 +9,7 @@ struct StatisticsView: View {
     let generateProfile: (String) async -> String?
 
     @AppStorage("voiceProfile") private var voiceProfile = ""
+    @ObservedObject private var usage = ProviderUsageStore.shared
     @State private var generating = false
 
     private let unlockAt = 5   // Diktate bis „Dein Sprachprofil"
@@ -24,6 +25,8 @@ struct StatisticsView: View {
                     statCard(value: "\(stats.data.totalDictations)", label: Loc.t("Diktate"))
                     statCard(value: "\(dictionary.contents.corrections.count)", label: Loc.t("Korrekturen gelernt"))
                 }
+
+                providerPanel
 
                 ConsolePanel(title: Loc.t("Streak")) {
                     VStack(alignment: .leading, spacing: 14) {
@@ -83,6 +86,42 @@ struct StatisticsView: View {
     }
 
     // MARK: - Sprachprofil
+
+    /// Verbrauch bei Anbietern — nur sichtbar, wenn überhaupt etwas anfiel.
+    /// Wer alles lokal verarbeitet, soll hier keine leere Zeile sehen.
+    @ViewBuilder private var providerPanel: some View {
+        if let monat = usage.month(), !monat.isEmpty {
+            let (kosten, unbekannt) = usage.cost()
+            ConsolePanel(title: Loc.t("Anbieter · dieser Monat")) {
+                VStack(spacing: 0) {
+                    ForEach(monat.tokens.keys.sorted(), id: \.self) { schluessel in
+                        let anzahl = monat.tokens[schluessel] ?? TokenCount()
+                        FieldRow(title: schluessel) {
+                            Text(Loc.f("%@ Token", (anzahl.prompt + anzahl.completion).formatted()))
+                                .font(.system(size: 12)).foregroundStyle(Color(white: 0.7))
+                        }
+                        ConsoleDivider()
+                    }
+                    ForEach(monat.seconds.keys.sorted(), id: \.self) { schluessel in
+                        FieldRow(title: schluessel) {
+                            Text(Loc.f("%@ Minuten Audio",
+                                       String(format: "%.1f", (monat.seconds[schluessel] ?? 0) / 60)))
+                                .font(.system(size: 12)).foregroundStyle(Color(white: 0.7))
+                        }
+                        ConsoleDivider()
+                    }
+                    FieldRow(title: Loc.t("Geschätzte Kosten"),
+                             help: unbekannt
+                                 ? Loc.t("Ohne die Modelle mit unbekanntem Preis. Abgerechnet wird beim Anbieter.")
+                                 : Loc.t("Näherung — abgerechnet wird beim Anbieter.")) {
+                        Text(ProviderCosts.format(usd: kosten))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color(white: 0.9))
+                    }
+                }
+            }
+        }
+    }
 
     @ViewBuilder private var voiceSection: some View {
         ConsolePanel(title: Loc.t("Dein Sprachprofil")) {

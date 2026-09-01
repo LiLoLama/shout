@@ -81,6 +81,14 @@ struct MobileOnboardingView: View {
                                 .padding(.horizontal, 16)
                         }
                     }
+
+                    // Am iPhone wiegt das Argument noch schwerer als am Mac:
+                    // 4–8 GB RAM und harte Jetsam-Grenzen. Wer hier hängt, findet
+                    // die Alternative ohne diesen Hinweis nicht.
+                    Text(Loc.t("Gerät zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später in den Einstellungen."))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
                 }
             }
             .frame(maxWidth: 560)

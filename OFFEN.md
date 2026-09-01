@@ -11,6 +11,11 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Release v1.0**: notarisiertes DMG als GitHub-Release-Asset (`release.sh` funktioniert unverändert).
 - [ ] **Launch**: AITI-Newsletter (mit AITI absprechen — deren Kanal!), r/macapps, ggf. Hacker News/Product Hunt; später Homebrew-Cask.
 
+## 🟠 Externe Anbieter — Windows fehlt noch
+- [ ] **Windows nachziehen.** Mac und iOS können Aufbereitung und Transkription je einzeln auf einen selbst gewählten OpenAI-kompatiblen Anbieter umstellen (`Sources/FlowLokal/RemoteProvider.swift` und die Engine-Schicht darunter). Der C#-Port hat dieselben zwei Schnittstellen (`windows/src/Shout/Core/Formatter.cs`, `Transcriber.cs`) und dieselben Aufrufstellen (`TrayContext`, `FileTranscriptionQueue`); der Vorlagen-Katalog ist reine Daten und wird gespiegelt. Statt der Keychain kommt DPAPI (`ProtectedData`), und der WAV-Weg ist dort einfacher, weil die Aufnahme schon als WAV 16 kHz Mono vorliegt. **Bis dahin besteht ein bewusster Funktionsversatz zwischen den Plattformen.**
+- [ ] **Basis-URLs und Modell-IDs der Vorlagen nachprüfen.** Bestätigt sind EURouter (`https://api.eurouter.ai/v1`) und xAI (`https://api.x.ai/v1`); die übrigen stammen aus der gängigen Dokumentation und sollten vor dem nächsten Release einmal gegen die Anbieterseiten geprüft werden. Eine falsche Adresse in einer mitgelieferten Vorlage sieht wie ein Fehler der App aus.
+- [ ] **Agent-CLI als dritte Engine** (`codex exec`, `claude -p`) — zurückgestellt, Begründung im Entwurf unter „Abo-Anmeldung": 2–10 s Vorlauf machen sie fürs Live-Diktat unbrauchbar, für Datei-Transkripte und Protokolle wäre sie tauglich. macOS only.
+
 ## 🟠 Verteilung / Auslieferung
 - [x] **Signierung + Notarisierung + DMG** — Pipeline steht und ist verifiziert (`release.sh`, notarisiertes shout-0.1.0.dmg erzeugt).
 - [ ] **Auf einem fremden Mac testen** (sauberer Rechner, Modelle nicht gecacht, andere macOS-Version).

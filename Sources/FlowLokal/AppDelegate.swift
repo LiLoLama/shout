@@ -32,9 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Komponenten
 
     private let recorder = AudioRecorder()
-    private let transcriber = Transcriber()
+    private let transcriber = Transcriber(makeEngine: EngineFactory.speech,
+                                              makeFallback: EngineFactory.speechFallback)
     private let injector = TextInjector()
-    private let formatter = Formatter()
+    private let formatter = Formatter(makeEngine: EngineFactory.text)
     private let dictionary = PersonalDictionary()
     private let history = DictationHistory()
     private let stats = StatsStore()
@@ -567,6 +568,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onInsertHistory: { [weak self] text in self?.insertFromHistory(text) },
                 onSelectASR: { [weak self] id in await self?.switchASRModel(to: id) },
                 onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) },
+                onEngineChanged: { [weak self] purpose in await self?.reloadEngine(for: purpose) },
                 onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
                 onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
                 files: fileQueue,
@@ -887,6 +889,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         state = ready ? .idle : .failed
     }
 
+    /// Lädt die Engine eines Schrittes neu, nachdem sich die Anbieter-Einstellung
+    /// geändert hat — Umschalten zwischen „auf diesem Gerät" und „Anbieter", ein
+    /// anderer Anbieter, ein neuer Schlüssel, ein anderes Modell.
+    ///
+    /// Dieselben Schutzbedingungen wie beim Modellwechsel: nicht während einer
+    /// Aufnahme und nicht während einer laufenden Datei-Transkription, sonst
+    /// zieht es das Modell unter der laufenden Arbeit weg.
+    ///
+    /// Ein Fehlschlag wird hier NICHT zurückgerollt. Der Grund ist der
+    /// Unterschied zum Modellwechsel: Dort bedeutet ein Fehler „Download
+    /// misslungen", und das alte Modell liegt noch da. Hier ist die Einstellung
+    /// die Absicht des Nutzers, und ob sie funktioniert, sagt ihm der
+    /// Verbindungstest im Anbieter-Block. Stillschweigend zurückzuschalten wäre
+    /// verwirrender als eine Einstellung, die noch nicht trägt — beim Diktat
+    /// kommt ohnehin der Rohtext, nichts geht verloren.
+    private func reloadEngine(for purpose: EnginePurpose) async {
+        guard state == .idle || state == .failed else {
+            dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
+            return
+        }
+        guard !fileQueue.isRunning else {
+            dashboardModel.modelNote = Loc.t("Transkription läuft — Modellwechsel ist erst danach möglich.")
+            return
+        }
+        dashboardModel.modelNote = nil
+
+        switch purpose {
+        case .text:
+            guard dashboardModel.formatLoadingID == nil else { return }
+            await formatter.reload(onProgress: formatProgressHandler())
+            dashboardModel.formatterReady = await formatter.isReady
+            updateFormatterMenu()
+        case .audio:
+            guard dashboardModel.asrLoadingID == nil else { return }
+            state = .loadingModel
+            try? await transcriber.reload(onProgress: asrProgressHandler())
+            let ready = await transcriber.isReady
+            dashboardModel.transcriberReady = ready
+            dashboardModel.asrLoadFailed = !ready
+            state = ready ? .idle : .failed
+        }
+    }
+
     /// Modell-Empfehler: wechselt das Formatierungs-Modell zur Laufzeit.
     /// Der Formatter-actor serialisiert Loads, daher genügt der Schutz gegen
     /// parallele Wechsel; die App-Aufnahme bleibt davon unberührt.
@@ -1188,7 +1233,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             } catch {
                 sounds.play(.error)
                 NSLog("Verarbeitung fehlgeschlagen: \(error)")
+                rescueRecording(samples, after: error)
             }
         }
+    }
+
+    /// Rettet eine Aufnahme, deren Erkennung gescheitert ist, in die
+    /// Datei-Warteschlange.
+    ///
+    /// Der Fall, für den das gebaut ist: Die Transkription läuft bei einem
+    /// Anbieter, der Aufruf scheitert (Netz weg, Guthaben leer), und es liegt
+    /// kein lokales Modell auf der Platte, das einspringen könnte. Ohne diese
+    /// Rettung wäre die Aufnahme weg — anders als bei der Aufbereitung, wo immer
+    /// noch der Rohtext bleibt, gibt es hier nichts, was man einfügen könnte.
+    ///
+    /// Auf der Platte landet WAV: Es braucht keinen Encoder, und die
+    /// Warteschlange dekodiert es ohnehin wieder zu denselben Samples. Eine
+    /// Minute sind knapp 2 MB — für eine Handvoll gescheiterter Diktate
+    /// verschmerzbar, und der Nutzer sieht sie in der Liste und kann sie löschen.
+    ///
+    /// Nur bei externer Erkennung: Läuft lokal etwas schief, ist es kein
+    /// vorübergehender Zustand, den ein zweiter Versuch heilt.
+    private func rescueRecording(_ samples: [Float], after error: Error) {
+        guard case .remote = EngineSelection.decide(for: .audio) else { return }
+        guard !samples.isEmpty else { return }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH-mm-ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let name = "Diktat \(formatter.string(from: Date())).wav"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+
+        do {
+            try WAVEncoder.data(from: samples).write(to: url)
+        } catch {
+            NSLog("Aufnahme konnte nicht gesichert werden: \(error)")
+            return
+        }
+        // `start: false` — nicht sofort loslaufen: Die Ursache (kein Guthaben,
+        // Netz weg) besteht meist noch. Der Auftrag liegt bereit und der Nutzer
+        // startet ihn, wenn es wieder geht.
+        fileQueue.add([url], start: false)
+        dashboardModel.modelNote = Loc.t("Die Erkennung ist fehlgeschlagen. Die Aufnahme liegt unter „Dateien“ und lässt sich dort erneut versuchen.")
     }
 }

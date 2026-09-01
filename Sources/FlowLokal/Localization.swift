@@ -282,6 +282,106 @@ final class Loc: ObservableObject {
         "Aufbereitungs-Modell konnte nicht geladen werden (offline?). Vorheriges bleibt aktiv.":
             "The cleanup model could not be loaded (offline?). The previous one stays active.",
 
+        // MARK: - Anbieter (eigene API statt lokalem Modell)
+        //
+        // „Verarbeitung", „Auf diesem Gerät" und „Entfernen" stehen schon weiter
+        // unten (Datei-Transkription) mit derselben Übersetzung. Doppelte
+        // Schlüssel lassen die App beim Start abstürzen, deshalb hier NICHT
+        // wiederholen.
+
+        "Anbieter": "Provider",
+        "Läuft vollständig auf diesem Gerät. Nichts verlässt es.":
+            "Runs entirely on this device. Nothing leaves it.",
+        "Läuft bei einem Anbieter deiner Wahl. Standard ist dein Gerät.":
+            "Runs at a provider of your choice. Your device is the default.",
+        "Nur Anbieter, die transkribieren können, stehen hier.":
+            "Only providers that can transcribe are listed here.",
+        "Adresse": "Address",
+        "Die Basis-Adresse. „/chat/completions“ wird selbst angehängt.":
+            "The base address. “/chat/completions” is appended automatically.",
+        "Schlüssel": "Key",
+        "Ersetzen": "Replace",
+        "Speichern": "Save",
+        "Bekommst du bei: %@": "Get one at: %@",
+        "Modell": "Model",
+        "Du kannst eine Kennung auch frei eintragen — neue Modelle erscheinen oft vor der nächsten Programmversion.":
+            "You can also type an identifier yourself — new models often appear before the next release.",
+        "Modelle laden": "Load models",
+        "Verbindung": "Connection",
+        "Verbindung testen": "Test connection",
+        "Verbindung steht · %@ s": "Connected · %@ s",
+        "Verbindung steht, aber „%@“ steht nicht in der Modell-Liste des Anbieters.":
+            "Connected, but “%@” is not in the provider’s model list.",
+        "Verbindung steht · %@ s. Der Anbieter liefert keine Modell-Liste — ob das Modell stimmt, zeigt erst der erste Versuch.":
+            "Connected · %@ s. This provider offers no model list — whether the model is right shows on the first attempt.",
+        "Der Schlüssel konnte nicht in der Keychain gespeichert werden.":
+            "The key could not be stored in the keychain.",
+        "Es ist kein Schlüssel hinterlegt.": "No key has been stored.",
+        "Die Adresse ist unbrauchbar. Sie muss mit http:// oder https:// beginnen.":
+            "The address is unusable. It must start with http:// or https://.",
+        "Der Schlüssel wurde abgelehnt.": "The key was rejected.",
+        "Beim Anbieter ist kein Guthaben vorhanden.": "There is no credit at the provider.",
+        "Das Modell „%@“ kennt der Anbieter nicht.": "The provider does not know the model “%@”.",
+        "Zu viele Anfragen. Später erneut versuchen.": "Too many requests. Try again later.",
+        "Zu viele Anfragen. Erneut möglich in etwa %d Sekunden.":
+            "Too many requests. Possible again in about %d seconds.",
+        "Der Anbieter antwortete mit Fehler %d.": "The provider responded with error %d.",
+        "Die Antwort des Anbieters war nicht verwertbar.":
+            "The provider’s response was not usable.",
+        "Der Anbieter hat nicht rechtzeitig geantwortet.":
+            "The provider did not respond in time.",
+        "Keine Verbindung. Stimmt die Adresse — und läuft der Server?":
+            "No connection. Is the address right — and is the server running?",
+        "Unbekannter Fehler.": "Unknown error.",
+        "Kosten": "Cost",
+        "Preise aktualisieren": "Update prices",
+        "ca. %@ je Diktat": "approx. %@ per dictation",
+        "ca. %@ je Minute Audio": "approx. %@ per minute of audio",
+        "Preis dieses Modells unbekannt.": "The price of this model is unknown.",
+        "Diesen Monat: %@": "This month: %@",
+        "(ohne die Modelle mit unbekanntem Preis)": "(excluding models with an unknown price)",
+        "Näherung — abgerechnet wird beim Anbieter. Preise: Stand %@":
+            "Approximation — the provider does the billing. Prices as of %@",
+        "Anbieter · dieser Monat": "Provider · this month",
+        "%@ Token": "%@ tokens",
+        "%@ Minuten Audio": "%@ minutes of audio",
+        "Geschätzte Kosten": "Estimated cost",
+        "Rechner zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später unter „Modelle“.":
+            "Machine too weak? You can run both steps at a provider of your choice instead — later under “Models”.",
+        "Gerät zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später in den Einstellungen.":
+            "Device too weak? You can run both steps at a provider of your choice instead — later in Settings.",
+        "Näherung — abgerechnet wird beim Anbieter.":
+            "Approximation — the provider does the billing.",
+        "Ohne die Modelle mit unbekanntem Preis. Abgerechnet wird beim Anbieter.":
+            "Excluding models with an unknown price. The provider does the billing.",
+        "Die Erkennung ist fehlgeschlagen. Die Aufnahme liegt unter „Dateien“ und lässt sich dort erneut versuchen.":
+            "Recognition failed. The recording is under “Files” and can be retried there.",
+        "Ein Schritt läuft bei einem Anbieter. Was dorthin geht, verlässt dein Gerät; abgerechnet wird beim Anbieter. Der andere Schritt und alles Übrige bleibt lokal.":
+            "One step runs at a provider. Whatever goes there leaves your device; the provider does the billing. The other step and everything else stays local.",
+
+        // Einordnungen der Vorlagen
+        "Der Referenz-Endpunkt. Kann Text und Transkription.":
+            "The reference endpoint. Handles text and transcription.",
+        "Ein Schlüssel für hunderte Modelle. Keine Transkription.":
+            "One key for hundreds of models. No transcription.",
+        "Verarbeitung ausschließlich in der EU, ein Schlüssel für über 100 Modelle. Keine Transkription.":
+            "Processing exclusively in the EU, one key for over 100 models. No transcription.",
+        "Sehr schnell — die interessanteste Wahl fürs Live-Diktat.":
+            "Very fast — the most interesting choice for live dictation.",
+        "Europäischer Anbieter, kann Text und Transkription.":
+            "European provider, handles text and transcription.",
+        "Günstig. Keine Transkription.": "Inexpensive. No transcription.",
+        "Über die OpenAI-Kompatibilitätsschicht. Keine Transkription.":
+            "Via the OpenAI compatibility layer. No transcription.",
+        "Schlüssel aus der xAI-Konsole. Ein SuperGrok-Abo gilt hier NICHT — Abos enthalten keinen API-Zugang.":
+            "Key from the xAI console. A SuperGrok subscription does NOT count here — subscriptions include no API access.",
+        "Läuft auf deinem eigenen Rechner — auch auf einem anderen im eigenen Netz. Dann verlässt nichts dein Netzwerk.":
+            "Runs on your own machine — including another one on your own network. Then nothing leaves your network.",
+        "Wie Ollama: dein eigener Rechner, dein eigenes Netz.":
+            "Like Ollama: your own machine, your own network.",
+        "Alles selbst eintragen — für whisper.cpp-Server, vLLM, Pauschal-Abos mit eigenem Endpunkt und alles andere OpenAI-kompatible.":
+            "Enter everything yourself — for whisper.cpp servers, vLLM, flat-rate plans with their own endpoint, and anything else OpenAI-compatible.",
+
         // Live-Liste von Hugging Face
         "AKTUELLE MODELLE · HUGGING FACE": "CURRENT MODELS · HUGGING FACE",
         "Lädt …": "Loading…",

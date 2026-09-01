@@ -13,6 +13,9 @@ struct MobileSettingsView: View {
     @AppStorage("silenceSeconds") private var silenceSeconds = 1.5
     @AppStorage("asrModel") private var asrModel = ModelCatalog.defaultASR
     @AppStorage("formatModel") private var formatModel = ModelCatalog.defaultFormatting
+    /// „local" oder „remote", je Verarbeitungsschritt.
+    @AppStorage("asrEngine") private var asrEngine = "local"
+    @AppStorage("formatEngine") private var formatEngine = "local"
     /// Oberflächensprache — unabhängig von der Diktier-Sprache oben.
     @AppStorage(Loc.storageKey) private var uiLanguage = "system"
     @State private var formattingOn = false
@@ -185,31 +188,74 @@ struct MobileSettingsView: View {
                 Text(Loc.t("★ = Empfehlung für dein Gerät. Tippe „Laden“, um ein Modell herunterzuladen und zu aktivieren — einmalig, danach läuft alles offline."))
             }
 
-            Section(Loc.t("Transkription (Sprache → Text)")) {
-                ForEach(ModelCatalog.asr) { o in
-                    modelRow(o,
-                             active: asrModel == o.id,
-                             recommended: o.id == ModelCatalog.recommendedASR(ramGB: ram).id,
-                             loading: engine.asrLoadingID == o.id,
-                             progress: engine.asrProgress) {
-                        Task { await engine.switchASRModel(to: o.id) }
+            Section {
+                engineSwitch(for: .audio, selection: $asrEngine)
+            }
+
+            if asrEngine == "remote" {
+                MobileProviderSection(purpose: .audio) {
+                    await engine.reloadEngine(for: .audio)
+                }
+            } else {
+                Section(Loc.t("Transkription (Sprache → Text)")) {
+                    ForEach(ModelCatalog.asr) { o in
+                        modelRow(o,
+                                 active: asrModel == o.id,
+                                 recommended: o.id == ModelCatalog.recommendedASR(ramGB: ram).id,
+                                 loading: engine.asrLoadingID == o.id,
+                                 progress: engine.asrProgress) {
+                            Task { await engine.switchASRModel(to: o.id) }
+                        }
                     }
                 }
             }
 
             if formattingOn {
-                Section(Loc.t("Aufbereitung (KI-Textmodell)")) {
-                    ForEach(ModelCatalog.formatting) { o in
-                        modelRow(o,
-                                 active: formatModel == o.id,
-                                 recommended: o.id == ModelCatalog.recommendedFormatting(ramGB: ram).id,
-                                 loading: engine.formatLoadingID == o.id,
-                                 progress: engine.formatProgress) {
-                            Task { await engine.switchFormatModel(to: o.id) }
+                Section {
+                    engineSwitch(for: .text, selection: $formatEngine)
+                }
+
+                if formatEngine == "remote" {
+                    MobileProviderSection(purpose: .text) {
+                        await engine.reloadEngine(for: .text)
+                    }
+                } else {
+                    Section(Loc.t("Aufbereitung (KI-Textmodell)")) {
+                        ForEach(ModelCatalog.formatting) { o in
+                            modelRow(o,
+                                     active: formatModel == o.id,
+                                     recommended: o.id == ModelCatalog.recommendedFormatting(ramGB: ram).id,
+                                     loading: engine.formatLoadingID == o.id,
+                                     progress: engine.formatProgress) {
+                                Task { await engine.switchFormatModel(to: o.id) }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    /// Umschalter „auf diesem Gerät" / „Anbieter" für einen Verarbeitungsschritt.
+    private func engineSwitch(for purpose: EnginePurpose,
+                              selection: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker(Loc.t("Verarbeitung"), selection: Binding(
+                get: { selection.wrappedValue },
+                set: { neu in
+                    guard neu != selection.wrappedValue else { return }
+                    selection.wrappedValue = neu
+                    Task { await engine.reloadEngine(for: purpose) }
+                })) {
+                Text(Loc.t("Auf diesem Gerät")).tag("local")
+                Text(Loc.t("Anbieter")).tag("remote")
+            }
+            .pickerStyle(.segmented)
+
+            Text(selection.wrappedValue == "remote"
+                 ? Loc.t("Läuft bei einem Anbieter deiner Wahl. Standard ist dein Gerät.")
+                 : Loc.t("Läuft vollständig auf diesem Gerät. Nichts verlässt es."))
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 

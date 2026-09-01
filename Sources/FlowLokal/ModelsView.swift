@@ -8,6 +8,14 @@ struct ModelsView: View {
     /// Wechselt das Transkriptions- bzw. Formatierungs-Modell und lädt neu.
     let onSelectASR: (String) async -> Void
     let onSelectFormat: (String) async -> Void
+    /// Lädt die Engine des Schrittes neu — nach einem Wechsel zwischen „auf
+    /// diesem Gerät" und „Anbieter" oder einer Änderung an der Anbieter-Einstellung.
+    let onEngineChanged: (EnginePurpose) async -> Void
+
+    /// „local" oder „remote", je Verarbeitungsschritt.
+    @AppStorage("asrEngine") private var asrEngine = "local"
+    @AppStorage("formatEngine") private var formatEngine = "local"
+    @ObservedObject private var loc = Loc.shared
 
     // Auswahl + Ladezustand kommen aus dem DashboardModel (überlebt Tab-Wechsel).
     private var asrID: String { model.activeASR }
@@ -44,31 +52,45 @@ struct ModelsView: View {
 
                 ConsolePanel(title: Loc.t("Transkription (Sprache → Text)")) {
                     VStack(spacing: 0) {
-                        ForEach(ModelCatalog.asr.indices, id: \.self) { i in
-                            let o = ModelCatalog.asr[i]
-                            modelRow(o, selected: asrID == o.id, recommended: recASR.id == o.id,
-                                     loading: loadingASR == o.id,
-                                     progress: loadingASR == o.id ? model.asrProgress : nil) { selectASR(o.id) }
-                            if i < ModelCatalog.asr.count - 1 { ConsoleDivider() }
+                        engineSwitch(for: .audio, selection: $asrEngine)
+                        ConsoleDivider()
+                        if asrEngine == "remote" {
+                            ProviderPanel(purpose: .audio) { await onEngineChanged(.audio) }
+                        } else {
+                            ForEach(ModelCatalog.asr.indices, id: \.self) { i in
+                                let o = ModelCatalog.asr[i]
+                                modelRow(o, selected: asrID == o.id, recommended: recASR.id == o.id,
+                                         loading: loadingASR == o.id,
+                                         progress: loadingASR == o.id ? model.asrProgress : nil) { selectASR(o.id) }
+                                if i < ModelCatalog.asr.count - 1 { ConsoleDivider() }
+                            }
                         }
                     }
                 }
 
                 ConsolePanel(title: Loc.t("Aufbereitung & Formatierung (KI-Textmodell)")) {
                     VStack(spacing: 0) {
-                        ForEach(ModelCatalog.formatting.indices, id: \.self) { i in
-                            let o = ModelCatalog.formatting[i]
-                            modelRow(o, selected: formatID == o.id, recommended: recFormat.id == o.id,
-                                     loading: loadingFormat == o.id,
-                                     progress: loadingFormat == o.id ? model.formatProgress : nil) { selectFormat(o.id) }
-                            if i < ModelCatalog.formatting.count - 1 { ConsoleDivider() }
+                        engineSwitch(for: .text, selection: $formatEngine)
+                        ConsoleDivider()
+                        if formatEngine == "remote" {
+                            ProviderPanel(purpose: .text) { await onEngineChanged(.text) }
+                        } else {
+                            ForEach(ModelCatalog.formatting.indices, id: \.self) { i in
+                                let o = ModelCatalog.formatting[i]
+                                modelRow(o, selected: formatID == o.id, recommended: recFormat.id == o.id,
+                                         loading: loadingFormat == o.id,
+                                         progress: loadingFormat == o.id ? model.formatProgress : nil) { selectFormat(o.id) }
+                                if i < ModelCatalog.formatting.count - 1 { ConsoleDivider() }
+                            }
                         }
                     }
                 }
 
-                remotePanel
+                if formatEngine == "local" { remotePanel }
 
-                Text(Loc.t("Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Mac."))
+                Text(asrEngine == "remote" || formatEngine == "remote"
+                     ? Loc.t("Ein Schritt läuft bei einem Anbieter. Was dorthin geht, verlässt dein Gerät; abgerechnet wird beim Anbieter. Der andere Schritt und alles Übrige bleibt lokal.")
+                     : Loc.t("Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Mac."))
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -78,6 +100,25 @@ struct ModelsView: View {
         .background(Color.shoutWindow)
         .scrollContentBackground(.hidden)
         .task { if !didFetch { didFetch = true; await refreshRemote() } }
+    }
+
+    // MARK: - Umschalter „auf diesem Gerät" / „Anbieter"
+
+    private func engineSwitch(for purpose: EnginePurpose,
+                              selection: Binding<String>) -> some View {
+        FieldRow(title: Loc.t("Verarbeitung"),
+                 help: selection.wrappedValue == "remote"
+                     ? Loc.t("Läuft bei einem Anbieter deiner Wahl. Standard ist dein Gerät.")
+                     : Loc.t("Läuft vollständig auf diesem Gerät. Nichts verlässt es.")) {
+            ConsoleSegmented(selection: Binding(
+                get: { selection.wrappedValue },
+                set: { neu in
+                    guard neu != selection.wrappedValue else { return }
+                    selection.wrappedValue = neu
+                    Task { await onEngineChanged(purpose) }
+                }),
+                options: [("local", Loc.t("Auf diesem Gerät")), ("remote", Loc.t("Anbieter"))])
+        }
     }
 
     // MARK: - Live-Modelle von Hugging Face

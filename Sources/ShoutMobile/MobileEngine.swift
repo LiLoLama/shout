@@ -191,6 +191,35 @@ final class MobileEngine: ObservableObject {
         formatLoadingID = nil
     }
 
+    /// Lädt die Engine eines Schrittes neu, nachdem sich die Anbieter-Einstellung
+    /// geändert hat. Wie am Mac: kein Zurückrollen bei Fehlschlag — die
+    /// Einstellung ist die Absicht des Nutzers, und ob sie trägt, sagt der
+    /// Verbindungstest im Anbieter-Block.
+    func reloadEngine(for purpose: EnginePurpose) async {
+        guard state == .idle || isFailed else {
+            modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen wird.")
+            return
+        }
+        modelNote = nil
+        switch purpose {
+        case .text:
+            formatProgress = 0
+            await formatter.reload { [weak self] frac in
+                Task { @MainActor in self?.formatProgress = frac }
+            }
+            formatterReady = await formatter.isReady
+            formatProgress = nil
+        case .audio:
+            state = .loadingModel
+            asrProgress = 0
+            try? await transcriber.reload { [weak self] frac in
+                Task { @MainActor in self?.asrProgress = frac }
+            }
+            asrProgress = nil
+            state = .idle
+        }
+    }
+
     private var isFailed: Bool { if case .failed = state { return true }; return false }
 
     // MARK: - Aufnahme

@@ -567,6 +567,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onInsertHistory: { [weak self] text in self?.insertFromHistory(text) },
                 onSelectASR: { [weak self] id in await self?.switchASRModel(to: id) },
                 onSelectFormat: { [weak self] id in await self?.switchFormatModel(to: id) },
+                onEngineChanged: { [weak self] purpose in await self?.reloadEngine(for: purpose) },
                 onPersistentPillChanged: { [weak self] on in self?.recIndicator.setPersistent(on) },
                 onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
                 files: fileQueue,
@@ -885,6 +886,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardModel.transcriberReady = ready
         dashboardModel.asrLoadFailed = !ready
         state = ready ? .idle : .failed
+    }
+
+    /// Lädt die Engine eines Schrittes neu, nachdem sich die Anbieter-Einstellung
+    /// geändert hat — Umschalten zwischen „auf diesem Gerät" und „Anbieter", ein
+    /// anderer Anbieter, ein neuer Schlüssel, ein anderes Modell.
+    ///
+    /// Dieselben Schutzbedingungen wie beim Modellwechsel: nicht während einer
+    /// Aufnahme und nicht während einer laufenden Datei-Transkription, sonst
+    /// zieht es das Modell unter der laufenden Arbeit weg.
+    ///
+    /// Ein Fehlschlag wird hier NICHT zurückgerollt. Der Grund ist der
+    /// Unterschied zum Modellwechsel: Dort bedeutet ein Fehler „Download
+    /// misslungen", und das alte Modell liegt noch da. Hier ist die Einstellung
+    /// die Absicht des Nutzers, und ob sie funktioniert, sagt ihm der
+    /// Verbindungstest im Anbieter-Block. Stillschweigend zurückzuschalten wäre
+    /// verwirrender als eine Einstellung, die noch nicht trägt — beim Diktat
+    /// kommt ohnehin der Rohtext, nichts geht verloren.
+    private func reloadEngine(for purpose: EnginePurpose) async {
+        guard state == .idle || state == .failed else {
+            dashboardModel.modelNote = Loc.t("Modellwechsel ist nur möglich, wenn gerade nicht aufgenommen oder verarbeitet wird.")
+            return
+        }
+        guard !fileQueue.isRunning else {
+            dashboardModel.modelNote = Loc.t("Transkription läuft — Modellwechsel ist erst danach möglich.")
+            return
+        }
+        dashboardModel.modelNote = nil
+
+        switch purpose {
+        case .text:
+            guard dashboardModel.formatLoadingID == nil else { return }
+            await formatter.reload(onProgress: formatProgressHandler())
+            dashboardModel.formatterReady = await formatter.isReady
+            updateFormatterMenu()
+        case .audio:
+            guard dashboardModel.asrLoadingID == nil else { return }
+            state = .loadingModel
+            try? await transcriber.reload(onProgress: asrProgressHandler())
+            let ready = await transcriber.isReady
+            dashboardModel.transcriberReady = ready
+            dashboardModel.asrLoadFailed = !ready
+            state = ready ? .idle : .failed
+        }
     }
 
     /// Modell-Empfehler: wechselt das Formatierungs-Modell zur Laufzeit.

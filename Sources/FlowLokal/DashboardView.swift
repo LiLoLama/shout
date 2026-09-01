@@ -43,6 +43,7 @@ struct DashboardView: View {
     let onInsertHistory: (String) -> Void
     let onSelectASR: (String) async -> Void
     let onSelectFormat: (String) async -> Void
+    let onEngineChanged: (EnginePurpose) async -> Void
     var onPersistentPillChanged: (Bool) -> Void = { _ in }
     var onPillPositionChanged: () -> Void = {}
     /// Warteschlange der Datei-Transkriptionen (vom AppDelegate durchgereicht).
@@ -176,7 +177,8 @@ struct DashboardView: View {
         case .statistik:
             StatisticsView(stats: stats, history: history, dictionary: dictionary, generateProfile: generateProfile)
         case .modelle:
-            ModelsView(model: model, onSelectASR: onSelectASR, onSelectFormat: onSelectFormat)
+            ModelsView(model: model, onSelectASR: onSelectASR,
+                       onSelectFormat: onSelectFormat, onEngineChanged: onEngineChanged)
         case .sync:
             SyncView(onExport: onExport, onImport: onImport)
         case .unterstuetzen:

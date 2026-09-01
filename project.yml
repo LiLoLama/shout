@@ -169,6 +169,8 @@ targets:
           # dahinter (lokal MLX/WhisperKit oder ein selbst gewählter Anbieter).
           - TextEngine.swift
           - LocalTextEngine.swift
+          - SpeechEngine.swift
+          - LocalSpeechEngine.swift
           - EngineFactory.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.
@@ -321,8 +323,10 @@ targets:
       - path: Sources/FlowLokal/FormatterPrompt.swift
       # Engine-Protokoll: abhängigkeitsfrei, macht den Router testbar.
       - path: Sources/FlowLokal/TextEngine.swift
-      # Der Router selbst — seit der Engine-Extraktion ohne MLX-Bezug.
+      # Die Router selbst — seit der Engine-Extraktion ohne MLX-/WhisperKit-Bezug.
       - path: Sources/FlowLokal/Formatter.swift
+      - path: Sources/FlowLokal/SpeechEngine.swift
+      - path: Sources/FlowLokal/Transcriber.swift
       - path: Sources/FlowLokal/Localization.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift

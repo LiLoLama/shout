@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Komponenten
 
     private let recorder = AudioRecorder()
-    private let transcriber = Transcriber()
+    private let transcriber = Transcriber(makeEngine: EngineFactory.speech)
     private let injector = TextInjector()
     private let formatter = Formatter(makeEngine: EngineFactory.text)
     private let dictionary = PersonalDictionary()

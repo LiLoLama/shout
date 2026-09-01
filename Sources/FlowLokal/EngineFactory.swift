@@ -18,4 +18,8 @@ enum EngineFactory {
     @Sendable static func text() -> any TextEngine {
         LocalTextEngine()
     }
+
+    @Sendable static func speech() -> any SpeechEngine {
+        LocalSpeechEngine()
+    }
 }

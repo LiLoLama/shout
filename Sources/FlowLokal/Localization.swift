@@ -333,6 +333,27 @@ final class Loc: ObservableObject {
         "Keine Verbindung. Stimmt die Adresse — und läuft der Server?":
             "No connection. Is the address right — and is the server running?",
         "Unbekannter Fehler.": "Unknown error.",
+        "Kosten": "Cost",
+        "Preise aktualisieren": "Update prices",
+        "ca. %@ je Diktat": "approx. %@ per dictation",
+        "ca. %@ je Minute Audio": "approx. %@ per minute of audio",
+        "Preis dieses Modells unbekannt.": "The price of this model is unknown.",
+        "Diesen Monat: %@": "This month: %@",
+        "(ohne die Modelle mit unbekanntem Preis)": "(excluding models with an unknown price)",
+        "Näherung — abgerechnet wird beim Anbieter. Preise: Stand %@":
+            "Approximation — the provider does the billing. Prices as of %@",
+        "Anbieter · dieser Monat": "Provider · this month",
+        "%@ Token": "%@ tokens",
+        "%@ Minuten Audio": "%@ minutes of audio",
+        "Geschätzte Kosten": "Estimated cost",
+        "Rechner zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später unter „Modelle“.":
+            "Machine too weak? You can run both steps at a provider of your choice instead — later under “Models”.",
+        "Gerät zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später in den Einstellungen.":
+            "Device too weak? You can run both steps at a provider of your choice instead — later in Settings.",
+        "Näherung — abgerechnet wird beim Anbieter.":
+            "Approximation — the provider does the billing.",
+        "Ohne die Modelle mit unbekanntem Preis. Abgerechnet wird beim Anbieter.":
+            "Excluding models with an unknown price. The provider does the billing.",
         "Die Erkennung ist fehlgeschlagen. Die Aufnahme liegt unter „Dateien“ und lässt sich dort erneut versuchen.":
             "Recognition failed. The recording is under “Files” and can be retried there.",
         "Ein Schritt läuft bei einem Anbieter. Was dorthin geht, verlässt dein Gerät; abgerechnet wird beim Anbieter. Der andere Schritt und alles Übrige bleibt lokal.":

@@ -26,6 +26,9 @@ actor RemoteSpeechEngine: SpeechEngine {
     /// Kostenanzeige.
     private(set) var sentSeconds: Double = 0
 
+    /// Wohin die verschickten Sekunden gemeldet werden.
+    private let onSeconds: (@Sendable (Double) -> Void)?
+
     init(config: RemoteConfig,
          key: String?,
          needsKey: Bool,
@@ -33,7 +36,9 @@ actor RemoteSpeechEngine: SpeechEngine {
          session: URLSession = .shared,
          timeout: TimeInterval = 120,
          maxWindowSeconds: Double = 600,
-         sampleRate: Int = 16_000) {
+         sampleRate: Int = 16_000,
+         onSeconds: (@Sendable (Double) -> Void)? = nil) {
+        self.onSeconds = onSeconds
         self.config = config
         self.key = key?.isEmpty == true ? nil : key
         self.needsKey = needsKey
@@ -85,7 +90,9 @@ actor RemoteSpeechEngine: SpeechEngine {
                                   start: $0.start + f.offsetSeconds,
                                   end: $0.end + f.offsetSeconds)
             }
-            sentSeconds += Double(f.range.count) / Double(sampleRate)
+            let sekunden = Double(f.range.count) / Double(sampleRate)
+            sentSeconds += sekunden
+            onSeconds?(sekunden)
         }
 
         return SpeechResult(text: texte.joined(separator: " "), segments: segmente)

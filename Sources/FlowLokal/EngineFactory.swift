@@ -20,10 +20,18 @@ enum EngineFactory {
         case .local:
             return LocalTextEngine()
         case .remote(let config, let template):
+            let anbieter = template.name
+            let modell = config.model
             return RemoteTextEngine(config: config,
                                     key: ProviderKeychain.read(for: template.id),
                                     needsKey: template.needsKey,
-                                    providerName: template.name)
+                                    providerName: template.name,
+                                    onUsage: { usage in
+                Task { @MainActor in
+                    ProviderUsageStore.shared.record(tokens: usage, provider: anbieter,
+                                                     model: modell)
+                }
+            })
         }
     }
 
@@ -32,10 +40,18 @@ enum EngineFactory {
         case .local:
             return LocalSpeechEngine()
         case .remote(let config, let template):
+            let anbieter = template.name
+            let modell = config.model
             return RemoteSpeechEngine(config: config,
                                       key: ProviderKeychain.read(for: template.id),
                                       needsKey: template.needsKey,
-                                      providerName: template.name)
+                                      providerName: template.name,
+                                      onSeconds: { sekunden in
+                Task { @MainActor in
+                    ProviderUsageStore.shared.record(seconds: sekunden, provider: anbieter,
+                                                     model: modell)
+                }
+            })
         }
     }
 

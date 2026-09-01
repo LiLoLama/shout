@@ -83,12 +83,12 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: true
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
-        NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln."
+        NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache in Text umzuwandeln. Standardmäßig geschieht das lokal auf deinem Rechner; nur wenn du selbst einen externen Anbieter einrichtest, wird die Aufnahme dorthin übertragen."
         NSContactsUsageDescription: "shout. liest Namen aus deinen Kontakten nur lokal, um sie ins Wörterbuch zu übernehmen. Es werden keine Daten übertragen."
         # Ohne diesen Schlüssel kann die App die Erlaubnis zum Mitschnitt des
         # Systemtons nicht einmal anfragen — der Abgriff liefert dann stillschweigend
         # Nullen statt eines Fehlers. Steht in keinem Xcode-Menü.
-        NSAudioCaptureUsageDescription: "shout. schneidet den Ton anderer Programme mit, um Online-Meetings lokal zu transkribieren. Nichts verlässt deinen Rechner."
+        NSAudioCaptureUsageDescription: "shout. schneidet den Ton anderer Programme mit, um Online-Meetings zu transkribieren. Standardmäßig geschieht das lokal auf deinem Rechner; nur wenn du selbst einen externen Anbieter einrichtest, wird die Aufnahme dorthin übertragen."
         # Sparkle Auto-Update
         SUFeedURL: "https://raw.githubusercontent.com/LiLoLama/shout/main/appcast.xml"
         SUPublicEDKey: "K4fmCpqGG4t4iy6K9FkJqr0xLJddTyWtUBiKWWoxmMI="
@@ -181,6 +181,9 @@ targets:
           - WAVEncoder.swift
           - AudioWindows.swift
           - RemoteSpeechEngine.swift
+          - ProviderCosts.swift
+          - ProviderUsageStore.swift
+          - PriceFetch.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.
           - TranscriptSegment.swift
@@ -214,7 +217,7 @@ targets:
         CFBundleDisplayName: "shout."
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache lokal in Text umzuwandeln. Nichts verlässt dein Gerät."
+        NSMicrophoneUsageDescription: "shout. nimmt dein Mikrofon auf, um Sprache in Text umzuwandeln. Standardmäßig geschieht das lokal auf deinem Gerät; nur wenn du selbst einen externen Anbieter einrichtest, wird die Aufnahme dorthin übertragen."
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -344,6 +347,9 @@ targets:
       - path: Sources/FlowLokal/WAVEncoder.swift
       - path: Sources/FlowLokal/AudioWindows.swift
       - path: Sources/FlowLokal/RemoteSpeechEngine.swift
+      - path: Sources/FlowLokal/ProviderCosts.swift
+      - path: Sources/FlowLokal/ProviderUsageStore.swift
+      - path: Sources/FlowLokal/PriceFetch.swift
       - path: Sources/FlowLokal/Localization.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift

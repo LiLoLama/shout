@@ -2,9 +2,13 @@
 
 **Local, private dictation — on your Mac, your PC and your iPhone.** Press a
 hotkey, speak, and your words are typed wherever your cursor is — transcribed and
-cleaned up entirely **on your own device**. No cloud, no account, no data ever
-leaves the machine. Inspired by Wispr Flow, built to be fully offline and open
-source.
+cleaned up entirely **on your own device**. By default there is no cloud, no
+account, and no data ever leaves the machine. Inspired by Wispr Flow, built to be
+fully offline and open source.
+
+If your machine cannot run a local model, you can point either step at a provider
+of your own choosing instead — including one running on your own network. See
+[Optional: bring your own provider](#optional-bring-your-own-provider).
 
 ```
 Hotkey → record → Whisper (speech → text) → optional local LLM cleans the text
@@ -60,6 +64,48 @@ has no comparable local interface for desktop apps; it imports CSV/TXT instead).
 The live Hugging Face model list is on both, but on Windows it lists Qwen models
 only, because llama.cpp loads a single file and the cleanup model’s chat template
 is built for that family.
+
+## Optional: bring your own provider
+
+Both processing steps — speech → text and the text cleanup — can be switched
+individually from **“On this device”** to **“Provider”** under *Models*. Local
+stays the default, and shout. never switches outward on its own.
+
+This exists for two groups: machines that cannot run a local model (the cleanup
+needs MLX on Apple Silicon and 8–48 GB of RAM depending on the model, and an
+iPhone has neither), and people who simply want a larger model than a 4-bit 2B
+one to clean up their dictation.
+
+One provider needs a base address, an API key and a model id. Templates ship for
+OpenAI, OpenRouter, [EURouter](https://www.eurouter.ai) (EU-only processing),
+Groq, Mistral, DeepSeek, Anthropic, Google Gemini, xAI, **Ollama**, **LM Studio**
+and a free-form *Own endpoint* for anything else that speaks the OpenAI API —
+including whisper.cpp servers and flat-rate plans that come with their own
+endpoint.
+
+**The most interesting entry is Ollama.** Point a weak laptop at the strong
+machine in your study and you get its model quality while nothing leaves your own
+network. That is not a compromise on the idea of this program; it is the idea with
+a longer cable.
+
+What you should know before switching:
+
+- **Keys live in the keychain**, device-only, never in a backup file and never in
+  a log. The interface only ever shows `sk-…4f2a`.
+- **Costs are measured, not guessed:** every response reports its real token
+  count. The estimate in dollars is an approximation from a shipped price table —
+  the provider does the billing.
+- **Nothing goes out silently.** Without a stored key, shout. works locally
+  instead of failing, which is also what happens after you import a backup onto a
+  new device.
+- **A failure never loses your words.** If cleanup fails you get the raw
+  transcript, exactly as with a local model. If remote *transcription* fails, a
+  local model takes over when one is on disk — and if none is, the recording is
+  filed under *Files* so you can retry it.
+- **Signing in with a ChatGPT, SuperGrok or Claude subscription is not
+  possible.** Those plans carry no API access, and there is no legitimate way for
+  a third-party app to borrow one. Subscription plans that ship a real endpoint
+  work fine through *Own endpoint*.
 
 ## Install
 

@@ -25,12 +25,19 @@ actor RemoteTextEngine: TextEngine {
     /// Grundlage der Kostenanzeige.
     private(set) var lastUsage: TokenUsage?
 
+    /// Wohin der gemessene Verbrauch gemeldet wird. Als Closure, damit die
+    /// Engine nichts über den Verbrauchsspeicher wissen muss und Tests keine
+    /// echten Dateien anfassen.
+    private let onUsage: (@Sendable (TokenUsage) -> Void)?
+
     init(config: RemoteConfig,
          key: String?,
          needsKey: Bool,
          providerName: String,
          session: URLSession = .shared,
-         timeout: TimeInterval = 15) {
+         timeout: TimeInterval = 15,
+         onUsage: (@Sendable (TokenUsage) -> Void)? = nil) {
+        self.onUsage = onUsage
         self.config = config
         self.key = key?.isEmpty == true ? nil : key
         self.needsKey = needsKey
@@ -125,7 +132,9 @@ actor RemoteTextEngine: TextEngine {
               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { throw RemoteProviderError.malformedResponse }
 
-        lastUsage = RemoteHTTP.usage(from: json)
+        let usage = RemoteHTTP.usage(from: json)
+        lastUsage = usage
+        if let usage { onUsage?(usage) }
         return content
     }
 }

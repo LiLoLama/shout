@@ -23,6 +23,8 @@ struct ProviderPanel: View {
     @State private var probeOK: Bool?
     @State private var probing = false
     @State private var lastError: String?
+    @ObservedObject private var usage = ProviderUsageStore.shared
+    @State private var loadingPrices = false
 
     init(purpose: EnginePurpose, onChanged: @escaping () async -> Void) {
         self.purpose = purpose
@@ -56,6 +58,10 @@ struct ProviderPanel: View {
             modelRow
             ConsoleDivider()
             probeRow
+            if template?.needsKey == true {
+                ConsoleDivider()
+                costRow
+            }
             if let note = template?.note {
                 ConsoleDivider()
                 noteRow(note)
@@ -184,6 +190,58 @@ struct ProviderPanel: View {
                 Button(Loc.t("Verbindung testen")) { Task { await testen() } }
                     .buttonStyle(ConsoleButtonStyle()).disabled(probing)
             }
+        }
+    }
+
+    /// Kosten — gemessen, nicht geschätzt: Die Token stehen in jeder Antwort.
+    /// Bei Anbietern auf dem eigenen Rechner entfällt die Zeile ganz.
+    private var costRow: some View {
+        FieldRow(title: Loc.t("Kosten"), help: kostenHilfe) {
+            HStack(spacing: 8) {
+                if loadingPrices { ProgressView().controlSize(.small).tint(Color.shoutLive) }
+                Button(Loc.t("Preise aktualisieren")) { Task { await preiseLaden() } }
+                    .buttonStyle(ConsoleButtonStyle()).disabled(loadingPrices)
+            }
+        }
+    }
+
+    private var kostenHilfe: String {
+        let (monat, unbekannt) = usage.cost()
+        var zeilen: [String] = []
+
+        if purpose == .text, let preis = usage.prices.price(forText: config.model),
+           let jeDiktat = ProviderCosts.cost(tokens: ProviderCosts.typicalDictation,
+                                             price: preis) {
+            zeilen.append(Loc.f("ca. %@ je Diktat", ProviderCosts.format(usd: jeDiktat)))
+        } else if purpose == .audio, let preis = usage.prices.price(forAudio: config.model),
+                  let jeMinute = ProviderCosts.cost(seconds: 60, price: preis) {
+            zeilen.append(Loc.f("ca. %@ je Minute Audio", ProviderCosts.format(usd: jeMinute)))
+        } else {
+            zeilen.append(Loc.t("Preis dieses Modells unbekannt."))
+        }
+
+        zeilen.append(Loc.f("Diesen Monat: %@", ProviderCosts.format(usd: monat))
+                      + (unbekannt ? " " + Loc.t("(ohne die Modelle mit unbekanntem Preis)") : ""))
+        zeilen.append(Loc.f("Näherung — abgerechnet wird beim Anbieter. Preise: Stand %@",
+                            Self.datum.string(from: usage.prices.updated)))
+        return zeilen.joined(separator: "\n")
+    }
+
+    private static let datum: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .none
+        return f
+    }()
+
+    private func preiseLaden() async {
+        loadingPrices = true
+        defer { loadingPrices = false }
+        do {
+            usage.replacePrices(try await PriceFetch.fetch())
+            lastError = nil
+        } catch {
+            lastError = ProviderText.describe(error)
         }
     }
 

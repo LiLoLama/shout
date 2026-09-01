@@ -140,6 +140,15 @@ struct OnboardingView: View {
                     Text(Loc.t("Modell wird geladen …")).font(.system(size: 12)).foregroundStyle(Color(white: 0.6))
                 }
             }
+            // Eine Zeile, kein zusätzlicher Schritt: Wer zu schwache Hardware
+            // hat, trifft zuerst das Onboarding — und genau dort wird ihm ein
+            // Mehr-Gigabyte-Download vorgeschlagen, den seine Maschine nicht
+            // tragen kann. Ohne diesen Hinweis findet er die Alternative nie.
+            Text(Loc.t("Rechner zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später unter „Modelle“."))
+                .font(.system(size: 11)).foregroundStyle(Color(white: 0.45))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
         }
     }
 

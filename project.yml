@@ -165,6 +165,9 @@ targets:
           # Von Formatter gebraucht (Prompts + Netz gegen Antwort-statt-Formatierung).
           - FormattingGuard.swift
           - FormatterPrompt.swift
+          # Engine-Schicht: Formatter/Transcriber sind Router, die Modelle liegen
+          # dahinter (lokal MLX/WhisperKit oder ein selbst gewählter Anbieter).
+          - TextEngine.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.
           - TranscriptSegment.swift
@@ -314,6 +317,8 @@ targets:
       - path: Sources/FlowLokal/TranscriptPlausibility.swift
       - path: Sources/FlowLokal/FormattingGuard.swift
       - path: Sources/FlowLokal/FormatterPrompt.swift
+      # Engine-Protokoll: abhängigkeitsfrei, macht den Router testbar.
+      - path: Sources/FlowLokal/TextEngine.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift
       - path: Sources/FlowLokal/TextChunker.swift

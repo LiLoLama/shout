@@ -68,7 +68,7 @@ struct MobileProviderSection: View {
                     .autocorrectionDisabled()
 
                 if !vorschlaege.isEmpty {
-                    Picker(Loc.t("Modelle laden"), selection: Binding(
+                    Picker(Loc.t("Vorschläge"), selection: Binding(
                         get: { config.model },
                         set: { config.model = $0; speichern() })) {
                         ForEach(vorschlaege, id: \.self) { Text($0).tag($0) }

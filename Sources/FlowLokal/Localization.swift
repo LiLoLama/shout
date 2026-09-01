@@ -304,8 +304,8 @@ final class Loc: ObservableObject {
         "Speichern": "Save",
         "Bekommst du bei: %@": "Get one at: %@",
         "Modell": "Model",
-        "Du kannst eine Kennung auch frei eintragen — neue Modelle erscheinen oft vor der nächsten Programmversion.":
-            "You can also type an identifier yourself — new models often appear before the next release.",
+        "Kennung frei eintragbar.": "Identifier can be typed freely.",
+        "Vorschläge": "Suggestions",
         "Modelle laden": "Load models",
         "Verbindung": "Connection",
         "Verbindung testen": "Test connection",
@@ -362,8 +362,10 @@ final class Loc: ObservableObject {
         // Einordnungen der Vorlagen
         "Der Referenz-Endpunkt. Kann Text und Transkription.":
             "The reference endpoint. Handles text and transcription.",
-        "Ein Schlüssel für hunderte Modelle. Keine Transkription.":
-            "One key for hundreds of models. No transcription.",
+        "Ein Schlüssel für hunderte Modelle, auch für die Transkription. Dort liefert er womöglich keine Zeitmarken; Untertitel können dann unbrauchbar werden.":
+            "One key for hundreds of models, transcription included. It may not return timestamps there, which can make subtitles unusable.",
+        "Nur Transkription, dafür sehr günstig (rund $0,10 je Stunde) und mit Zeitmarken. Für EU-Verarbeitung „api“ in der Adresse durch „eu-api“ ersetzen.":
+            "Transcription only, but very cheap (about $0.10 per hour) and with timestamps. For EU processing, replace “api” in the address with “eu-api”.",
         "Verarbeitung ausschließlich in der EU, ein Schlüssel für über 100 Modelle. Keine Transkription.":
             "Processing exclusively in the EU, one key for over 100 models. No transcription.",
         "Sehr schnell — die interessanteste Wahl fürs Live-Diktat.":

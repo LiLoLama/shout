@@ -87,7 +87,7 @@ struct ProviderPanel: View {
                     Text(vorlage.name).tag(vorlage.id)
                 }
             }
-            .labelsHidden().frame(width: 200)
+            .labelsHidden().frame(minWidth: 150, idealWidth: 200, maxWidth: 220)
         }
     }
 
@@ -100,11 +100,17 @@ struct ProviderPanel: View {
                 TextField("", text: Binding(
                     get: { config.baseURL },
                     set: { config.baseURL = $0; speichern() }))
-                    .textFieldStyle(.roundedBorder).frame(width: 260)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 160, idealWidth: 260, maxWidth: 300)
             } else {
+                // Umbrechen statt abschneiden: Die Adressen im Katalog passen
+                // alle in eine Zeile (die längste ist Google mit 54 Zeichen),
+                // aber ein eigener Endpunkt kann länger sein.
                 Text(config.baseURL)
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundStyle(Color(white: 0.55))
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
         }
@@ -118,16 +124,17 @@ struct ProviderPanel: View {
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(Color(white: 0.7))
                     Button(Loc.t("Ersetzen")) { self.maskedKey = nil }
-                        .buttonStyle(ConsoleButtonStyle())
+                        .buttonStyle(ConsoleButtonStyle()).fixedSize()
                     Button(Loc.t("Entfernen")) { schluesselEntfernen() }
-                        .buttonStyle(ConsoleButtonStyle())
+                        .buttonStyle(ConsoleButtonStyle()).fixedSize()
                 }
             } else {
                 HStack(spacing: 8) {
                     SecureField("", text: $keyEntry)
-                        .textFieldStyle(.roundedBorder).frame(width: 200)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 120, idealWidth: 200, maxWidth: 240)
                     Button(Loc.t("Speichern")) { schluesselSpeichern() }
-                        .buttonStyle(ConsoleButtonStyle())
+                        .buttonStyle(ConsoleButtonStyle()).fixedSize()
                         .disabled(keyEntry.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
@@ -139,15 +146,22 @@ struct ProviderPanel: View {
         return Loc.f("Bekommst du bei: %@", template.keyURL)
     }
 
+    /// Nur Textfeld und Vorschlagsmenü.
+    ///
+    /// „Modelle laden" saß hier ursprünglich mit in der Zeile — bei 640 Punkten
+    /// Ansichtsbreite passten Hilfetext, Feld, Menü und Knopf nicht nebeneinander,
+    /// und SwiftUI staucht dann den Knopf zu einer Buchstabensäule statt den Text
+    /// umzubrechen. Der Knopf steht jetzt bei „Verbindung", wo er inhaltlich
+    /// ohnehin hingehört: beides holt etwas beim Anbieter.
     private var modelRow: some View {
         FieldRow(title: Loc.t("Modell"),
-                 help: Loc.t("Du kannst eine Kennung auch frei eintragen — neue Modelle "
-                           + "erscheinen oft vor der nächsten Programmversion.")) {
+                 help: Loc.t("Kennung frei eintragbar.")) {
             HStack(spacing: 8) {
                 TextField("", text: Binding(
                     get: { config.model },
                     set: { config.model = $0; speichern() }))
-                    .textFieldStyle(.roundedBorder).frame(width: 190)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 120, idealWidth: 190, maxWidth: 220)
 
                 if !vorschlaege.isEmpty {
                     Menu {
@@ -157,16 +171,8 @@ struct ProviderPanel: View {
                     } label: {
                         Image(systemName: "chevron.down").font(.system(size: 10))
                     }
-                    .menuStyle(.borderlessButton).frame(width: 18)
+                    .menuStyle(.borderlessButton).frame(width: 18).fixedSize()
                 }
-
-                Button(action: { Task { await modelleLaden() } }) {
-                    HStack(spacing: 5) {
-                        if loadingModels { ProgressView().controlSize(.small).tint(Color.shoutLive) }
-                        Text(loadingModels ? Loc.t("Lädt …") : Loc.t("Modelle laden"))
-                    }
-                }
-                .buttonStyle(ConsoleButtonStyle()).disabled(loadingModels)
             }
         }
     }
@@ -181,14 +187,17 @@ struct ProviderPanel: View {
     private var probeRow: some View {
         FieldRow(title: Loc.t("Verbindung"), help: probeText) {
             HStack(spacing: 8) {
-                if probing { ProgressView().controlSize(.small).tint(Color.shoutLive) }
-                if let probeOK {
+                if probing || loadingModels {
+                    ProgressView().controlSize(.small).tint(Color.shoutLive)
+                } else if let probeOK {
                     Image(systemName: probeOK ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(probeOK ? Color.shoutLive : Color(white: 0.6))
                 }
+                Button(Loc.t("Modelle laden")) { Task { await modelleLaden() } }
+                    .buttonStyle(ConsoleButtonStyle()).disabled(loadingModels).fixedSize()
                 Button(Loc.t("Verbindung testen")) { Task { await testen() } }
-                    .buttonStyle(ConsoleButtonStyle()).disabled(probing)
+                    .buttonStyle(ConsoleButtonStyle()).disabled(probing).fixedSize()
             }
         }
     }
@@ -200,7 +209,7 @@ struct ProviderPanel: View {
             HStack(spacing: 8) {
                 if loadingPrices { ProgressView().controlSize(.small).tint(Color.shoutLive) }
                 Button(Loc.t("Preise aktualisieren")) { Task { await preiseLaden() } }
-                    .buttonStyle(ConsoleButtonStyle()).disabled(loadingPrices)
+                    .buttonStyle(ConsoleButtonStyle()).disabled(loadingPrices).fixedSize()
             }
         }
     }

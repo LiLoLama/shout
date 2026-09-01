@@ -118,7 +118,7 @@ final class EngineSelectionTests: XCTestCase {
     /// Ein Anbieter, der keine Transkription kann, darf nicht für Audio gewählt
     /// werden — auch nicht, wenn es jemand von Hand einträgt.
     func testAnbieterOhneAudioWirdFuerAudioLokal() {
-        stelleEin(.audio, auf: "remote", templateID: "openrouter")
+        stelleEin(.audio, auf: "remote", templateID: "anthropic")
         XCTAssertEqual(EngineSelection.decide(for: .audio, defaults: defaults, hasKey: { _ in true }),
                        .local)
     }
@@ -131,6 +131,14 @@ final class EngineSelectionTests: XCTestCase {
             return XCTFail("Groq kann Audio, wurde: \(wahl)")
         }
         XCTAssertEqual(template.id, "groq")
+    }
+
+    /// Umgekehrt: Ein reiner Transkriptions-Dienst darf nicht für die
+    /// Aufbereitung gewählt werden — dort scheiterte der erste Versuch.
+    func testAnbieterOhneTextWirdFuerTextLokal() {
+        stelleEin(.text, auf: "remote", templateID: "lemonfox")
+        XCTAssertEqual(EngineSelection.decide(for: .text, defaults: defaults, hasKey: { _ in true }),
+                       .local)
     }
 
     /// Text und Audio sind unabhängig: extern aufbereiten und lokal

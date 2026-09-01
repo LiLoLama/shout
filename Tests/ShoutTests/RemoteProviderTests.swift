@@ -127,6 +127,25 @@ final class RemoteProviderTests: XCTestCase {
         XCTAssertTrue(eigen?.baseURL.isEmpty == true)
     }
 
+    /// Ein reiner Transkriptions-Dienst gehört nicht in die Textauswahl, und
+    /// umgekehrt. Sonst wählt jemand etwas, das beim ersten Versuch scheitert.
+    func testVorlagenWerdenNachZweckGefiltert() {
+        let text = ProviderCatalog.templates(for: .text).map(\.id)
+        let audio = ProviderCatalog.templates(for: .audio).map(\.id)
+
+        XCTAssertFalse(text.contains("lemonfox"), "Lemonfox kann nur Transkription")
+        XCTAssertTrue(audio.contains("lemonfox"))
+
+        XCTAssertTrue(text.contains("anthropic"))
+        XCTAssertFalse(audio.contains("anthropic"), "Anthropic kann keine Transkription")
+
+        // Beides kann: OpenAI, Groq, Mistral, OpenRouter, eigener Endpunkt.
+        for beides in ["openai", "groq", "mistral", "openrouter", "custom"] {
+            XCTAssertTrue(text.contains(beides), "\(beides) fehlt in der Textauswahl")
+            XCTAssertTrue(audio.contains(beides), "\(beides) fehlt in der Audioauswahl")
+        }
+    }
+
     /// Anbieter, die auf dem eigenen Rechner laufen, brauchen keinen Schlüssel.
     /// Verlangt die Oberfläche dort trotzdem einen, kommt niemand weiter.
     func testLokaleAnbieterBrauchenKeinenSchluessel() {

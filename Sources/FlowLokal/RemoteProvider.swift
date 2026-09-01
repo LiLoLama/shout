@@ -44,6 +44,10 @@ struct ProviderTemplate: Identifiable, Hashable, Sendable {
     /// `audioModels`, weil „Eigener Endpunkt" Audio kann, aber keine
     /// Modellvorschläge hat — dort weiß nur der Nutzer, was sein Server anbietet.
     let canAudio: Bool
+    /// Ob der Anbieter Textmodelle anbietet. Es gibt Dienste, die nur
+    /// transkribieren — die sollen nicht in der Auswahl für die Aufbereitung
+    /// stehen, wo sie beim ersten Versuch scheitern würden.
+    let canText: Bool
     /// Anbieter auf dem eigenen Rechner brauchen keinen Schlüssel.
     let needsKey: Bool
     /// Ein Satz Einordnung für die Oberfläche.
@@ -69,7 +73,7 @@ enum ProviderCatalog {
             keyURL: "https://platform.openai.com/api-keys",
             chatModels: ["gpt-5-mini", "gpt-5"],
             audioModels: ["gpt-4o-mini-transcribe", "whisper-1"],
-            canAudio: true, needsKey: true,
+            canAudio: true, canText: true, needsKey: true,
             note: "Der Referenz-Endpunkt. Kann Text und Transkription."),
 
         ProviderTemplate(
@@ -77,9 +81,15 @@ enum ProviderCatalog {
             baseURL: "https://openrouter.ai/api/v1",
             keyURL: "https://openrouter.ai/keys",
             chatModels: ["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"],
-            audioModels: [],
-            canAudio: false, needsKey: true,
-            note: "Ein Schlüssel für hunderte Modelle. Keine Transkription."),
+            audioModels: ["openai/whisper-large-v3", "openai/gpt-4o-mini-transcribe",
+                          "google/chirp-3"],
+            canAudio: true, canText: true, needsKey: true,
+            // Zeitmarken sind bei OpenRouters Transkription nicht dokumentiert.
+            // Bleiben sie aus, setzt RemoteSpeechEngine ein Ersatzsegment über
+            // die ganze Länge — Diktat und .txt gehen dann, Untertitel nicht.
+            note: "Ein Schlüssel für hunderte Modelle, auch für die "
+                + "Transkription. Dort liefert er womöglich keine Zeitmarken; "
+                + "Untertitel können dann unbrauchbar werden."),
 
         ProviderTemplate(
             id: "eurouter", name: "EURouter",
@@ -87,7 +97,7 @@ enum ProviderCatalog {
             keyURL: "https://www.eurouter.ai",
             chatModels: ["openai/gpt-oss-120b", "mistral/mistral-large"],
             audioModels: [],
-            canAudio: false, needsKey: true,
+            canAudio: false, canText: true, needsKey: true,
             note: "Verarbeitung ausschließlich in der EU, ein Schlüssel für über "
                 + "100 Modelle. Keine Transkription."),
 
@@ -97,8 +107,23 @@ enum ProviderCatalog {
             keyURL: "https://console.groq.com/keys",
             chatModels: ["llama-3.3-70b-versatile"],
             audioModels: ["whisper-large-v3-turbo", "whisper-large-v3"],
-            canAudio: true, needsKey: true,
+            canAudio: true, canText: true, needsKey: true,
             note: "Sehr schnell — die interessanteste Wahl fürs Live-Diktat."),
+
+        ProviderTemplate(
+            id: "lemonfox", name: "Lemonfox",
+            baseURL: "https://api.lemonfox.ai/v1",
+            keyURL: "https://www.lemonfox.ai/apis/keys",
+            chatModels: [],
+            audioModels: ["whisper-1"],
+            canAudio: true, canText: false, needsKey: true,
+            // Reiner Transkriptions-Dienst in diesem Katalog: canText ist false,
+            // damit er nicht in der Auswahl für die Aufbereitung auftaucht.
+            // Liefert verbose_json mit Segment-Zeitmarken, Untertitel gehen also.
+            // Für EU-Verarbeitung die Adresse auf eu-api.lemonfox.ai ändern.
+            note: "Nur Transkription, dafür sehr günstig (rund $0,10 je Stunde) "
+                + "und mit Zeitmarken. Für EU-Verarbeitung „api“ in der Adresse "
+                + "durch „eu-api“ ersetzen."),
 
         ProviderTemplate(
             id: "mistral", name: "Mistral",
@@ -106,7 +131,7 @@ enum ProviderCatalog {
             keyURL: "https://console.mistral.ai/api-keys",
             chatModels: ["mistral-large-latest", "mistral-small-latest"],
             audioModels: ["voxtral-mini-latest"],
-            canAudio: true, needsKey: true,
+            canAudio: true, canText: true, needsKey: true,
             note: "Europäischer Anbieter, kann Text und Transkription."),
 
         ProviderTemplate(
@@ -115,7 +140,7 @@ enum ProviderCatalog {
             keyURL: "https://platform.deepseek.com/api_keys",
             chatModels: ["deepseek-chat"],
             audioModels: [],
-            canAudio: false, needsKey: true,
+            canAudio: false, canText: true, needsKey: true,
             note: "Günstig. Keine Transkription."),
 
         ProviderTemplate(
@@ -124,7 +149,7 @@ enum ProviderCatalog {
             keyURL: "https://console.anthropic.com/settings/keys",
             chatModels: ["claude-sonnet-4.5", "claude-haiku-4.5"],
             audioModels: [],
-            canAudio: false, needsKey: true,
+            canAudio: false, canText: true, needsKey: true,
             // Anthropic bezeichnet diese Schicht in der eigenen Dokumentation
             // ausdrücklich als Weg zum Ausprobieren und Vergleichen, nicht als
             // Dauerlösung. Das gehört an die Vorlage: Wer seinen Arbeitsalltag
@@ -139,7 +164,7 @@ enum ProviderCatalog {
             keyURL: "https://aistudio.google.com/apikey",
             chatModels: ["gemini-2.5-flash", "gemini-2.5-pro"],
             audioModels: [],
-            canAudio: false, needsKey: true,
+            canAudio: false, canText: true, needsKey: true,
             note: "Über die OpenAI-Kompatibilitätsschicht. Keine Transkription."),
 
         ProviderTemplate(
@@ -148,7 +173,7 @@ enum ProviderCatalog {
             keyURL: "https://console.x.ai",
             chatModels: ["grok-4", "grok-4-fast"],
             audioModels: [],
-            canAudio: false, needsKey: true,
+            canAudio: false, canText: true, needsKey: true,
             note: "Schlüssel aus der xAI-Konsole. Ein SuperGrok-Abo gilt hier "
                 + "NICHT — Abos enthalten keinen API-Zugang."),
 
@@ -158,7 +183,7 @@ enum ProviderCatalog {
             keyURL: "https://ollama.com/download",
             chatModels: ["gemma3:12b", "qwen3:14b"],
             audioModels: [],
-            canAudio: false, needsKey: false,
+            canAudio: false, canText: true, needsKey: false,
             note: "Läuft auf deinem eigenen Rechner — auch auf einem anderen im "
                 + "eigenen Netz. Dann verlässt nichts dein Netzwerk."),
 
@@ -168,7 +193,7 @@ enum ProviderCatalog {
             keyURL: "https://lmstudio.ai",
             chatModels: [],
             audioModels: [],
-            canAudio: false, needsKey: false,
+            canAudio: false, canText: true, needsKey: false,
             note: "Wie Ollama: dein eigener Rechner, dein eigenes Netz."),
 
         ProviderTemplate(
@@ -177,7 +202,7 @@ enum ProviderCatalog {
             keyURL: "",
             chatModels: [],
             audioModels: [],
-            canAudio: true, needsKey: true,
+            canAudio: true, canText: true, needsKey: true,
             note: "Alles selbst eintragen — für whisper.cpp-Server, vLLM, "
                 + "Pauschal-Abos mit eigenem Endpunkt und alles andere "
                 + "OpenAI-kompatible."),
@@ -190,7 +215,7 @@ enum ProviderCatalog {
     /// Vorlagen, die den gewünschten Schritt überhaupt können.
     static func templates(for purpose: EnginePurpose) -> [ProviderTemplate] {
         switch purpose {
-        case .text: return all
+        case .text: return all.filter(\.canText)
         case .audio: return all.filter(\.canAudio)
         }
     }
@@ -438,6 +463,7 @@ extension EngineSelection {
         else { return .local }
 
         if purpose == .audio, !template.canAudio { return .local }
+        if purpose == .text, !template.canText { return .local }
         if template.needsKey, !hasKey(template.id) { return .local }
         return .remote(config: config, template: template)
     }

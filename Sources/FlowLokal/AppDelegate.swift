@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let recorder = AudioRecorder()
     private let transcriber = Transcriber()
     private let injector = TextInjector()
-    private let formatter = Formatter()
+    private let formatter = Formatter(makeEngine: EngineFactory.text)
     private let dictionary = PersonalDictionary()
     private let history = DictationHistory()
     private let stats = StatsStore()

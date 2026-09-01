@@ -168,6 +168,8 @@ targets:
           # Engine-Schicht: Formatter/Transcriber sind Router, die Modelle liegen
           # dahinter (lokal MLX/WhisperKit oder ein selbst gewählter Anbieter).
           - TextEngine.swift
+          - LocalTextEngine.swift
+          - EngineFactory.swift
           # Von Transcriber bzw. Formatter mitbenutzt (Datei-Transkription am Mac);
           # beide sind plattformneutral und ziehen nichts weiter nach.
           - TranscriptSegment.swift
@@ -319,6 +321,9 @@ targets:
       - path: Sources/FlowLokal/FormatterPrompt.swift
       # Engine-Protokoll: abhängigkeitsfrei, macht den Router testbar.
       - path: Sources/FlowLokal/TextEngine.swift
+      # Der Router selbst — seit der Engine-Extraktion ohne MLX-Bezug.
+      - path: Sources/FlowLokal/Formatter.swift
+      - path: Sources/FlowLokal/Localization.swift
       - path: Sources/FlowLokal/TranscriptSegment.swift
       - path: Sources/FlowLokal/SubtitleWriter.swift
       - path: Sources/FlowLokal/TextChunker.swift

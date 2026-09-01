@@ -1,17 +1,18 @@
 import Foundation
 import OSLog
-import MLXLLM
-import MLXLMCommon
-import MLXHuggingFace
-import HuggingFace
-import Tokenizers
 
-/// Der Formatting-Layer (v2): lädt ein Gemma-Modell **direkt in den Prozess**
-/// (MLX, Apple Silicon) — kein LM Studio, kein Ollama, kein Server. Das Modell
-/// wird beim ersten Start einmalig von Hugging Face geholt und danach lokal
-/// gecached; es lebt anschließend komplett in der App.
+/// Der Formatting-Layer (v3): **Router** über einem austauschbaren Textmodell.
+/// Ob das Modell im eigenen Prozess läuft (`LocalTextEngine`, MLX auf Apple
+/// Silicon) oder bei einem selbst gewählten Anbieter (`RemoteTextEngine`), weiß
+/// diese Klasse nicht — sie kennt nur `TextEngine.respond`.
 ///
-/// Grundprinzip wie bisher: **niemals blockieren.** Ist das Modell noch nicht
+/// Alles Anbieterunabhängige lebt hier: Prompts, Abschnittsbildung, der
+/// Kürzungs-Schutz, die Protokoll-Erzeugung, das Sprachprofil. Damit greifen
+/// `FormattingGuard` und `TextChunker` automatisch auch bei Cloud-Modellen — ein
+/// Cloud-Modell, das auf das Diktat *antwortet* statt es zu formatieren, wird
+/// genauso verworfen wie ein lokales.
+///
+/// Grundprinzip unverändert: **niemals blockieren.** Ist das Modell noch nicht
 /// geladen, das Diktat zu kurz oder tritt ein Fehler auf, kommt der Rohtext zurück.
 actor Formatter {
 
@@ -24,36 +25,61 @@ actor Formatter {
     }
 
     private let config: Config
-    private var container: ModelContainer?
 
-    /// Gewähltes Formatierungs-Modell aus den Einstellungen (Modell-Empfehler).
-    private var modelID: String {
-        UserDefaults.standard.string(forKey: "formatModel") ?? ModelCatalog.defaultFormatting
-    }
-
-    private(set) var isReady = false
-    private(set) var isLoading = false
-    private(set) var loadedModel: String?
-    var activeModelName: String { isReady ? (loadedModel ?? modelID) : "—" }
+    /// Baut das Modell. Als Closure hereingegeben, damit diese Datei die
+    /// konkreten Engines nicht kennt und damit keinen MLX-Bezug hat — nur so
+    /// liegt der Router im Testziel und ist überhaupt prüfbar. Die Auswahl
+    /// (lokal oder Anbieter) trifft `EngineFactory`.
+    private let makeEngine: @Sendable () -> any TextEngine
+    private var engine: (any TextEngine)?
 
     /// Verkettung aller Lade-Operationen. Actors sind am `await` reentrant — ein
     /// zweiter load()/reload() würde sonst PARALLEL denselben Multi-GB-Download
     /// starten. Jede Operation wartet daher zuerst auf die vorherige.
     private var loadChain: Task<Void, Never>?
 
-    init(config: Config = Config()) {
+    /// Eigener Ladezustand des Routers: deckt das Fenster ab, in dem die Engine
+    /// gerade erst gebaut wird und ihr eigenes `isLoading` noch `false` steht.
+    private var routerLoading = false
+
+    init(config: Config = Config(), makeEngine: @escaping @Sendable () -> any TextEngine) {
         self.config = config
+        self.makeEngine = makeEngine
+    }
+
+    // MARK: - Zustand für die Oberfläche
+
+    var isReady: Bool {
+        get async { await engine?.isReady ?? false }
+    }
+
+    var isLoading: Bool {
+        get async {
+            // Kein `||`: dessen rechte Seite ist eine nonisolated Autoclosure und
+            // verträgt kein `await`.
+            if routerLoading { return true }
+            return await engine?.isLoading ?? false
+        }
+    }
+
+    var activeModelName: String {
+        get async {
+            guard let engine, await engine.isReady else { return "—" }
+            return await engine.displayName
+        }
     }
 
     // MARK: - Modell laden
 
-    /// Lädt (und beim ersten Mal: downloadet) das aktuell gewählte Modell in den
-    /// Prozess. Serialisiert über `loadChain` — kein paralleler Doppel-Load.
+    /// Lädt das aktuell gewählte Modell. Serialisiert über `loadChain` — kein
+    /// paralleler Doppel-Load.
     func load(onProgress: (@Sendable (Double) -> Void)? = nil) async {
         await enqueue(reset: false, onProgress: onProgress)
     }
 
     /// Wechselt zur Laufzeit auf das aktuell gewählte Modell (erzwingt Neuladen).
+    /// Baut die Engine neu, weil sich nicht nur das Modell, sondern die **Art**
+    /// geändert haben kann (lokal ↔ Anbieter).
     func reload(onProgress: (@Sendable (Double) -> Void)? = nil) async {
         await enqueue(reset: true, onProgress: onProgress)
     }
@@ -69,33 +95,14 @@ actor Formatter {
     }
 
     private func performLoad(reset: Bool, onProgress: (@Sendable (Double) -> Void)?) async {
-        let id = modelID
-        if !reset, isReady, loadedModel == id { return }  // schon das richtige Modell geladen
-        isLoading = true
-        isReady = false
-        loadedModel = nil
-        container = nil
-        defer { isLoading = false }
-        do {
-            let cfg = ModelConfiguration(id: id)
-            container = try await #huggingFaceLoadModelContainer(configuration: cfg) { progress in
-                onProgress?(progress.fractionCompleted)
-            }
-            loadedModel = id
-            isReady = true
-        } catch {
-            NSLog("Formatter-Modell konnte nicht geladen werden: \(error)")
-            isReady = false
-        }
+        routerLoading = true
+        defer { routerLoading = false }
+        if reset || engine == nil { engine = makeEngine() }
+        await engine?.prepare(reset: reset, onProgress: onProgress)
     }
 
-    /// „Aufwärmen": ein Ein-Token-Durchlauf, damit die Metal-Pipeline kompiliert
-    /// ist und die erste echte Aufbereitung nicht spürbar länger dauert.
     func warmUp() async {
-        guard isReady, let container else { return }
-        let session = ChatSession(container, instructions: "Antworte knapp.",
-                                  generateParameters: GenerateParameters(maxTokens: 1))
-        _ = try? await session.respond(to: "Hallo")
+        await engine?.warmUp()
     }
 
     // MARK: - Formatierung
@@ -110,12 +117,18 @@ actor Formatter {
     /// Vorher fiel erst ein Gesamtverlust von ~45 % auf; ein verschlucktes
     /// letztes Drittel rutschte durch. Jetzt fällt ein leerer oder stark
     /// gekürzter Abschnitt immer auf und wird durch seinen Rohtext ersetzt.
+    ///
+    /// Wie groß die Abschnitte sein dürfen, sagt die Engine: ein Modell mit
+    /// großem Kontextfenster verträgt mehr, und jeder Aufruf an einen Anbieter
+    /// kostet Zeit und Geld.
     func format(_ raw: String, bundleID: String?, termHint: String? = nil) async -> String {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isReady, container != nil else { return text }
+        guard let engine, await engine.isReady else { return text }
         guard text.count >= config.minCharsForFormatting else { return text }
 
-        let parts = TextChunker.chunks(of: text)
+        let parts = TextChunker.chunks(of: text,
+                                       targetLength: await engine.chunkTargetLength,
+                                       minLength: await engine.chunkMinLength)
         var pieces: [String] = []
         for part in parts {
             pieces.append(await formatChunk(part, bundleID: bundleID, termHint: termHint))
@@ -127,14 +140,12 @@ actor Formatter {
     /// Formatiert EINEN Abschnitt. Bei leerer/verdächtiger Ausgabe oder Fehler
     /// kommt der Rohtext des Abschnitts zurück — nie stiller Inhaltsverlust.
     private func formatChunk(_ text: String, bundleID: String?, termHint: String?) async -> String {
-        guard let container else { return text }
+        guard let engine else { return text }
         do {
-            let session = ChatSession(
-                container,
-                instructions: FormatterPrompt.system(for: bundleID, termHint: termHint),
-                generateParameters: GenerateParameters(temperature: 0.2)
-            )
-            let out = try await session.respond(to: FormatterPrompt.user(for: text))
+            let out = try await engine.respond(
+                system: FormatterPrompt.system(for: bundleID, termHint: termHint),
+                user: FormatterPrompt.user(for: text),
+                temperature: 0.2)
             let cleaned = stripArtifacts(out)
             guard !cleaned.isEmpty else { return text }
 
@@ -172,11 +183,14 @@ actor Formatter {
     func minutes(from raw: String, termHint: String? = nil,
                  onProgress: (@Sendable (Double) -> Void)? = nil) async -> String? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isReady, container != nil, !text.isEmpty else { return nil }
+        guard let engine, await engine.isReady, !text.isEmpty else { return nil }
 
         // Größere Abschnitte als beim Diktat: Das Modell soll hier gliedern und
         // verdichten, nicht Wort für Wort putzen — und jeder Aufruf kostet Zeit.
-        let parts = TextChunker.chunks(of: text, targetLength: 3000, minLength: 2000)
+        // Das Doppelte dessen, was die Engine fürs Diktat verträgt.
+        let parts = TextChunker.chunks(of: text,
+                                       targetLength: await engine.chunkTargetLength * 2,
+                                       minLength: await engine.chunkMinLength * 2)
         guard !parts.isEmpty else { return nil }
 
         // Stufe 1 macht den Löwenanteil der Arbeit — 90 % des Fortschritts.
@@ -249,11 +263,10 @@ actor Formatter {
     /// Diktat gedacht und würde hier JEDE Zusammenfassung verwerfen, weil sie
     /// naturgemäß deutlich kürzer ist als die Eingabe.
     private func respond(system: String, user: String, temperature: Float) async -> String? {
-        guard let container else { return nil }
+        guard let engine else { return nil }
         do {
-            let session = ChatSession(container, instructions: system,
-                                      generateParameters: GenerateParameters(temperature: temperature))
-            let out = stripArtifacts(try await session.respond(to: user))
+            let out = stripArtifacts(try await engine.respond(system: system, user: user,
+                                                             temperature: temperature))
             return out.isEmpty ? nil : out
         } catch {
             NSLog("shout: Protokoll-Aufruf fehlgeschlagen: \(error)")
@@ -270,23 +283,17 @@ actor Formatter {
 
     // MARK: - Sprachprofil („Your Voice")
 
-    /// Lässt Gemma den Sprach-/Diktierstil in 2–3 knappen deutschen Sätzen beschreiben.
+    /// Lässt das Modell den Sprach-/Diktierstil in 2–3 knappen deutschen Sätzen
+    /// beschreiben.
     func describeVoice(from sample: String) async -> String? {
-        guard isReady, let container else { return nil }
+        guard let engine, await engine.isReady else { return nil }
         let system = """
         Du analysierst den Sprach- und Diktierstil einer Person anhand ihrer Diktate. \
         Beschreibe den Stil in 2–3 knappen, wohlwollenden deutschen Sätzen und sprich die \
         Person mit „Du" an (z. B. Wortwahl, Tempo, Struktur, typische Muster). \
         Keine Aufzählung, kein Vorwort, keine Anführungszeichen — nur die Beschreibung.
         """
-        do {
-            let session = ChatSession(container, instructions: system,
-                                      generateParameters: GenerateParameters(temperature: 0.6))
-            let out = try await session.respond(to: sample)
-            return stripArtifacts(out)
-        } catch {
-            return nil
-        }
+        return await respond(system: system, user: sample, temperature: 0.6)
     }
 
     /// Manche Modelle verpacken die Antwort in ```-Blöcke oder Anführungszeichen.

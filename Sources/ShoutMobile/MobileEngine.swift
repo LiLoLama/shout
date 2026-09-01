@@ -52,7 +52,7 @@ final class MobileEngine: ObservableObject {
 
     private let recorder = AudioRecorder()
     private let transcriber = Transcriber()
-    private let formatter = Formatter()
+    private let formatter = Formatter(makeEngine: EngineFactory.text)
 
     /// Warteschlange der Datei-Transkriptionen. Teilt sich Modelle und Wörterbuch
     /// mit dem Diktat; serialisiert wird über den Transcriber-actor.

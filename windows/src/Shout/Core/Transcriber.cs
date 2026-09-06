@@ -26,8 +26,14 @@ public sealed class Transcriber : IDisposable
         {
             if (loadedModel == model.Id && factory != null) return;
             await ModelDownloader.DownloadAsync(model, onProgress, cancel);
+
+            // Das neue Modell ZUERST öffnen, das alte erst danach wegwerfen.
+            // Andersherum stünde die App nach einem gescheiterten Wechsel ganz ohne
+            // Spracherkennung da, obwohl das vorherige Modell noch auf der Platte
+            // liegt — die Oberfläche kann so auf den alten Stand zurückfallen.
+            var next = WhisperFactory.FromPath(ModelCatalog.PathFor(model));
             factory?.Dispose();
-            factory = WhisperFactory.FromPath(ModelCatalog.PathFor(model));
+            factory = next;
             loadedModel = model.Id;
         }
         finally

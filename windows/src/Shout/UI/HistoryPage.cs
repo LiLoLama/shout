@@ -67,6 +67,9 @@ internal sealed class HistoryPage : PageBase, IRefreshablePage
                 {
                     try { Clipboard.SetText(e.Text); } catch { /* Zwischenablage gesperrt */ }
                 };
+                // Aufgeklapptes Rohtranskript ändert die Kartenhöhe — der
+                // Scrollbereich muss das mitbekommen.
+                card.HeightChanged += NotifyHeightChanged;
                 card.DeleteRequested += e =>
                 {
                     history.Delete(e);
@@ -81,10 +84,17 @@ internal sealed class HistoryPage : PageBase, IRefreshablePage
     /// <summary>Ein Verlaufs-Eintrag soll am Cursor eingefügt werden.</summary>
     public event Action<string>? InsertRequested;
 
+    /// <summary>
+    /// Datum in der Oberflächensprache. Vorher stand hier fest „d. MMMM yyyy" in der
+    /// Kultur des Nutzers — auf einem englischen Windows also „13. August 2026" mit
+    /// deutschem Punkt, und auf einem nicht-gregorianischen Kalender ein ganz
+    /// anderes Datum als in der Statistik.
+    /// </summary>
     private static string DayLabel(DateTime day)
     {
         if (day == DateTime.Today) return Loc.T("Heute");
         if (day == DateTime.Today.AddDays(-1)) return Loc.T("Gestern");
-        return day.ToString("d. MMMM yyyy");
+        var culture = System.Globalization.CultureInfo.GetCultureInfo(Loc.IsGerman ? "de-DE" : "en-US");
+        return day.ToString(Loc.IsGerman ? "d. MMMM yyyy" : "MMMM d, yyyy", culture);
     }
 }

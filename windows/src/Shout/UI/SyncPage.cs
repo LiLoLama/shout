@@ -127,11 +127,28 @@ internal sealed class SupportPage : PageBase
         updateButton = new ConsoleButton(Loc.T("Nach Aktualisierungen suchen"));
         updateButton.Click2 += UpdateButtonClicked;
 
+        // Version zum Kopieren: In einem Fehlerbericht ist sie die erste Frage,
+        // und aus einem Bildschirmfoto tippt sie niemand gern ab.
+        var copyVersion = new ConsoleButton(Loc.T("Version kopieren"));
+        copyVersion.Click2 += () =>
+        {
+            try
+            {
+                Clipboard.SetText($"shout. {updates.CurrentVersion} ({Environment.OSVersion.Version})");
+                updateStatus.SetText(Loc.T("Version in die Zwischenablage kopiert."));
+            }
+            catch
+            {
+                updateStatus.SetText(Loc.T("Die Zwischenablage ist gerade belegt."));
+            }
+            NotifyHeightChanged();
+        };
+
         var updatePanel = new ConsoleBox { Title = Loc.T("Aktualisierung") };
         updatePanel.Add(new TextBlock(Loc.F("shout. {0} für Windows", updates.CurrentVersion),
                                       Theme.RowTitle, Theme.Gray(0.9)), 0);
         updatePanel.Add(updateStatus, 6);
-        updatePanel.Add(new Cluster(new Control[] { updateButton }), 14);
+        updatePanel.Add(new Cluster(new Control[] { updateButton, copyVersion }), 14);
         Push(updatePanel);
 
         RefreshUpdateState();
@@ -177,6 +194,12 @@ internal sealed class SupportPage : PageBase
             Icon = Icons.Kind.Branch,
         });
         Push(points);
+
+        var issues = new ConsoleButton(Loc.T("Fehler melden"));
+        issues.Click2 += () => OpenUrl(GithubUrl + "/issues");
+        var license = new ConsoleButton(Loc.T("Lizenz"));
+        license.Click2 += () => OpenUrl(GithubUrl + "/blob/main/LICENSE");
+        Push(new Cluster(new Control[] { issues, license }), 14);
 
         Push(TextBlock.Footnote(
             Loc.T("Fehler gefunden oder eine Idee? Auf GitHub freue ich mich über Issues und Pull Requests.")));

@@ -98,6 +98,13 @@ internal sealed class DashboardForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         Application.RemoveMessageFilter(wheelFilter);
+        // Wurde das Fenster mitten in der Tastenaufnahme geschlossen, ist der Hotkey
+        // abgemeldet — ohne diese Zeile hörte die App bis zum Neustart auf gar nichts.
+        if (hotkeyCapture != null)
+        {
+            hotkeyCapture = null;
+            app.RegisterHotkeyFromSettings();
+        }
         base.OnFormClosed(e);
     }
 
@@ -164,6 +171,19 @@ internal sealed class DashboardForm : Form
             support.RefreshUpdateState();
     }
 
+    /// <summary>Wörterbuch-Seite neu aufbauen — nach dem Lernen aus einer Korrektur.</summary>
+    public void RefreshDictionary()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(RefreshDictionary);
+            return;
+        }
+        if (pages.TryGetValue(Tab.Woerterbuch, out var page) && page is IRefreshablePage refreshable)
+            refreshable.Refresh2();
+        PageHeightChanged();
+    }
+
     /// <summary>Hotkey-Anzeige nachziehen — nötig, wenn die App auf eine
     /// Ausweich-Kombination gewechselt ist, weil die eingestellte belegt war.</summary>
     public void RefreshHotkeyDisplay()
@@ -178,16 +198,35 @@ internal sealed class DashboardForm : Form
 
     // MARK: Hotkey-Aufnahme
 
-    private Action<uint, uint>? hotkeyCapture;
+    private Action<uint, uint, bool>? hotkeyCapture;
+    /// <summary>Wurde während der Aufnahme schon eine echte Taste gedrückt? Nur wenn
+    /// nicht, gilt das Loslassen eines Modifiers als „reine Modifier-Taste".</summary>
+    private bool captureSawKey;
 
-    /// <summary>Nimmt die nächste Tastenkombination auf (mindestens ein Modifier).
-    /// Escape bricht ab.</summary>
-    public void CaptureHotkey(Action<uint, uint> onCaptured)
+    /// <summary>
+    /// Nimmt die nächste Tastenkombination auf. Erlaubt sind: Kombination mit
+    /// Modifier, Funktionstaste allein (F1–F24) und eine reine Modifier-Taste, die
+    /// gedrückt und wieder losgelassen wird — wie am Mac, wo die rechte Wahltaste
+    /// der Standard ist. Escape bricht ab.
+    /// </summary>
+    public void CaptureHotkey(Action<uint, uint, bool> onCaptured)
     {
         hotkeyCapture = onCaptured;
+        captureSawKey = false;
     }
 
     public bool IsCapturingHotkey => hotkeyCapture != null;
+
+    private void CancelCapture()
+    {
+        hotkeyCapture = null;
+        app.RegisterHotkeyFromSettings();   // während der Aufnahme abgemeldet
+        (pages[Tab.Aufnahme] as RecordingPage)?.ShowCurrentHotkey();
+    }
+
+    /// <summary>Funktionstasten dürfen ohne Modifier stehen — sie tippt niemand
+    /// versehentlich beim Schreiben.</summary>
+    private static bool StandsAlone(uint key) => key is >= 0x70 and <= 0x87;
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -198,9 +237,7 @@ internal sealed class DashboardForm : Form
 
             if (e.KeyCode == Keys.Escape)
             {
-                hotkeyCapture = null;
-                app.RegisterHotkeyFromSettings();   // während der Aufnahme abgemeldet
-                (pages[Tab.Aufnahme] as RecordingPage)?.ShowCurrentHotkey();
+                CancelCapture();
                 return;
             }
 
@@ -209,15 +246,32 @@ internal sealed class DashboardForm : Form
             if (e.Alt) mods |= HotkeyManager.ModAlt;
             if (e.Shift) mods |= HotkeyManager.ModShift;
             var key = (uint)e.KeyCode;
-            // Reine Modifier-Tasten ignorieren; mindestens ein Modifier verlangen
-            // (sonst schluckt der Hotkey normale Tastendrücke systemweit).
-            if (key is 0x10 or 0x11 or 0x12 || mods == 0) return;
+
+            // Modifier allein entscheidet erst das Loslassen (siehe OnKeyUp).
+            if (HotkeyManager.IsModifier(key)) return;
+
+            captureSawKey = true;
+            if (mods == 0 && !StandsAlone(key)) return;
 
             hotkeyCapture = null;
-            callback(mods, key);
+            callback(mods, key, false);
             return;
         }
         base.OnKeyDown(e);
+    }
+
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        if (hotkeyCapture is { } callback && !captureSawKey && HotkeyManager.IsModifier((uint)e.KeyCode))
+        {
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            hotkeyCapture = null;
+            // Auf die Seite auflösen: „Alt rechts" ist eine andere Taste als „Alt links".
+            callback(0, HotkeyManager.SidedKey((uint)e.KeyCode), true);
+            return;
+        }
+        base.OnKeyUp(e);
     }
 
     /// <summary>Dünne Trennlinie zwischen Seitenleiste und Inhalt.</summary>

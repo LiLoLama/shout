@@ -183,12 +183,14 @@ internal sealed class OnboardingForm : Form
     {
         var s = Settings.Shared;
         micDevice = new ConsoleDropdown(300);
-        var devices = new List<(string, string)> { ("-1", Loc.T("Systemstandard")) };
-        devices.AddRange(AudioRecorder.InputDevices().Select(d => (d.Index.ToString(), d.Name)));
-        micDevice.SetItems(devices, s.InputDeviceIndex.ToString());
+        // Gerätename statt Index — der Index verschiebt sich beim An- und Abstecken.
+        var devices = new List<(string, string)> { ("", Loc.T("Systemstandard")) };
+        devices.AddRange(AudioRecorder.InputDevices().Select(d => (d.Name, d.Name)));
+        micDevice.SetItems(devices, s.InputDeviceName);
         micDevice.Changed += key =>
         {
-            s.InputDeviceIndex = int.TryParse(key, out var index) ? index : -1;
+            s.InputDeviceName = key;
+            s.InputDeviceIndex = -1;
             s.Save();
             StopMicTest();
             micState = MicState.Unknown;

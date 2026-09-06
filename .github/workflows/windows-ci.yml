@@ -1,0 +1,40 @@
+# Baut die Windows-App und lässt die Tests laufen — bei jeder Änderung unter
+# windows/.
+#
+# Der Grund für diesen Workflow: Große Teile des C#-Ports entstehen am Mac, wo
+# kein `dotnet` für net8.0-windows steht. Änderungen wanderten deshalb schon
+# ungeprüft ins Repo („am Mac geschrieben, nie kompiliert"). Das hier fängt das ab,
+# bevor es jemand installiert.
+name: Windows-CI
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-ci.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Die Tests selbst laufen überall (reines net8.0), der App-Build braucht
+    # Windows — deshalb hier beides auf einem Runner.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Tests
+        working-directory: windows
+        run: dotnet test tests/Shout.Tests/Shout.Tests.csproj --nologo -v minimal
+
+      - name: App bauen
+        working-directory: windows
+        run: dotnet build src/Shout/Shout.csproj -c Release --nologo -warnaserror

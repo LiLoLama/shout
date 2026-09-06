@@ -58,3 +58,11 @@ Vor jedem Release in `project.yml` `MARKETING_VERSION` (und ggf.
 Der Build ist **arm64-only** (MLX/WhisperKit brauchen Apple Silicon). Auf
 Intel-Macs startet macOS die App gar nicht erst — bewusst so, statt beim
 Modell-Laden abzustürzen. In den Systemvoraussetzungen klar kommunizieren.
+
+## Windows
+
+Die Windows-Fassung hat einen eigenen Weg (Velopack statt Sparkle, kein
+Notarisieren, dafür bisher ohne Signatur): siehe
+[`windows/README.md`](windows/README.md) → „Release erzeugen". Ausgelöst wird sie
+über einen Tag `windows-v<version>`, gebaut und veröffentlicht vom Workflow
+[`windows-release.yml`](.github/workflows/windows-release.yml).

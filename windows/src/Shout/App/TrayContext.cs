@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using Shout.Core;
 using Shout.UI;
 
@@ -31,7 +32,18 @@ public sealed class TrayContext : ApplicationContext
     private readonly ToolStripMenuItem updateItem;
     private readonly ToolStripMenuItem settingsMenuItem;
     private readonly ToolStripMenuItem quitMenuItem;
+    private readonly ToolStripMenuItem formattingItem;
+    private readonly ToolStripMenuItem pasteLastItem;
+    private readonly ToolStripMenuItem correctLastItem;
     private readonly SynchronizationContext ui;
+
+    /// <summary>Das zuletzt eingefügte Diktat — Grundlage für „noch einmal einfügen"
+    /// und „korrigieren" (Mac: lastInsertedText).</summary>
+    private string lastInsertedText = "";
+
+    /// <summary>Programm, in das eingefügt werden soll. Beim START der Aufnahme
+    /// gemerkt: Bis der Text fertig ist, kann ein anderes Fenster vorne sein.</summary>
+    private string? targetApp;
 
     /// <summary>Automatische Aktualisierung (Velopack, gegen die GitHub-Releases).</summary>
     public Updater Updates { get; } = new();
@@ -52,11 +64,23 @@ public sealed class TrayContext : ApplicationContext
             Font = Theme.Body,
         };
         settingsMenuItem = new ToolStripMenuItem(Loc.T("Einstellungen …"), null, (_, _) => ShowSettings());
-        quitMenuItem = new ToolStripMenuItem(Loc.T("Beenden"), null, (_, _) => ExitThread());
+        quitMenuItem = new ToolStripMenuItem(Loc.T("Beenden"), null, (_, _) => RequestExit());
+        formattingItem = new ToolStripMenuItem(Loc.T("Text aufbereiten"), null, (_, _) => ToggleFormatting())
+        {
+            CheckOnClick = false,
+            Checked = Settings.Shared.FormattingEnabled,
+        };
+        pasteLastItem = new ToolStripMenuItem(Loc.T("Zuletzt Gesprochenes einfügen"), null,
+                                              (_, _) => PasteLastDictation());
+        correctLastItem = new ToolStripMenuItem(Loc.T("Letztes Diktat korrigieren …"), null,
+                                                (_, _) => ShowCorrection());
 
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(dictateItem);
+        menu.Items.Add(pasteLastItem);
+        menu.Items.Add(correctLastItem);
+        menu.Items.Add(formattingItem);
         menu.Items.Add(settingsMenuItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(updateItem);
@@ -96,7 +120,31 @@ public sealed class TrayContext : ApplicationContext
             else if (state == State.Failed) _ = Task.Run(LoadModelsAsync);   // erneuter Versuch
         };
         hotkey.OnReleased += () => { if (state == State.Recording) StopAndProcess(); };
+        // Doppeltipp: Der erste Tipp „spannt" nur — die Pille zeigt das, sonst wüsste
+        // niemand, ob der Tipp angekommen ist. Bleibt der zweite Tipp aus, muss sie
+        // von selbst wieder verschwinden, sonst pulst sie bis zum nächsten Diktat.
+        hotkey.OnArmed += () =>
+        {
+            if (state != State.Idle) return;
+            overlay.ShowPhase(RecordingOverlay.Phase.Armed);
+            armedTimer.Stop();
+            armedTimer.Start();
+        };
+        hotkey.IsRecording = () => state == State.Recording;
+        armedTimer.Tick += (_, _) =>
+        {
+            armedTimer.Stop();
+            if (state == State.Idle) FinishPill();
+        };
         RegisterHotkeyFromSettings();
+
+        // Der Autostart-Eintrag lebt in der Registry; die Einstellung wird ihm beim
+        // Start angeglichen, damit beide Seiten nicht auseinanderlaufen.
+        Settings.Shared.StartAtLogin = Autostart.IsEnabled;
+
+        // Abmelden/Herunterfahren: Ein laufender Mitschnitt muss gesichert werden,
+        // bevor Windows den Prozess beendet.
+        SystemEvents.SessionEnding += OnSessionEnding;
 
         // Threadpool statt UI-Thread: WhisperFactory.FromPath liest das komplette
         // Modell (bis 1,6 GB) synchron — auf dem UI-Thread stünde die Tray-UI so
@@ -114,8 +162,9 @@ public sealed class TrayContext : ApplicationContext
 
         Updates.Changed += () => ui.Post(_ => UpdateStateChanged(), null);
         // Stiller Start-Check wie Sparkle am Mac: sucht und lädt im Hintergrund,
-        // meldet sich erst, wenn eine Version bereitliegt.
-        if (Updates.IsSupported) _ = Task.Run(Updates.CheckAndDownloadAsync);
+        // meldet sich erst, wenn eine Version bereitliegt. Abschaltbar wie dort.
+        if (Updates.IsSupported && Settings.Shared.AutoUpdateCheck)
+            _ = Task.Run(Updates.CheckAndDownloadAsync);
     }
 
     // MARK: Aktualisierung
@@ -174,6 +223,10 @@ public sealed class TrayContext : ApplicationContext
 
     private bool restartNotified;
 
+    /// <summary>Blendet die „gespannte" Pille wieder aus, wenn der zweite Tipp
+    /// ausbleibt. Etwas länger als das Zeitfenster des Detektors.</summary>
+    private readonly System.Windows.Forms.Timer armedTimer = new() { Interval = 900 };
+
     private readonly SettingsMessageWindow messageWindow;
 
     /// <summary>
@@ -221,13 +274,36 @@ public sealed class TrayContext : ApplicationContext
         catch (Exception ex)
         {
             ui.Post(_ => AsrProgress = null, null);
-            SetState(State.Failed);
-            ui.Post(_ => statusItem.Text = Loc.T("Modell-Fehler — Internet prüfen, dann erneut „Diktieren“ wählen"), null);
-            Log($"Modell-Ladefehler: {ex.Message}");
+            RollBackModelChoice();
+            // Läuft noch ein Modell (gescheiterter Wechsel), bleibt die App
+            // einsatzbereit — nur die Wahl ist zurückgenommen.
+            SetState(transcriber.IsReady ? State.Idle : State.Failed);
+            if (!transcriber.IsReady)
+                ui.Post(_ => statusItem.Text = Loc.T("Modell-Fehler — Internet prüfen, dann erneut „Diktieren“ wählen"), null);
+            StoreIO.Log($"Modell-Ladefehler: {ex.Message}");
         }
 
         if (Settings.Shared.FormattingEnabled)
+        {
             await formatter.LoadAsync();
+            // Aufwärmen wie bei der Spracherkennung: Sonst bezahlt das erste Diktat
+            // die einmalige Einrichtung des Ausführers mit.
+            await formatter.WarmUpAsync();
+        }
+    }
+
+    /// <summary>
+    /// Das Laden ist gescheitert: die Modellwahl auf das zurücksetzen, was noch
+    /// geladen ist. Sonst zeigte die Modelle-Seite ein Modell als „aktiv", das gar
+    /// nicht läuft, und jeder Neustart liefe erneut in denselben Fehler.
+    /// </summary>
+    private void RollBackModelChoice()
+    {
+        var loaded = transcriber.LoadedModel;
+        if (string.IsNullOrEmpty(loaded) || Settings.Shared.AsrModel == loaded) return;
+        Settings.Shared.AsrModel = loaded;
+        Settings.Shared.Save();
+        ui.Post(_ => settingsForm?.RefreshStatus(), null);
     }
 
     /// <summary>Nach Modellwechsel in den Einstellungen neu laden.</summary>
@@ -262,8 +338,12 @@ public sealed class TrayContext : ApplicationContext
     private FileTranscriptionQueue? fileQueue;
 
     /// <summary>Aufnahme-Art aus den Einstellungen.</summary>
-    private static HotkeyManager.Mode HotkeyMode =>
-        Settings.Shared.HotkeyMode == "hold" ? HotkeyManager.Mode.Hold : HotkeyManager.Mode.Toggle;
+    private static HotkeyManager.Mode HotkeyMode => Settings.Shared.HotkeyMode switch
+    {
+        "hold" => HotkeyManager.Mode.Hold,
+        "doubleTap" => HotkeyManager.Mode.DoubleTap,
+        _ => HotkeyManager.Mode.Toggle,
+    };
 
     /// <summary>
     /// Registriert den eingestellten Hotkey. Ist er belegt (Strg+Alt+Leertaste gehört
@@ -274,7 +354,7 @@ public sealed class TrayContext : ApplicationContext
     public void RegisterHotkeyFromSettings()
     {
         var s = Settings.Shared;
-        if (hotkey.Register(s.HotkeyModifiers, s.HotkeyKey, HotkeyMode))
+        if (hotkey.Register(s.HotkeyModifiers, s.HotkeyKey, HotkeyMode, s.HotkeyModifierOnly))
         {
             UpdateMenu();
             return;
@@ -288,6 +368,7 @@ public sealed class TrayContext : ApplicationContext
 
             s.HotkeyModifiers = modifiers;
             s.HotkeyKey = key;
+            s.HotkeyModifierOnly = false;
             s.Save();
             UpdateMenu();
             settingsForm?.RefreshHotkeyDisplay();
@@ -356,7 +437,58 @@ public sealed class TrayContext : ApplicationContext
         dictateItem.Text = Loc.T("Diktieren");
         settingsMenuItem.Text = Loc.T("Einstellungen …");
         quitMenuItem.Text = Loc.T("Beenden");
+        formattingItem.Text = Loc.T("Text aufbereiten");
+        pasteLastItem.Text = Loc.T("Zuletzt Gesprochenes einfügen");
+        correctLastItem.Text = Loc.T("Letztes Diktat korrigieren …");
         tray.Text = Loc.T("shout. — lokale Diktier-App");
+    }
+
+    // MARK: Letztes Diktat
+
+    /// <summary>Fügt das zuletzt eingefügte Diktat noch einmal ein (Mac: ⌃⌘V).</summary>
+    private void PasteLastDictation()
+    {
+        var text = lastInsertedText.Trim();
+        if (text.Length == 0) return;
+        TextInjector.Insert(text, Settings.Shared.KeepInClipboard);
+        sounds.Play(SoundCues.Cue.Done);
+    }
+
+    /// <summary>
+    /// Öffnet den Korrektur-Editor fürs letzte Diktat. Was der Nutzer ändert, lernt
+    /// das Wörterbuch — in shout.s eigenem Fenster, also unabhängig davon, in welchem
+    /// Programm der Text gelandet ist.
+    /// </summary>
+    private void ShowCorrection()
+    {
+        var text = lastInsertedText.Trim();
+        if (text.Length == 0) return;
+        if (correctionForm is { IsDisposed: false })
+        {
+            correctionForm.Activate();
+            return;
+        }
+        correctionForm = new CorrectionForm(text, corrected =>
+        {
+            var learned = CorrectionLearner.Learn(text, corrected, dictionary);
+            lastInsertedText = corrected;
+            if (learned > 0) settingsForm?.RefreshDictionary();
+        });
+        correctionForm.FormClosed += (_, _) => correctionForm = null;
+        correctionForm.Show();
+        correctionForm.Activate();
+    }
+
+    /// <summary>Aufbereitung an/aus aus dem Menü (Mac: ⌘F).</summary>
+    private void ToggleFormatting()
+    {
+        var s = Settings.Shared;
+        s.FormattingEnabled = !s.FormattingEnabled;
+        s.Save();
+        UpdateMenu();
+        settingsForm?.RefreshStatus();
+        if (s.FormattingEnabled)
+            _ = Task.Run(async () => { await formatter.LoadAsync(); await formatter.WarmUpAsync(); });
     }
 
     // MARK: Aufnahme
@@ -373,7 +505,12 @@ public sealed class TrayContext : ApplicationContext
 
     private void StartRecording()
     {
+        armedTimer.Stop();
         var s = Settings.Shared;
+        // Ziel-Programm JETZT merken: Bis der Text fertig ist, kann längst ein
+        // anderes Fenster vorne sein — und daraus entsteht der Register-Hinweis
+        // („E-Mail" formell, „Terminal" wörtlich).
+        targetApp = ForegroundApp.Current();
         // Auto-Stopp nur im Umschalt-Modus sinnvoll — im Halten-Modus stoppt das
         // Loslassen (wie am Mac).
         recorder.AutoStopEnabled = s.AutoStopEnabled && HotkeyMode == HotkeyManager.Mode.Toggle;
@@ -400,6 +537,9 @@ public sealed class TrayContext : ApplicationContext
         if (state != State.Recording) return;
         _ = recorder.Stop();   // Puffer verwerfen
         SetState(State.Idle);
+        // Hörbare Rückmeldung wie am Mac: Ein Abbruch ohne Ton lässt einen im
+        // Zweifel, ob die Aufnahme wirklich weg ist.
+        sounds.Play(SoundCues.Cue.Error);
         FinishPill();
     }
 
@@ -426,7 +566,7 @@ public sealed class TrayContext : ApplicationContext
             if (output.Length == 0) return;
 
             if (s.SpeechCommandsEnabled) output = SpeechCommands.Apply(output);
-            if (s.FormattingEnabled) output = await formatter.FormatAsync(output, dictionary.TermHint);
+            if (s.FormattingEnabled) output = await formatter.FormatAsync(output, dictionary.TermHint, targetApp);
             output = dictionary.ApplyCorrections(output).Trim();
             if (output.Length == 0) return;
 
@@ -435,15 +575,20 @@ public sealed class TrayContext : ApplicationContext
             {
                 TextInjector.Insert(final, s.KeepInClipboard);
                 sounds.Play(SoundCues.Cue.Done);
+                lastInsertedText = final;
+                UpdateMenu();
             }, null);
 
-            history.Add(final);
+            // Rohtext mitgeben: Im Verlauf lässt sich so nachsehen, was die
+            // Spracherkennung WIRKLICH geliefert hat — unverzichtbar, um fehlenden
+            // Inhalt der richtigen Stufe zuzuordnen (Whisper oder Aufbereitung).
+            history.Add(final, raw);
             var words = final.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
             stats.Record(words, (double)samples.Length / 16_000);
         }
         catch (Exception ex)
         {
-            Log($"Verarbeitung fehlgeschlagen: {ex.Message}");
+            StoreIO.Log($"Verarbeitung fehlgeschlagen: {ex.Message}");
             ui.Post(_ => sounds.Play(SoundCues.Cue.Error), null);
         }
         finally
@@ -484,12 +629,16 @@ public sealed class TrayContext : ApplicationContext
         };
         dictateItem.Text = state == State.Recording ? Loc.T("Aufnahme stoppen") : Loc.T("Diktieren");
         dictateItem.Enabled = state is State.Idle or State.Recording or State.Failed;
+        formattingItem.Checked = Settings.Shared.FormattingEnabled;
+        pasteLastItem.Enabled = lastInsertedText.Length > 0;
+        correctLastItem.Enabled = lastInsertedText.Length > 0;
         tray.Icon = AppIcons.Tray(recording: state == State.Recording);
         settingsForm?.RefreshStatus();
     }
 
     private DashboardForm? settingsForm;
     private OnboardingForm? onboardingForm;
+    private CorrectionForm? correctionForm;
 
     /// <summary>Erststart-Assistent: Mikrofon, Hotkey, Modell, Probediktat.</summary>
     private void ShowOnboarding()
@@ -552,29 +701,68 @@ public sealed class TrayContext : ApplicationContext
                    HotkeyManager.Describe(Settings.Shared.HotkeyModifiers, Settings.Shared.HotkeyKey)),
     };
 
-    /// <summary>Läuft gerade eine Aufnahme? (Modellwechsel ist dann gesperrt.)</summary>
-    public bool IsBusy => state is State.Recording or State.Working;
+    /// <summary>Läuft gerade eine Aufnahme oder eine Datei-Verarbeitung? Dann ist der
+    /// Modellwechsel gesperrt — er würde dem laufenden Auftrag das Modell wegziehen.</summary>
+    public bool IsBusy => state is State.Recording or State.Working || FileQueueRunning;
 
     // MARK: Icon
 
-    private static void Log(string message)
+    // MARK: Beenden
+
+    /// <summary>
+    /// „Beenden" aus dem Menü. Läuft noch eine Datei-Verarbeitung, wird gefragt —
+    /// eine Stunde Transkription still wegzuwerfen, weil jemand aufs Menü geklickt
+    /// hat, wäre der teuerste mögliche Klick der App.
+    /// </summary>
+    private void RequestExit()
     {
+        if (FileQueueRunning)
+        {
+            var answer = MessageBox.Show(
+                Loc.T("Es läuft noch eine Datei-Verarbeitung. Beim Beenden geht sie verloren. Trotzdem beenden?"),
+                "shout.", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+            if (answer != DialogResult.Yes) return;
+        }
+        ExitThread();
+    }
+
+    private bool FileQueueRunning => fileQueue is { IsRunning: true };
+
+    private void OnSessionEnding(object sender, SessionEndingEventArgs e) => SaveRunningMeeting();
+
+    /// <summary>
+    /// Beendet einen laufenden Mitschnitt geordnet und reiht ihn ein. Ohne das war
+    /// eine angefangene Besprechung beim Beenden der App verloren: Die WAV-Datei
+    /// blieb ohne gültige Kopfdaten liegen, und in der Liste tauchte sie nie auf.
+    /// </summary>
+    private void SaveRunningMeeting()
+    {
+        if (!MeetingRecorder.IsRecording) return;
         try
         {
-            File.AppendAllText(Path.Combine(StoreIO.DataDirectory, "shout.log"),
-                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}\n");
+            var path = MeetingRecorder.Stop();
+            if (path != null) FileQueue.Restore(new[] { path });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            StoreIO.Log($"Mitschnitt beim Beenden nicht gesichert: {ex.Message}");
+        }
     }
 
     protected override void ExitThreadCore()
     {
+        SystemEvents.SessionEnding -= OnSessionEnding;
+        armedTimer.Dispose();
+        SaveRunningMeeting();
+        fileQueue?.CancelAll();
         tray.Visible = false;
         tray.Dispose();
         hotkey.Dispose();
         recorder.Dispose();
+        MeetingRecorder.Dispose();
         transcriber.Dispose();
         formatter.Dispose();
+        sounds.Dispose();
         overlay.Dispose();
         messageWindow.Dispose();
         base.ExitThreadCore();

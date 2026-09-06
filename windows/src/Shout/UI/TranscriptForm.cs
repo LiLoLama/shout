@@ -57,7 +57,10 @@ internal sealed class TranscriptForm : Form
         comparison = MakeTextBox(readOnly: true);
         comparison.Visible = false;
 
-        compareButton = new ConsoleButton(Loc.T("Vergleichen"));
+        // Breite an der LÄNGEREN Beschriftung ausrichten: Der Knopf misst sich beim
+        // Bauen an seinem Text, und „Vergleich ausblenden" wäre danach abgeschnitten.
+        compareButton = new ConsoleButton(Loc.T("Vergleichen"), width: ButtonWidthFor(
+            Loc.T("Vergleichen"), Loc.T("Vergleich ausblenden")));
         compareButton.Click2 += () =>
         {
             comparing = !comparing;
@@ -96,10 +99,20 @@ internal sealed class TranscriptForm : Form
         saveText.Click2 += SaveText;
         var saveSubtitles = new ConsoleButton(Loc.T("Untertitel sichern …"));
         saveSubtitles.Click2 += SaveSubtitles;
-        saveSubtitles.Enabled = job.Segments.Count > 0;
+        // SetEnabled, nicht Enabled: Der Knopf zeichnet sich selbst und sähe sonst
+        // aktiv aus, obwohl er keine Klicks annimmt.
+        saveSubtitles.SetEnabled(job.Segments.Count > 0);
 
         minutesButton = new ConsoleButton(Loc.T("Protokoll erstellen"));
-        minutesButton.Click2 += () => queue.AddMinutes(job);
+        minutesButton.Click2 += () =>
+        {
+            if (!queue.FormatterReady)
+            {
+                ShowStatus(Loc.T("Dafür wird das Modell zum Aufbereiten gebraucht — schalte „Text automatisch aufräumen“ ein."));
+                return;
+            }
+            queue.AddMinutes(job);
+        };
 
         var footnote = new Label
         {
@@ -151,6 +164,9 @@ internal sealed class TranscriptForm : Form
         };
         queue.Changed += onQueueChanged;
         FormClosed += (_, _) => queue.Changed -= onQueueChanged;
+        // Beim Schließen übernehmen, was im Feld steht — sonst ist jede Bearbeitung
+        // weg, sobald man das Fenster zumacht.
+        FormClosing += (_, _) => StoreEdits();
 
         ApplyFassung();
         RefreshFromJob();
@@ -167,6 +183,9 @@ internal sealed class TranscriptForm : Form
         var running = job.State == FileTranscriptionJob.Phase.Minutes;
         if (HasBoth && !switcher.Visible)
         {
+            // Erst sichern, was im Feld steht: Das nachgereichte Protokoll darf die
+            // Bearbeitung des Rohtexts nicht überschreiben.
+            StoreEdits();
             active = KeyMinutes;
             switcher.Select(KeyMinutes);
             ApplyFassung();
@@ -176,12 +195,20 @@ internal sealed class TranscriptForm : Form
         rawLabel.Visible = !HasBoth;
 
         minutesButton.Visible = job.CanAddMinutes || running;
-        minutesButton.Enabled = job.CanAddMinutes && !running;
+        // Ohne geladenes Textmodell tut der Knopf nichts. Sichtbar bleibt er, damit
+        // die Funktion auffindbar ist — aber er sagt jetzt, was fehlt, statt still
+        // zu bleiben (die Aufbereitung ist unter Windows standardmäßig AUS).
+        minutesButton.SetEnabled(job.CanAddMinutes && !running && queue.FormatterReady);
+
         if (running)
-        {
             status.Text = $"{Loc.T("Protokoll wird erstellt …")} {(int)Math.Round(job.Progress * 100)} %";
-        }
+        else if (status.Text.StartsWith(Loc.T("Protokoll wird erstellt …"), StringComparison.Ordinal))
+            status.Text = "";   // fertig — sonst stünde für immer „… 100 %" da
     }
+
+    /// <summary>Breite für einen Knopf, dessen Beschriftung wechselt.</summary>
+    private static int ButtonWidthFor(params string[] labels)
+        => labels.Max(l => TextRenderer.MeasureText(l, Theme.Body).Width) + 26;
 
     private readonly TableLayoutPanel split;
 

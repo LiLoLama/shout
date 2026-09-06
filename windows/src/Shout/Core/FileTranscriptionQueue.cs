@@ -9,6 +9,21 @@ namespace Shout.Core;
 /// werden angefasst: Die Statistik misst, wie schnell DU diktierst, eine Stunde
 /// fremdes Audio würde diesen Wert bedeutungslos machen.</para>
 /// </summary>
+/// <summary>
+/// Was mit EINEM Auftrag geschehen soll. Hängt am Auftrag statt an den
+/// Einstellungen, weil die Schalter beim <b>Hinzufügen</b> gelten müssen: Wer
+/// mitten in einer Warteschlange umschaltet, änderte sonst rückwirkend, was mit
+/// bereits eingereihten Dateien passiert (Mac: FileJobOptions).
+/// </summary>
+public readonly record struct FileJobOptions(bool SpeechCommands, bool Minutes)
+{
+    public static FileJobOptions FromSettings()
+    {
+        var s = Settings.Shared;
+        return new FileJobOptions(s.FileSpeechCommandsEnabled, s.FileMinutesEnabled);
+    }
+}
+
 public sealed class FileTranscriptionJob
 {
     public enum Phase
@@ -25,6 +40,9 @@ public sealed class FileTranscriptionJob
     public string Name => System.IO.Path.GetFileName(Path);
 
     public Phase State { get; set; } = Phase.Queued;
+
+    /// <summary>Die beim Hinzufügen gültigen Schalter.</summary>
+    public FileJobOptions Options { get; set; } = new(false, true);
     /// <summary>0…1 innerhalb der laufenden Phase.</summary>
     public double Progress { get; set; }
     public double Duration { get; set; }
@@ -99,6 +117,10 @@ public sealed class FileTranscriptionQueue
     /// UI-Thread wechseln (siehe FilesPage).</summary>
     public event Action? Changed;
 
+    /// <summary>Ist ein Textmodell geladen? Ohne das gibt es kein Protokoll — die
+    /// Oberfläche muss das WISSEN, sonst zeigt sie einen Knopf, der nichts tut.</summary>
+    public bool FormatterReady => formatter.IsReady;
+
     public FileTranscriptionQueue(Transcriber transcriber, LlmFormatter formatter,
                                   PersonalDictionary dictionary)
     {
@@ -126,11 +148,15 @@ public sealed class FileTranscriptionQueue
     /// dann entscheidet der Nutzer später, was damit geschehen soll.</summary>
     public void Add(IEnumerable<string> paths, bool start = true)
     {
+        // Die Schalter EINMAL hier lesen, nicht später beim Abarbeiten: Sonst
+        // entscheidet der Zustand der Oberfläche in einer halben Stunde darüber,
+        // was mit einer Datei geschieht, die man jetzt eingeworfen hat.
+        var options = FileJobOptions.FromSettings();
         lock (gate)
         {
             foreach (var path in paths)
             {
-                var job = new FileTranscriptionJob(path);
+                var job = new FileTranscriptionJob(path) { Options = options };
                 if (!start) job.State = FileTranscriptionJob.Phase.Unprocessed;
                 jobs.Add(job);
             }
@@ -139,8 +165,15 @@ public sealed class FileTranscriptionQueue
         if (start) StartIfNeeded();
     }
 
-    /// <summary>Holt liegengebliebene Mitschnitte zurück in die Liste. Ohne das wäre
-    /// eine Aufnahme nach einem Neustart der App unauffindbar.</summary>
+    /// <summary>
+    /// Holt liegengebliebene Mitschnitte zurück in die Liste. Ohne das wäre eine
+    /// Aufnahme nach einem Neustart der App unauffindbar.
+    ///
+    /// <para>Liegt neben der Aufnahme ein gesichertes Transkript, kommt der Auftrag
+    /// fertig zurück statt als „noch nicht verarbeitet" — eine Stunde Besprechung
+    /// noch einmal durchzurechnen, nur weil die App neu gestartet wurde, ist teuer
+    /// und völlig unnötig.</para>
+    /// </summary>
     public void Restore(IEnumerable<string> paths)
     {
         List<string> fresh;
@@ -149,7 +182,30 @@ public sealed class FileTranscriptionQueue
             var known = jobs.Select(j => j.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
             fresh = paths.Where(p => !known.Contains(p)).ToList();
         }
-        if (fresh.Count > 0) Add(fresh, start: false);
+        if (fresh.Count == 0) return;
+
+        var options = FileJobOptions.FromSettings();
+        lock (gate)
+        {
+            foreach (var path in fresh)
+            {
+                var job = new FileTranscriptionJob(path)
+                {
+                    Options = options,
+                    State = FileTranscriptionJob.Phase.Unprocessed,
+                };
+                if (TranscriptStore.Load(path) is { } stored && stored.RawText.Length > 0)
+                {
+                    job.RawText = stored.RawText;
+                    job.MinutesText = stored.MinutesText;
+                    job.Segments = stored.Segments;
+                    job.Duration = stored.Duration;
+                    job.State = FileTranscriptionJob.Phase.Done;
+                }
+                jobs.Add(job);
+            }
+        }
+        Changed?.Invoke();
     }
 
     /// <summary>Startet einen wartenden Auftrag.</summary>
@@ -169,6 +225,7 @@ public sealed class FileTranscriptionQueue
     public void AddMinutes(FileTranscriptionJob job)
     {
         if (!job.CanAddMinutes || !formatter.IsReady) return;
+        job.Options = job.Options with { Minutes = true };
         job.MinutesOnly = true;
         job.State = FileTranscriptionJob.Phase.Minutes;
         job.Progress = 0;
@@ -201,6 +258,7 @@ public sealed class FileTranscriptionQueue
         if (MeetingRecorder.IsOwnRecording(job.Path))
         {
             try { File.Delete(job.Path); } catch { }
+            TranscriptStore.Remove(job.Path);
         }
         Changed?.Invoke();
     }
@@ -241,9 +299,8 @@ public sealed class FileTranscriptionQueue
         if (job.MinutesOnly) { await AddMinutesOnlyAsync(job); return; }
         if (IsCancelled(job.Id)) { job.MarkCancelled(); Changed?.Invoke(); return; }
 
-        var settings = Settings.Shared;
-        var useCommands = settings.FileSpeechCommandsEnabled;
-        var useMinutes = settings.FileMinutesEnabled;
+        var useCommands = job.Options.SpeechCommands;
+        var useMinutes = job.Options.Minutes;
 
         job.State = FileTranscriptionJob.Phase.Transcribing;
         job.Progress = 0;
@@ -313,7 +370,22 @@ public sealed class FileTranscriptionQueue
         }
 
         job.State = FileTranscriptionJob.Phase.Done;
+        SaveSidecar(job);
         Changed?.Invoke();
+    }
+
+    /// <summary>Sichert das Ergebnis neben der Aufnahme — nur für eigene Mitschnitte
+    /// (die Prüfung steckt in <see cref="TranscriptStore.Save"/>).</summary>
+    private static void SaveSidecar(FileTranscriptionJob job)
+    {
+        if (job.RawText.Length == 0) return;
+        TranscriptStore.Save(new StoredTranscript
+        {
+            RawText = job.RawText,
+            MinutesText = job.MinutesText,
+            Segments = job.Segments,
+            Duration = job.Duration,
+        }, job.Path);
     }
 
     /// <summary>
@@ -328,6 +400,7 @@ public sealed class FileTranscriptionQueue
         // Marke muss trotzdem weg, sonst liefe ein zweiter Anlauf sofort ins Leere.
         lock (gate) cancelled.Remove(job.Id);
         job.State = FileTranscriptionJob.Phase.Done;
+        SaveSidecar(job);
         Changed?.Invoke();
     }
 

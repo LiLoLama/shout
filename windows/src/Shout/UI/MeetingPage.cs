@@ -24,6 +24,16 @@ internal sealed class MeetingPage : PageBase, IRefreshablePage
     private string? error;
     private bool legalHintShown;
 
+    // Die Bedienelemente, die sich WÄHREND einer Aufnahme ändern. Sie werden an
+    // Ort und Stelle nachgezogen, statt die Seite neu zu bauen.
+    private TextBlock? clock;
+    private TextBlock? stateLine;
+    private LevelBar? levelBar;
+    private readonly Dictionary<Guid, FileJobCard> cards = new();
+    /// <summary>Beschreibt, WORAUS die Seite gerade besteht. Ändert sich das nicht,
+    /// genügt ein Nachziehen der Werte.</summary>
+    private string structure = "";
+
     public MeetingPage(TrayContext app, FileTranscriptionQueue queue, MeetingRecorder recorder)
     {
         this.app = app;
@@ -39,16 +49,59 @@ internal sealed class MeetingPage : PageBase, IRefreshablePage
         Rebuild();
     }
 
+    protected override void Dispose(bool disposing)
+    {
+        // Warteschlange und Aufnahme leben so lange wie die App, diese Seite nicht:
+        // Das Fenster wird bei jedem Sprachwechsel und jedem Öffnen neu gebaut. Ohne
+        // das Abmelden bliebe jede alte Seite samt ihrer Bedienelemente am Leben.
+        if (disposing)
+        {
+            queue.Changed -= OnChanged;
+            recorder.Changed -= OnChanged;
+        }
+        base.Dispose(disposing);
+    }
+
     private void OnChanged()
     {
         if (IsDisposed || !IsHandleCreated) return;
-        try { BeginInvoke(new Action(Rebuild)); } catch (ObjectDisposedException) { }
+        try { BeginInvoke(new Action(Tick)); } catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>
+    /// Der Mitschnitt meldet sich zehnmal pro Sekunde. Die Seite dabei jedes Mal neu
+    /// zu bauen hieß: Jeder Knopf wurde zwischen Maus-runter und Maus-hoch entsorgt,
+    /// und ein Klick auf „Pause" oder „Stoppen" kam schlicht nicht an. Deshalb wird
+    /// nur noch neu gebaut, wenn sich die STRUKTUR ändert.
+    /// </summary>
+    private void Tick()
+    {
+        if (Signature() != structure) { Rebuild(); return; }
+
+        clock?.SetText(Clock(recorder.Duration));
+        stateLine?.SetText(RunningState);
+        levelBar?.SetLevel(recorder.IsPaused ? 0 : recorder.Level);
+        foreach (var card in cards.Values) card.RefreshFromJob();
+    }
+
+    private string Signature()
+    {
+        var jobs = string.Join(",", queue.Jobs
+            .Where(j => MeetingRecorder.IsOwnRecording(j.Path))
+            .Select(j => $"{j.Id}:{j.State}"));
+        return string.Join("|", app.TranscriberReady, recorder.IsRecording, recorder.IsPaused,
+                           recorder.NoSignal, error, Settings.Shared.MeetingSource, jobs);
     }
 
     public void Refresh2() => Rebuild();
 
     private void Rebuild()
     {
+        structure = Signature();
+        clock = null;
+        stateLine = null;
+        levelBar = null;
+        cards.Clear();
         TrimStack(0);
         Push(new SectionHeader(Loc.T("Meeting")), 0);
 
@@ -112,14 +165,19 @@ internal sealed class MeetingPage : PageBase, IRefreshablePage
         Push(box);
     }
 
+    private string RunningState => recorder.IsPaused
+        ? Loc.T("Pausiert")
+        : $"{Loc.T("Nimmt auf …")}  ·  {SourceLabel}";
+
     private void PushRunning()
     {
         var box = new ConsoleBox();
-        box.Add(TextBlock.Title(Clock(recorder.Duration)), 0);
-        box.Add(TextBlock.Footnote(recorder.IsPaused
-            ? Loc.T("Pausiert")
-            : $"{Loc.T("Nimmt auf …")}  ·  {SourceLabel}"), 4);
-        box.Add(new LevelBar(recorder.IsPaused ? 0 : recorder.Level), 10);
+        clock = TextBlock.Title(Clock(recorder.Duration));
+        stateLine = TextBlock.Footnote(RunningState);
+        levelBar = new LevelBar(recorder.IsPaused ? 0 : recorder.Level);
+        box.Add(clock, 0);
+        box.Add(stateLine, 4);
+        box.Add(levelBar, 10);
 
         if (recorder.NoSignal)
         {
@@ -171,6 +229,7 @@ internal sealed class MeetingPage : PageBase, IRefreshablePage
             card.StartRequested += j => queue.Start(j);
             card.CancelRequested += j => queue.Cancel(j);
             card.RemoveRequested += j => { CloseResult(j.Id); queue.Remove(j); };
+            cards[job.Id] = card;
             Push(card, 8);
         }
     }
@@ -199,6 +258,7 @@ internal sealed class MeetingPage : PageBase, IRefreshablePage
     {
         var path = recorder.Stop();
         if (path == null) return;
+        error = null;
         var suggestion = System.IO.Path.GetFileNameWithoutExtension(path);
         var chosen = NameDialog.Ask(Loc.T("Wie soll die Aufnahme heißen?"), suggestion);
         if (!string.IsNullOrWhiteSpace(chosen)) path = MeetingRecorder.Rename(path, chosen!);
@@ -257,12 +317,21 @@ internal sealed class MeetingPage : PageBase, IRefreshablePage
 /// einer Aufnahme zählt: Kommt überhaupt Ton an?</summary>
 internal sealed class LevelBar : ThemedControl, IAutoHeight
 {
-    private readonly float level;
+    private float level;
 
     public LevelBar(float level)
     {
         this.level = Math.Clamp(level, 0, 1);
         Height = 5;
+    }
+
+    /// <summary>Neuen Pegel setzen, ohne das Control zu ersetzen.</summary>
+    public void SetLevel(float value)
+    {
+        var next = Math.Clamp(value, 0, 1);
+        if (Math.Abs(next - level) < 0.005f) return;
+        level = next;
+        Invalidate();
     }
 
     public int PreferredHeightFor(int width) => 5;

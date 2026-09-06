@@ -58,6 +58,21 @@ dotnet publish src/Shout -c Release
 # → verteilbarer Ordner unter src/Shout/bin/Release/net8.0-windows/publish/
 ```
 
+### Tests
+
+```powershell
+cd windows
+dotnet test tests/Shout.Tests           # läuft auf JEDEM System, auch Mac/Linux
+```
+
+Das Testprojekt zielt bewusst auf `net8.0` statt `net8.0-windows` und verlinkt die
+zu prüfenden Quelldateien, statt die App zu referenzieren: Geprüft wird reine
+Textlogik (Abschnitte, Sprachbefehle, Protokoll-Zerlegung, Untertitel, der Schutz
+vor Modell-Antworten, das Lernen aus Korrekturen, der Doppeltipp). Damit lässt sich
+der Port auch dort prüfen, wo er zum großen Teil entsteht — am Mac. Der Workflow
+[`windows-ci.yml`](../.github/workflows/windows-ci.yml) baut zusätzlich bei jeder
+Änderung unter `windows/` die App auf einem Windows-Runner.
+
 Zum Ausführen braucht der Zielrechner die **.NET 8 Desktop Runtime**
 (einmaliger ~55-MB-Download; Windows bietet ihn beim ersten Start automatisch an).
 
@@ -110,12 +125,18 @@ schließt, bekommt ihn beim nächsten Start noch einmal.
    > Hinweis, worauf es jetzt hört. Ändern lässt sich das jederzeit unter
    > „Aufnahme & Text".
 4. Der erkannte Text wird ins aktive Fenster eingefügt und liegt zusätzlich in
-   der Zwischenablage.
+   der Zwischenablage. Aus dem Tray-Menü lässt er sich **noch einmal einfügen**
+   oder **korrigieren** — was du dort ausbesserst, lernt das Wörterbuch fürs
+   nächste Mal. Das Diktat wird als „nicht in den Verlauf" gekennzeichnet und
+   landet damit weder in der Windows-Zwischenablage-Historie (Win+V) noch in der
+   Cloud-Zwischenablage.
 
 **Aufnahme-Art** (Aufnahme & Text → Aufnahme-Art), wie am Mac:
 
 - **Umschalten** (Standard): einmal drücken startet, nochmal drücken stoppt.
   Läuft über `RegisterHotKey` — günstig, kann aber belegt sein.
+- **Doppeltipp**: zweimal kurz tippen startet, einmal tippen stoppt. Der erste
+  Tipp lässt die Pille sichtbar pulsen, damit man weiß, dass er angekommen ist.
 - **Halten**: Tasten gedrückt halten, beim Loslassen wird eingefügt. Dafür
   hängt shout. einen Tastatur-Hook ein, denn `RegisterHotKey` kennt kein
   Loslassen. Der Hook sieht die Tasten vor allen Hotkeys anderer Programme und
@@ -124,6 +145,12 @@ schließt, bekommt ihn beim nächsten Start noch einmal.
   Einfügen) überspringt er; Makro-Tastaturen und AutoHotkey lösen weiterhin aus.
   „Von selbst aufhören" wirkt nur im Umschalt-Modus — beim Halten stoppt das
   Loslassen.
+
+Als Taste geht auch eine **Funktionstaste allein** (F1–F24) oder eine **einzelne
+Modifier-Taste** (drücken und loslassen, z. B. Alt rechts) — beides kennt
+`RegisterHotKey` nicht, dafür hängt shout. dann den Tastatur-Hook ein. Eine reine
+Modifier-Taste wird dabei NICHT verschluckt: Auf deutschen Tastaturen ist Alt rechts
+die AltGr-Taste, und ohne sie gäbe es kein @ und keine eckigen Klammern mehr.
 
 Während der Aufnahme erscheint die **Pille** am Bildschirmrand: eine
 pegelreaktive Wellenform zwischen ✕ (verwerfen) und ✓ (einfügen). Sie lässt sich
@@ -142,6 +169,10 @@ Einstellungen. Die Einstellungen öffnest du über das Tray-Menü — oder mit
   wird damit um ein Vielfaches schneller.
 
 ## Sprache
+
+Sprachbefehle („Komma", „Punkt", „neue Zeile") gibt es auf **beiden Sprachen** —
+auf Englisch als „comma", „period"/„full stop", „new line", „new paragraph". Welche
+Tabelle greift, entscheidet die Diktier-Sprache; bei „Automatisch" gelten beide.
 
 Die Oberfläche gibt es auf **Deutsch und Englisch**. Standardmäßig folgt sie der
 Windows-Anzeigesprache; umschaltbar unter **Aufnahme & Text → Sprache & Ton →
@@ -162,6 +193,18 @@ eigengezeichnetes Design-System (`Theme.cs` = Farben/Schriften/Geometrie,
 `Icons.cs` = die SF-Symbols als GDI+-Vektoren, `Controls.cs` + `Widgets.cs` =
 Karten, Schalter, Segment-Umschalter, Dropdowns, Chips, Listen).
 
+## Systemvoraussetzungen
+
+- **Windows 10 (1809) oder neuer**, x64 oder ARM64. Auf ARM64 läuft das Setup die
+  x64-Fassung unter Emulation — funktioniert, ist aber langsamer; ein eigener
+  ARM64-Build ist möglich (`RuntimeIdentifiers` stehen in der csproj), aber
+  ungetestet.
+- **.NET 8 Desktop Runtime** (installiert das Setup bei Bedarf mit).
+- Für **Datei-Transkription und Meeting-Mitschnitt** braucht es die Media
+  Foundation. In den **N-/KN-Ausgaben** von Windows fehlt sie; dort hilft das
+  „Media Feature Pack" aus den optionalen Features. Diktat und Aufbereitung
+  funktionieren auch ohne.
+
 ## Status / bekannte Grenzen
 
 - ✅ **Auf echtem Windows getestet** (Win 11 x64): Build/Publish, Modell-Download,
@@ -170,6 +213,9 @@ Karten, Schalter, Segment-Umschalter, Dropdowns, Chips, Listen).
   Erststart-Assistent (alle fünf Schritte, deutsch und englisch), Halten- und
   Umschalt-Modus, automatische Ausweich-Kombination, „Dein Sprachprofil" und die
   Hugging-Face-Live-Liste.
+- **Datei-Transkription und Meeting-Mitschnitt sind auf echter Hardware noch
+  ungetestet.** Beide sind seit dem letzten Gerätetest dazugekommen und bisher nur
+  gegen den Compiler und die Tests geprüft.
 - Das Setup ist **nicht signiert** — Windows SmartScreen zeigt daher beim ersten
   Start eine Warnung („Weitere Informationen" → „Trotzdem ausführen"). Ein
   Code-Signing-Zertifikat würde das beheben; `release.ps1` unterstützt dafür

@@ -254,7 +254,9 @@ public sealed class TrayContext : ApplicationContext
 
     // MARK: Modelle
 
-    private async Task LoadModelsAsync()
+    private Task LoadModelsAsync() => LoadModelsAsync(reset: false);
+
+    private async Task LoadModelsAsync(bool reset)
     {
         SetState(State.LoadingModel);
         try
@@ -266,7 +268,7 @@ public sealed class TrayContext : ApplicationContext
                     statusItem.Text = AsrProgress is { } value
                         ? Loc.F("Sprachmodell wird geladen … {0} %", (int)(value * 100))
                         : Loc.T("Sprachmodell wird geladen …");
-                }, null));
+                }, null), reset);
             await transcriber.WarmUpAsync();
             ui.Post(_ => AsrProgress = null, null);
             SetState(State.Idle);
@@ -285,7 +287,7 @@ public sealed class TrayContext : ApplicationContext
 
         if (Settings.Shared.FormattingEnabled)
         {
-            await formatter.LoadAsync();
+            await formatter.LoadAsync(reset: reset);
             // Aufwärmen wie bei der Spracherkennung: Sonst bezahlt das erste Diktat
             // die einmalige Einrichtung des Ausführers mit.
             await formatter.WarmUpAsync();
@@ -306,8 +308,12 @@ public sealed class TrayContext : ApplicationContext
         ui.Post(_ => settingsForm?.RefreshStatus(), null);
     }
 
-    /// <summary>Nach Modellwechsel in den Einstellungen neu laden.</summary>
-    public void ReloadModels() => _ = Task.Run(LoadModelsAsync);
+    /// <summary>
+    /// Nach einem Modell- oder Anbieterwechsel neu laden. <paramref name="reset"/>
+    /// baut die Engines neu auf — nötig, sobald zwischen „auf diesem Gerät" und
+    /// „Anbieter" gewechselt wurde, denn dahinter steckt dann ein anderer Typ.
+    /// </summary>
+    public void ReloadModels(bool reset = false) => _ = Task.Run(() => LoadModelsAsync(reset));
 
     /// <summary>Download-Fortschritt des Transkriptions-Modells (null = kein Download
     /// im Gange) — der Erststart-Assistent zeigt ihn an.</summary>
@@ -322,6 +328,13 @@ public sealed class TrayContext : ApplicationContext
     /// <summary>Ist das KI-Textmodell geladen? Ohne das gibt es kein Sprachprofil
     /// (und das Modell wird nur geladen, wenn die Aufbereitung eingeschaltet ist).</summary>
     public bool FormatterReady => formatter.IsReady;
+
+    /// <summary>Womit gerade transkribiert wird — „Whisper Small" oder
+    /// „whisper-large-v3 · Groq".</summary>
+    public string TranscriberName => transcriber.DisplayName;
+
+    /// <summary>Womit gerade aufbereitet wird.</summary>
+    public string FormatterName => formatter.DisplayName;
 
     /// <summary>Erzeugt „Dein Sprachprofil" aus einer Textprobe des Verlaufs.
     /// null = kein Modell geladen oder Erzeugung fehlgeschlagen.</summary>

@@ -66,8 +66,57 @@ internal sealed class StatisticsPage : PageBase, IRefreshablePage
         }, 220));
 
         PushVoiceProfile();
+        PushProviderUsage();
 
         NotifyHeightChanged();
+    }
+
+    // MARK: Anbieter-Verbrauch
+
+    /// <summary>
+    /// Was diesen Monat bei Anbietern verbraucht wurde — gemessen, nicht geschätzt:
+    /// Die Token stehen in jeder Antwort, die Audio-Sekunden zählt shout. selbst.
+    ///
+    /// <para>Eigene Karte und NICHT unter den Diktier-Statistiken: Ausgaben sind
+    /// gerätebezogen und wandern anders als der Verlauf nicht im Backup mit. Die
+    /// Karte bleibt ganz weg, solange nichts verbraucht wurde — wer alles lokal
+    /// laufen lässt, hat hier nichts zu lesen.</para>
+    /// </summary>
+    private void PushProviderUsage()
+    {
+        var usage = ProviderUsageStore.Shared;
+        var month = usage.Month();
+        if (month == null || month.IsEmpty) return;
+
+        var box = new ConsoleBox { Title = Loc.T("Anbieter · dieser Monat") };
+        var (sum, unknown) = usage.Cost();
+
+        foreach (var (entry, tokens) in month.Tokens.OrderByDescending(t => t.Value.Prompt + t.Value.Completion))
+        {
+            var count = tokens.Prompt + tokens.Completion;
+            var price = usage.Prices.PriceForText(ProviderUsageStore.ModelFrom(entry));
+            var cost = ProviderCosts.Cost(tokens, price);
+            box.Add(TextBlock.Body(entry + " — " + Loc.F("{0} Token · {1}",
+                count.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+                cost is { } c ? ProviderCosts.Format(c) : "—")), 0);
+        }
+
+        foreach (var (entry, seconds) in month.Seconds.OrderByDescending(s => s.Value))
+        {
+            var price = usage.Prices.PriceForAudio(ProviderUsageStore.ModelFrom(entry));
+            var cost = ProviderCosts.Cost(seconds, price);
+            box.Add(TextBlock.Body(entry + " — " + Loc.F("{0} Audio · {1}",
+                TranscriptLayout.Timecode(seconds),
+                cost is { } c ? ProviderCosts.Format(c) : "—")), 0);
+        }
+
+        box.Add(TextBlock.Footnote(
+            Loc.F("Diesen Monat: {0}", ProviderCosts.Format(sum))
+            + (unknown ? " " + Loc.T("(ohne die Modelle mit unbekanntem Preis)") : "")), 10);
+        box.Add(TextBlock.Footnote(
+            Loc.F("Näherung — abgerechnet wird beim Anbieter. Preise: Stand {0}",
+                  usage.Prices.Updated.ToLocalTime().ToString("d", System.Globalization.CultureInfo.CurrentCulture))), 4);
+        Push(box);
     }
 
     // MARK: „Dein Sprachprofil"

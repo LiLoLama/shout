@@ -17,6 +17,13 @@ internal sealed class ModelsPage : PageBase
     private readonly ModelListPanel llmList;
     private readonly TextBlock note = new("", Theme.Small, Theme.Gray(0.8), 0);
 
+    // MARK: Gerät oder Anbieter
+    private readonly ProviderPanel providerAudio;
+    private readonly ProviderPanel providerText;
+    private readonly TextBlock privacyNote;
+    private readonly GroupLabel hfLabel;
+    private readonly Cluster hfButtons;
+
     // MARK: Live-Liste von Hugging Face
     private readonly ConsoleButton refreshButton;
     private readonly TextBlock remoteStatus;
@@ -43,6 +50,11 @@ internal sealed class ModelsPage : PageBase
 
         // MARK: Transkription
 
+        var audioSwitch = EngineSwitch(EnginePurpose.Audio);
+        Push(audioSwitch);
+        providerAudio = Push(new ProviderPanel(EnginePurpose.Audio, () => app.ReloadModels(reset: true)));
+        providerAudio.HeightChanged += NotifyHeightChanged;
+
         asrList = new ModelListPanel(
             ModelCatalog.AsrModels.Select(m => new ModelEntry
             {
@@ -62,6 +74,11 @@ internal sealed class ModelsPage : PageBase
         Push(asrList);
 
         // MARK: Aufbereitung
+
+        var textSwitch = EngineSwitch(EnginePurpose.Text);
+        Push(textSwitch);
+        providerText = Push(new ProviderPanel(EnginePurpose.Text, () => app.ReloadModels(reset: true)));
+        providerText.HeightChanged += NotifyHeightChanged;
 
         llmList = new ModelListPanel(
             ModelCatalog.LlmModels.Select(m => new ModelEntry
@@ -87,20 +104,87 @@ internal sealed class ModelsPage : PageBase
         refreshButton.Click2 += () => LoadRemote(force: true);
         // GroupLabel statt SectionHeader: der zeichnet in Theme.PageTitle und
         // stünde als zweiter Seitentitel neben „Modelle".
-        Push(new GroupLabel(Loc.T("AKTUELLE MODELLE · HUGGING FACE")));
-        Push(new Cluster(new Control[] { refreshButton }), 8);
+        hfLabel = Push(new GroupLabel(Loc.T("AKTUELLE MODELLE · HUGGING FACE")));
+        hfButtons = Push(new Cluster(new Control[] { refreshButton }), 8);
 
         remoteStatus = TextBlock.Body(Loc.T("Suche aktuelle Modelle …"));
         Push(remoteStatus, 8);
 
+        privacyNote = Push(TextBlock.Warning(Loc.T(
+            "Sobald du einen Anbieter benutzt, verlässt der Text diesen Rechner. Alles andere bleibt, wie es ist.")), 12);
+
         PushFootnotes();
+        ApplyEngineChoice();
+    }
+
+    /// <summary>
+    /// Die eine Zeile, die alles entscheidet: „Auf diesem Gerät" oder „Anbieter".
+    /// Sie steht ÜBER der jeweiligen Liste, weil sie bestimmt, ob die Liste
+    /// überhaupt zählt.
+    /// </summary>
+    private ConsolePanel EngineSwitch(EnginePurpose purpose)
+    {
+        var s = Settings.Shared;
+        var current = purpose == EnginePurpose.Audio ? s.AsrEngine : s.FormatEngine;
+        var segmented = new ConsoleSegmented(new[]
+        {
+            ("local", Loc.T("Auf diesem Gerät")),
+            ("remote", Loc.T("Anbieter")),
+        }, current == "remote" ? "remote" : "local");
+
+        segmented.Changed += key =>
+        {
+            if (purpose == EnginePurpose.Audio) s.AsrEngine = key; else s.FormatEngine = key;
+            s.Save();
+            ApplyEngineChoice();
+            // Dahinter steckt danach ein anderer Typ von Engine — die Router
+            // müssen sie neu bauen, ein bloßes Nachladen genügt nicht.
+            app.ReloadModels(reset: true);
+        };
+
+        var box = new ConsolePanel();
+        box.Add(new PanelRow
+        {
+            Title = purpose == EnginePurpose.Audio
+                ? Loc.T("Wo transkribiert wird")
+                : Loc.T("Wo aufbereitet wird"),
+            Help = Loc.T("Auf diesem Gerät bleibt alles lokal. Beim Anbieter geht der Text übers Netz — dafür braucht es keinen Modell-Download."),
+            Trailing = segmented,
+        });
+        return box;
+    }
+
+    /// <summary>
+    /// Blendet um, statt neu zu bauen: Die Live-Liste von Hugging Face hängt an
+    /// festen Stapel-Positionen, und ein Neuaufbau würde sie mitsamt ihrem
+    /// Ladezustand wegräumen.
+    /// </summary>
+    private void ApplyEngineChoice()
+    {
+        var s = Settings.Shared;
+        var audioRemote = s.AsrEngine == "remote";
+        var textRemote = s.FormatEngine == "remote";
+
+        providerAudio.Visible = audioRemote;
+        asrList.Visible = !audioRemote;
+
+        providerText.Visible = textRemote;
+        llmList.Visible = !textRemote;
+        hfLabel.Visible = !textRemote;
+        hfButtons.Visible = !textRemote;
+        remoteStatus.Visible = !textRemote && remoteStatus.Text.Length > 0;
+        if (remoteList != null) remoteList.Visible = !textRemote;
+
+        privacyNote.Visible = audioRemote || textRemote;
+        NotifyHeightChanged();
     }
 
     /// <summary>Anzahl der festen Stapel-Elemente vor der Live-Liste: Kopf,
-    /// Hinweis, Hardware-Karte, die beiden festen Listen, Abschnittslabel,
+    /// Hinweis, Hardware-Karte, die beiden Engine-Umschalter mit ihren
+    /// Anbieter-Blöcken, die beiden festen Listen, Abschnittslabel,
     /// Aktualisieren-Knopf und Statuszeile. Alles danach baut
     /// <see cref="ShowRemote"/> neu auf.</summary>
-    private const int FixedElements = 8;
+    private const int FixedElements = 12;
 
     private void PushFootnotes()
     {
@@ -114,7 +198,9 @@ internal sealed class ModelsPage : PageBase
     protected override void OnVisibleChanged(EventArgs e)
     {
         base.OnVisibleChanged(e);
-        if (Visible && !didFetch) LoadRemote(force: false);
+        // Nicht laden, wenn die Aufbereitung ohnehin bei einem Anbieter liegt: Die
+        // Liste wäre dann unsichtbar, und ein Netzabruf für nichts.
+        if (Visible && !didFetch && Settings.Shared.FormatEngine != "remote") LoadRemote(force: false);
     }
 
     /// <summary>

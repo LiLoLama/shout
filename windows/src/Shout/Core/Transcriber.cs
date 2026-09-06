@@ -1,139 +1,126 @@
-using System.Text;
-using Whisper.net;
-
 namespace Shout.Core;
 
 /// <summary>
-/// Spracherkennung über whisper.cpp (Whisper.net). Das gewählte ggml-Modell
-/// wird beim ersten Mal von Hugging Face geladen und lokal gecached — danach
-/// läuft alles offline.
+/// Die Spracherkennung — Router über einer <see cref="ISpeechEngine"/>. Ob
+/// dahinter whisper.cpp auf diesem Gerät steckt oder ein selbst gewählter
+/// Anbieter, entscheidet die Einstellung (Mac: Transcriber.swift).
+///
+/// <para>Alles, was nicht die Erkennung selbst ist, liegt hier: die Sprachwahl aus
+/// den Einstellungen und der Rückfall auf ein vorhandenes lokales Modell, wenn der
+/// Anbieter scheitert. Damit gilt beides für jeden Erkenner.</para>
 /// </summary>
 public sealed class Transcriber : IDisposable
 {
-    private WhisperFactory? factory;
-    private string? loadedModel;
-    private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly Func<ISpeechEngine> build;
+    private readonly Func<ISpeechEngine?> buildFallback;
+    private ISpeechEngine engine;
+    private ISpeechEngine? fallback;
 
-    public bool IsReady => factory != null;
-    public string? LoadedModel => loadedModel;
-
-    /// <summary>Lädt (und downloadet ggf.) das in den Einstellungen gewählte Modell.</summary>
-    public async Task LoadAsync(Action<double>? onProgress = null, CancellationToken cancel = default)
+    /// <param name="build">Woher die Engine kommt — Vorgabe ist die Fabrik, die die
+    /// Einstellung „auf diesem Gerät" gegen „Anbieter" liest.</param>
+    /// <param name="buildFallback">Ersatz-Erkenner für den Fall, dass der Anbieter
+    /// scheitert. Liefert null, wenn ohnehin lokal gearbeitet wird.</param>
+    public Transcriber(Func<ISpeechEngine>? build = null, Func<ISpeechEngine?>? buildFallback = null)
     {
-        var model = ModelCatalog.AsrById(Settings.Shared.AsrModel) ?? ModelCatalog.RecommendedAsr();
-        await gate.WaitAsync(cancel);
-        try
-        {
-            if (loadedModel == model.Id && factory != null) return;
-            await ModelDownloader.DownloadAsync(model, onProgress, cancel);
-
-            // Das neue Modell ZUERST öffnen, das alte erst danach wegwerfen.
-            // Andersherum stünde die App nach einem gescheiterten Wechsel ganz ohne
-            // Spracherkennung da, obwohl das vorherige Modell noch auf der Platte
-            // liegt — die Oberfläche kann so auf den alten Stand zurückfallen.
-            var next = WhisperFactory.FromPath(ModelCatalog.PathFor(model));
-            factory?.Dispose();
-            factory = next;
-            loadedModel = model.Id;
-        }
-        finally
-        {
-            gate.Release();
-        }
+        this.build = build ?? EngineFactory.Speech;
+        this.buildFallback = buildFallback ?? EngineFactory.SpeechFallback;
+        engine = this.build();
     }
 
-    /// <summary>„Aufwärmen": ein kurzer Durchlauf mit Stille, damit das erste
-    /// echte Diktat nicht spürbar länger dauert.</summary>
-    public async Task WarmUpAsync()
-    {
-        if (factory == null) return;
-        try { _ = await TranscribeAsync(new float[16_000]); }
-        catch { /* Warm-up darf still scheitern */ }
-    }
+    public bool IsReady => engine.IsReady;
+    public string? LoadedModel => engine.LoadedModel;
 
-    /// <summary>
-    /// Transkribiert 16-kHz-Mono-Samples.
-    ///
-    /// BEWUSST OHNE Wörterbuch-Prompt (<c>WithPrompt</c>): Whisper behandelt ihn
-    /// als vorangehenden Text und überspringt dann Audio — am Mac am 19./21.08.2026
-    /// nachgewiesen, wo dieselbe Stelle denselben Fehler hatte: derselbe
-    /// Sample-Puffer ergab mit Prompt &lt; 178 Zeichen, ohne 773; einem
-    /// 104-Sekunden-Diktat fehlten ~45 % seines Anfangs. Schon sechs Begriffe
-    /// reichten, und der Prompt fährt in JEDEM 30-Sekunden-Fenster erneut mit,
-    /// weshalb es lange Aufnahmen häufiger trifft. Der Schaden ist nicht
-    /// zuverlässig erkennbar (Whisper stempelt den ersten Abschnitt auch nach dem
-    /// Überspringen auf 0,00 s), deshalb ist die Ursache entfernt statt abgefedert.
-    ///
-    /// Eigennamen richtet weiterhin das Wörterbuch: Korrekturen ersetzen nach der
-    /// Erkennung, und die Begriffe gehen als TermHint in die Aufbereitung.
-    /// </summary>
-    public async Task<string> TranscribeAsync(float[] samples, CancellationToken cancel = default)
-    {
-        if (factory == null) throw new InvalidOperationException("Modell ist nicht geladen.");
-        if (samples.Length == 0) return "";
+    /// <summary>Was in der Oberfläche steht, z. B. „Whisper Small" oder
+    /// „whisper-large-v3 · Groq".</summary>
+    public string DisplayName => engine.DisplayName;
 
-        await gate.WaitAsync(cancel);
-        try
+    /// <summary>Diktier-Sprache aus den Einstellungen; null heißt „selbst erkennen".</summary>
+    private static string? Language
+    {
+        get
         {
-            var builder = factory.CreateBuilder();
-
             var language = Settings.Shared.Language;
-            if (language == "auto") builder = builder.WithLanguageDetection();
-            else builder = builder.WithLanguage(language);
-
-            await using var processor = builder.Build();
-            var text = new StringBuilder();
-            await foreach (var segment in processor.ProcessAsync(samples, cancel))
-                text.Append(segment.Text);
-            return text.ToString().Trim();
-        }
-        finally
-        {
-            gate.Release();
+            return string.IsNullOrEmpty(language) || language == "auto" ? null : language;
         }
     }
 
-    /// <summary>
-    /// Wie <see cref="TranscribeAsync"/>, liefert aber die Abschnitte mit Zeitmarken —
-    /// Grundlage für Untertitel und die Gliederung bei der Datei-Transkription.
-    /// Ebenfalls ohne Wörterbuch-Prompt, aus demselben Grund.
-    /// </summary>
+    /// <summary>Lädt bzw. verbindet. <paramref name="reset"/> baut die Engine neu —
+    /// nötig, wenn zwischen Gerät und Anbieter gewechselt wurde.</summary>
+    public async Task LoadAsync(Action<double>? onProgress = null, bool reset = false,
+                                CancellationToken cancel = default)
+    {
+        if (reset)
+        {
+            var old = engine;
+            engine = build();
+            fallback = null;
+            old.Dispose();
+        }
+        await engine.PrepareAsync(onProgress, cancel);
+    }
+
+    public Task WarmUpAsync(CancellationToken cancel = default) => engine.WarmUpAsync(cancel);
+
+    /// <summary>Fertiger Text fürs Diktat.</summary>
+    public async Task<string> TranscribeAsync(float[] samples, CancellationToken cancel = default)
+        => (await RecognizeAsync(samples, cancel)).Text;
+
+    /// <summary>Wie <see cref="TranscribeAsync"/>, liefert aber die Abschnitte mit
+    /// Zeitmarken — Grundlage für Untertitel und die Gliederung bei der
+    /// Datei-Transkription.</summary>
     public async Task<List<TranscriptSegment>> TranscribeSegmentsAsync(
         float[] samples, CancellationToken cancel = default)
-    {
-        if (factory == null) throw new InvalidOperationException("Modell ist nicht geladen.");
-        var result = new List<TranscriptSegment>();
-        if (samples.Length == 0) return result;
+        => (await RecognizeAsync(samples, cancel)).Segments;
 
-        await gate.WaitAsync(cancel);
+    /// <summary>
+    /// Erkennt — und weicht bei einem Fehler des Anbieters auf ein vorhandenes
+    /// lokales Modell aus.
+    ///
+    /// <para>Scheitert auch der Rückfall, wird der URSPRÜNGLICHE Fehler geworfen:
+    /// „Schlüssel abgelehnt" hilft weiter, „lokales Modell nicht im Cache" führt in
+    /// die Irre — das lokale Modell war ja nie die Absicht des Nutzers.</para>
+    /// </summary>
+    private async Task<SpeechResult> RecognizeAsync(float[] samples, CancellationToken cancel)
+    {
+        if (samples.Length == 0) return SpeechResult.Empty;
         try
         {
-            var builder = factory.CreateBuilder();
-
-            var language = Settings.Shared.Language;
-            if (language == "auto") builder = builder.WithLanguageDetection();
-            else builder = builder.WithLanguage(language);
-
-            await using var processor = builder.Build();
-            await foreach (var segment in processor.ProcessAsync(samples, cancel))
-            {
-                var text = TranscriptLayout.StripSpecialTokens(segment.Text);
-                if (text.Length == 0) continue;
-                result.Add(new TranscriptSegment(text,
-                                                 segment.Start.TotalSeconds,
-                                                 segment.End.TotalSeconds));
-            }
-            return result;
+            return await engine.TranscribeAsync(samples, Language, cancel);
         }
-        finally
+        catch (Exception original)
         {
-            gate.Release();
+            if (cancel.IsCancellationRequested) throw;
+
+            var spare = Fallback();
+            if (spare == null) throw;
+
+            StoreIO.Log($"Erkennung beim Anbieter fehlgeschlagen ({Describe(original)}), " +
+                        "lokales Modell übernimmt");
+            try
+            {
+                if (!spare.IsReady) await spare.PrepareAsync(cancel: cancel);
+                return await spare.TranscribeAsync(samples, Language, cancel);
+            }
+            catch
+            {
+                // Bewusst der ursprüngliche Fehler: Sonst stünde in der Oberfläche
+                // „lokales Modell nicht im Cache" statt „Schlüssel abgelehnt".
+                throw original;
+            }
         }
     }
+
+    /// <summary>Ersatz-Erkenner, einmal gebaut und behalten — ihn bei jedem
+    /// Fehlschlag neu aufzubauen hieße, das Modell jedes Mal neu einzulesen.</summary>
+    private ISpeechEngine? Fallback() => fallback ??= buildFallback();
+
+    private static string Describe(Exception ex)
+        => ex is RemoteProviderException remote ? remote.LogDescription : ex.Message;
 
     public void Dispose()
     {
-        factory?.Dispose();
-        factory = null;
+        engine.Dispose();
+        fallback?.Dispose();
+        fallback = null;
     }
 }

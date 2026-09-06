@@ -29,6 +29,22 @@
     <Compile Include="../../src/Shout/Core/Settings.cs" Link="Core/Settings.cs" />
     <Compile Include="../../src/Shout/Core/ModelCatalog.cs" Link="Core/ModelCatalog.cs" />
     <Compile Include="../../src/Shout/Core/StoreIO.cs" Link="Core/StoreIO.cs" />
+    <!-- Externe Anbieter: nur die Dateien ohne DPAPI und ohne Engines. Der
+         Schlüsselspeicher (ProviderKeyStore) fehlt hier mit Absicht — DPAPI gibt es
+         nur unter Windows, und EngineSelection kommt über den Delegaten KeySource
+         ohne ihn aus. -->
+    <Compile Include="../../src/Shout/Core/Providers/ProviderCatalog.cs" Link="Core/Providers/ProviderCatalog.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/RemoteConfig.cs" Link="Core/Providers/RemoteConfig.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/RemoteProviderError.cs" Link="Core/Providers/RemoteProviderError.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/RemoteHttp.cs" Link="Core/Providers/RemoteHttp.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/EngineSelection.cs" Link="Core/Providers/EngineSelection.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/KeyMask.cs" Link="Core/Providers/KeyMask.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/AudioModelFilter.cs" Link="Core/Providers/AudioModelFilter.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/WavEncoder.cs" Link="Core/Providers/WavEncoder.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/AudioWindows.cs" Link="Core/Providers/AudioWindows.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/PriceTable.cs" Link="Core/Providers/PriceTable.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/ProviderCosts.cs" Link="Core/Providers/ProviderCosts.cs" />
+    <Compile Include="../../src/Shout/Core/Providers/ProviderUsageStore.cs" Link="Core/Providers/ProviderUsageStore.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -25,18 +25,21 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
     public event Action<FileTranscriptionJob>? CancelRequested;
     public event Action<FileTranscriptionJob>? RemoveRequested;
 
+    /// <summary>Der Auftrag, den diese Karte zeigt — die Seite ordnet sie darüber zu.</summary>
+    public Guid JobId => job.Id;
+
     public FileJobCard(FileTranscriptionJob job)
     {
         this.job = job;
 
         open = new ConsoleButton(Loc.T("Öffnen"));
         open.Click2 += () => OpenRequested?.Invoke(job);
-        open.Visible = job.State == FileTranscriptionJob.Phase.Done;
+        open.Visible = ShowsOpen;
         Controls.Add(open);
 
         start = new ConsoleButton(Loc.T("Verarbeiten"));
         start.Click2 += () => StartRequested?.Invoke(job);
-        start.Visible = job.State == FileTranscriptionJob.Phase.Unprocessed;
+        start.Visible = ShowsStart;
         Controls.Add(start);
 
         close = new ConsoleButton("", false, Icons.Kind.Close);
@@ -57,8 +60,24 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
         return Math.Max(h, open.Height) + PadV * 2;
     }
 
-    private int TrailingWidth() => (open.Visible ? open.Width + 8 : 0)
-                                   + (start.Visible ? start.Width + 8 : 0) + close.Width;
+    private bool ShowsOpen => job.State == FileTranscriptionJob.Phase.Done;
+    private bool ShowsStart => job.State == FileTranscriptionJob.Phase.Unprocessed;
+
+    /// <summary>
+    /// Nach dem ZUSTAND fragen, nicht nach <c>Visible</c>: Solange die Seite
+    /// ausgeblendet ist, meldet jedes Kind-Control „unsichtbar", und die Karte
+    /// rechnete mit einer falschen Textbreite, bis der Tab einmal gewechselt wurde.
+    /// </summary>
+    private int TrailingWidth() => (ShowsOpen ? open.Width + 8 : 0)
+                                   + (ShowsStart ? start.Width + 8 : 0) + close.Width;
+
+    /// <summary>Übernimmt den aktuellen Stand des Auftrags, ohne die Karte neu zu
+    /// bauen — sonst verlöre ein Klick auf „Öffnen" seinen Knopf mitten im Klick.</summary>
+    public void RefreshFromJob()
+    {
+        PerformLayout();
+        Invalidate();
+    }
 
     private bool ShowsProgress =>
         job.State is FileTranscriptionJob.Phase.Transcribing or FileTranscriptionJob.Phase.Minutes;
@@ -97,8 +116,8 @@ internal sealed class FileJobCard : ThemedControl, IAutoHeight
         base.OnLayout(e);
         if (Width <= 0) return;
         close.Location = new Point(Width - PadH - close.Width, (Height - close.Height) / 2);
-        open.Visible = job.State == FileTranscriptionJob.Phase.Done;
-        start.Visible = job.State == FileTranscriptionJob.Phase.Unprocessed;
+        open.Visible = ShowsOpen;
+        start.Visible = ShowsStart;
         var right = close.Left;
         if (open.Visible)
         {

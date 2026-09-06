@@ -93,12 +93,30 @@ public sealed class AudioRecorder : IDisposable
         waveIn = null;
     }
 
-    /// <summary>Gewähltes Gerät, sofern es noch existiert — sonst Systemstandard.
-    /// (Ein abgezogenes USB-Mikrofon darf die Aufnahme nicht dauerhaft blockieren.)</summary>
+    /// <summary>
+    /// Gewähltes Gerät, sofern es noch existiert — sonst Systemstandard. (Ein
+    /// abgezogenes USB-Mikrofon darf die Aufnahme nicht dauerhaft blockieren.)
+    ///
+    /// <para>Entscheidend ist der NAME, nicht der Index: Der Index ist keine
+    /// Identität, er verschiebt sich beim An- und Abstecken eines anderen Geräts.
+    /// Wer sein Headset gewählt hatte, nahm sonst nach dem nächsten Neustart
+    /// unbemerkt über die Webcam auf.</para>
+    /// </summary>
     private static int DeviceIndexOrDefault()
     {
-        var index = Settings.Shared.InputDeviceIndex;
-        return index >= 0 && index < WaveInEvent.DeviceCount ? index : -1;
+        var s = Settings.Shared;
+        var wanted = s.InputDeviceName;
+        if (!string.IsNullOrEmpty(wanted))
+        {
+            foreach (var (index, name) in InputDevices())
+                if (string.Equals(name, wanted, StringComparison.OrdinalIgnoreCase))
+                    return index;
+            // Name gespeichert, Gerät nicht da → Systemstandard, nicht der Index:
+            // Der zeigt jetzt mit Sicherheit auf ein anderes Mikrofon.
+            return -1;
+        }
+        var fallback = s.InputDeviceIndex;
+        return fallback >= 0 && fallback < WaveInEvent.DeviceCount ? fallback : -1;
     }
 
     /// <summary>Verfügbare Eingänge als (Index, Name) für die Einstellungen.</summary>

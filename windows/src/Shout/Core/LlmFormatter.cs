@@ -19,6 +19,12 @@ public sealed class LlmFormatter : IDisposable
     /// <summary>Diktate kürzer als das fügen wir roh ein (spart LLM-Latenz).</summary>
     private const int MinCharsForFormatting = 40;
 
+    /// <summary>Zielmaß eines Abschnitts beim Diktat. Ein langes Diktat am Stück ins
+    /// Modell zu geben endet im Kontextfenster-Überlauf: Das Modell gibt dann den
+    /// Anfang zurück und lässt den Rest weg. Deshalb wie am Mac in Abschnitte.</summary>
+    private const int ChunkTarget = 1500;
+    private const int ChunkMinimum = 1000;
+
     private LLamaWeights? weights;
     private LLama.Abstractions.ILLamaParams? modelParams;
     private string? loadedModel;
@@ -36,19 +42,25 @@ public sealed class LlmFormatter : IDisposable
             if (loadedModel == model.Id && weights != null) return;
             await ModelDownloader.DownloadAsync(model, onProgress, cancel);
 
-            weights?.Dispose();
             var p = new ModelParams(ModelCatalog.PathFor(model))
             {
                 ContextSize = 4096,
                 GpuLayerCount = 0,   // CPU-Backend; GPU siehe README (Vulkan/CUDA-Pakete)
             };
-            weights = await LLamaWeights.LoadFromFileAsync(p, cancel);
+            // Erst laden, dann das alte Modell freigeben: Scheitert der Wechsel,
+            // bleibt die Aufbereitung mit dem bisherigen Modell einsatzbereit,
+            // statt bis zum nächsten Neustart auszufallen.
+            var next = await LLamaWeights.LoadFromFileAsync(p, cancel);
+            weights?.Dispose();
+            weights = next;
             modelParams = p;
             loadedModel = model.Id;
         }
-        catch
+        catch (Exception ex)
         {
-            weights = null;   // Formatierung fällt dann still auf Rohtext zurück
+            // Ohne geladenes Modell fällt die Formatierung still auf den Rohtext
+            // zurück; ein bereits geladenes bleibt bestehen.
+            StoreIO.Log($"Textmodell nicht geladen: {ex.Message}");
         }
         finally
         {
@@ -56,54 +68,65 @@ public sealed class LlmFormatter : IDisposable
         }
     }
 
-    /// <summary>Liefert bereinigten Text — oder den (getrimmten) Rohtext bei
-    /// kurzem Diktat, fehlendem Modell oder jedem Fehler.</summary>
-    public async Task<string> FormatAsync(string raw, string? termHint, CancellationToken cancel = default)
+    /// <summary>
+    /// „Aufwärmen": ein winziger Durchlauf, damit das erste echte Diktat nicht die
+    /// einmalige Einrichtung des Ausführers mitbezahlt (wie beim Transcriber).
+    /// </summary>
+    public async Task WarmUpAsync(CancellationToken cancel = default)
+    {
+        if (weights == null || modelParams == null) return;
+        try { _ = await RespondAsync("Antworte mit OK.", "OK", 0.1f, cancel, maxTokens: 4); }
+        catch { /* Aufwärmen darf still scheitern */ }
+    }
+
+    /// <summary>
+    /// Liefert bereinigten Text — oder den (getrimmten) Rohtext bei kurzem Diktat,
+    /// fehlendem Modell oder jedem Fehler.
+    ///
+    /// <para><paramref name="appHint"/> ist der Name des Programms, in das eingefügt
+    /// wird; daraus entsteht der Register-Hinweis (E-Mail formell, Chat knapp,
+    /// Terminal wörtlich).</para>
+    /// </summary>
+    public async Task<string> FormatAsync(string raw, string? termHint,
+                                          string? appHint = null,
+                                          CancellationToken cancel = default)
     {
         var text = raw.Trim();
         if (weights == null || modelParams == null) return text;
         if (text.Length < MinCharsForFormatting) return text;
 
-        await gate.WaitAsync(cancel);
-        try
-        {
-            var executor = new StatelessExecutor(weights, modelParams);
-            var prompt =
-                "<|im_start|>system\n" + SystemPrompt(termHint) + "<|im_end|>\n" +
-                "<|im_start|>user\n" + text + "<|im_end|>\n" +
-                "<|im_start|>assistant\n";
+        var parts = TextChunker.Chunks(text, ChunkTarget, ChunkMinimum);
+        if (parts.Count == 0) return text;
 
-            var inference = new InferenceParams
-            {
-                MaxTokens = 1024,
-                AntiPrompts = new[] { "<|im_end|>" },
-                SamplingPipeline = new DefaultSamplingPipeline { Temperature = 0.2f },
-            };
+        var pieces = new List<string>(parts.Count);
+        foreach (var part in parts)
+            pieces.Add(await FormatChunkAsync(part, termHint, appHint, cancel));
 
-            var output = new StringBuilder();
-            await foreach (var token in executor.InferAsync(prompt, inference, cancel))
-                output.Append(token);
+        var joined = TextChunker.JoinFormatted(pieces);
+        return joined.Length == 0 ? text : joined;
+    }
 
-            var cleaned = StripArtifacts(output.ToString());
-            if (cleaned.Length == 0) return text;
+    /// <summary>Formatiert EINEN Abschnitt. Bei leerer, fremder oder verschluckter
+    /// Ausgabe kommt der Rohtext des Abschnitts zurück — nie stiller Inhaltsverlust.</summary>
+    private async Task<string> FormatChunkAsync(string text, string? termHint, string? appHint,
+                                                CancellationToken cancel)
+    {
+        var cleaned = await RespondAsync(FormatterPrompt.System(appHint, termHint),
+                                         FormatterPrompt.User(text), 0.2f, cancel);
+        if (cleaned == null) return text;
 
-            // Kürzungs-Schutz (wie am Mac): das kleine Modell soll bereinigen,
-            // nicht zusammenfassen. Verliert die Ausgabe fast die Hälfte der
-            // Wörter, lieber den Rohtext einfügen als still Inhalt verlieren.
-            var inWords = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-            var outWords = cleaned.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-            if (inWords >= 30 && outWords * 100 < inWords * 55) return text;
+        cleaned = FormatterPrompt.StripMarkers(cleaned);
+        if (cleaned.Length == 0) return text;
 
-            return cleaned;
-        }
-        catch
-        {
-            return text;
-        }
-        finally
-        {
-            gate.Release();
-        }
+        // Netz hinter dem Prompt: Hat das Modell geantwortet statt formatiert, oder
+        // den Text verschluckt, ist der Rohtext besser als eine fremde Ausgabe.
+        var verdict = FormattingGuard.Check(text, cleaned);
+        if (verdict.IsOk) return cleaned;
+
+        StoreIO.Log(verdict.Verdict == FormattingGuard.Verdict.Unrelated
+            ? $"Aufbereitung verworfen: nur {verdict.InputSharePercent} % der Ausgabe stammen aus dem Diktat"
+            : $"Aufbereitung verworfen: {verdict.InWords} → {verdict.OutWords} Wörter");
+        return text;
     }
 
     /// <summary>
@@ -254,7 +277,7 @@ public sealed class LlmFormatter : IDisposable
     /// weil sie naturgemäß deutlich kürzer ist als die Eingabe.
     /// </summary>
     private async Task<string?> RespondAsync(string system, string user, float temperature,
-                                             CancellationToken cancel)
+                                             CancellationToken cancel, int maxTokens = 1536)
     {
         if (weights == null || modelParams == null) return null;
         await gate.WaitAsync(cancel);
@@ -267,7 +290,7 @@ public sealed class LlmFormatter : IDisposable
                 "<|im_start|>assistant\n";
             var inference = new InferenceParams
             {
-                MaxTokens = 1536,
+                MaxTokens = maxTokens,
                 AntiPrompts = new[] { "<|im_end|>" },
                 SamplingPipeline = new DefaultSamplingPipeline { Temperature = temperature },
             };
@@ -300,24 +323,6 @@ public sealed class LlmFormatter : IDisposable
         : """
         You analyse how a person speaks and dictates, based on their dictations. Describe the style in 2 to 3 short, kind English sentences and address the person as "you" (for example word choice, pace, structure, recurring patterns). No list, no preamble, no quotation marks, just the description.
         """;
-
-    private static string SystemPrompt(string? termHint)
-    {
-        var terms = termHint != null
-            ? $"\n- Eigennamen/Fachbegriffe EXAKT so schreiben (Schreibweise nicht verändern): {termHint}."
-            : "";
-        // Kompakter Prompt (wie auf iOS): auf CPU dominiert das Prompt-Prefill
-        // die Latenz — der lange macOS-Prompt würde spürbar bremsen.
-        return $"""
-        Du bereinigst diktierten Text (Deutsch oder Englisch). Antworte in derselben Sprache wie die Eingabe.
-        Regeln:{terms}
-        - Füllwörter (äh, ähm, also, halt; en: uh, um), Wiederholungen und Versprecher entfernen.
-        - Korrekte Interpunktion und Groß-/Kleinschreibung setzen.
-        - Wortlaut und Bedeutung exakt beibehalten; nichts hinzufügen, nichts kürzen.
-        - Gesprochene Aufzählungen („erstens/zweitens", „Punkt eins") als nummerierte Liste formatieren.
-        Gib AUSSCHLIESSLICH den bereinigten Text aus.
-        """;
-    }
 
     /// <summary>Manche Modelle verpacken die Antwort in ```-Blöcke — auspacken.
     /// Außerdem das Anti-Prompt-Token abschneiden, falls es mitkommt.</summary>

@@ -12,7 +12,11 @@ public static class ModelCatalog
         string Name,          // Anzeigename
         string SizeHint,      // z. B. "466 MB"
         string Note,          // Kurzbeschreibung für die UI
-        string DownloadUrl);
+        string DownloadUrl,
+        // Empfohlener Arbeitsspeicher. Gehört in den Katalog und nicht in die
+        // Modelle-Seite: Dort stand er als Tabelle nach Dateinamen, die bei jedem
+        // neuen Eintrag stillschweigend veraltet wäre. 0 = unbekannt.
+        int MinRamGB = 0);
 
     // MARK: Spracherkennung (ggml, mehrsprachig — KEINE .en-Varianten)
 
@@ -20,13 +24,13 @@ public static class ModelCatalog
     {
         new("ggml-base.bin", "Whisper Base", "142 MB",
             "Sehr schnell, mäßige Genauigkeit — für schwache Rechner.",
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"),
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin", 4),
         new("ggml-small.bin", "Whisper Small", "466 MB",
             "Guter Kompromiss aus Tempo und Genauigkeit.",
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"),
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin", 8),
         new("ggml-large-v3-turbo.bin", "Whisper Large v3 Turbo", "1,6 GB",
             "Beste Genauigkeit, braucht einen flotten Rechner.",
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"),
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin", 16),
     };
 
     // MARK: Formatierung (GGUF; bewusst NUR Qwen-Familie, damit ein
@@ -36,10 +40,10 @@ public static class ModelCatalog
     {
         new("qwen2.5-1.5b-instruct-q4_k_m.gguf", "Qwen 2.5 (1,5B)", "1,0 GB",
             "Schnell, für die Textbereinigung völlig ausreichend.",
-            "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"),
+            "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf", 8),
         new("qwen2.5-3b-instruct-q4_k_m.gguf", "Qwen 2.5 (3B)", "2,0 GB",
             "Gründlicher, spürbar langsamer — für starke Rechner.",
-            "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"),
+            "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf", 16),
     };
 
     // MARK: Empfehlung nach Arbeitsspeicher

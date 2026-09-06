@@ -136,12 +136,17 @@ internal sealed class DictionaryPage : PageBase, IRefreshablePage
         var before = dictionary.Data.Terms.Count;
         try
         {
+            // Erst sammeln, dann EINMAL eintragen: Zeile für Zeile durch AddTerm
+            // schrieb die komplette dictionary.json je Zeile — bei tausend Namen
+            // tausend Schreibvorgänge.
+            var terms = new List<string>();
             foreach (var line in File.ReadLines(dialog.FileName))
             {
                 var field = line.Split(',', 2).FirstOrDefault() ?? line;
                 var term = field.Trim(' ', '\t', '"', '\'');
-                if (term.Length > 0) dictionary.AddTerm(term);
+                if (term.Length > 0) terms.Add(term);
             }
+            dictionary.AddTerms(terms);
             importStatus.SetText(Loc.F("{0} neue Begriffe.", dictionary.Data.Terms.Count - before));
         }
         catch (Exception ex)

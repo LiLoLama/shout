@@ -17,10 +17,19 @@ public sealed class Settings
     public uint HotkeyKey { get; set; } = 0x20;                    // VK_SPACE
 
     /// <summary>Aufnahme-Art: "toggle" = drücken startet, nochmal drücken stoppt;
-    /// "hold" = Taste halten (Push-to-talk). Anders als am Mac ist „umschalten" der
-    /// Standard: die Windows-Kombination braucht immer einen Modifier, und
+    /// "hold" = Taste halten (Push-to-talk); "doubleTap" = zweimal kurz tippen startet,
+    /// einmal tippen stoppt. Anders als am Mac ist „umschalten" der Standard: die
+    /// Windows-Kombination braucht in diesem Modus immer einen Modifier, und
     /// Strg+Alt+Leertaste gedrückt zu halten, während man spricht, ist unbequem.</summary>
     public string HotkeyMode { get; set; } = "toggle";
+
+    /// <summary>
+    /// Der Hotkey ist eine reine Modifier-Taste (z. B. rechte Alt-Taste) oder eine
+    /// Taste ohne Modifier (F-Tasten). Beides kann <c>RegisterHotKey</c> nicht,
+    /// deshalb hängt shout. dafür immer den Tastatur-Hook ein — auch im
+    /// Umschalt- und Doppeltipp-Modus.
+    /// </summary>
+    public bool HotkeyModifierOnly { get; set; }
 
     /// <summary>Erststart-Assistent abgeschlossen. Der Standard ist ausdrücklich
     /// <c>true</c>, damit ein vorhandenes settings.json ohne diesen Schlüssel (also
@@ -88,8 +97,30 @@ public sealed class Settings
     /// <summary>Fixiert: Die Pille lässt sich nicht mehr mit der Maus verschieben.</summary>
     public bool PillLocked { get; set; } = false;
 
+    /// <summary>
+    /// Auf WELCHEM Bildschirm die frei gezogene Position gilt (Windows-Gerätename,
+    /// z. B. „\\.\DISPLAY2"). Ohne den landete die Pille auf dem Schirm unter dem
+    /// Mauszeiger — man zieht sie auf den zweiten Monitor, und beim nächsten Diktat
+    /// steht sie wieder woanders. Leer = Bildschirm des Mauszeigers.
+    /// </summary>
+    public string PillScreen { get; set; } = "";
+
     /// <summary>Aufnahmegerät: -1 = Systemstandard, sonst NAudio-Geräteindex.</summary>
     public int InputDeviceIndex { get; set; } = -1;
+
+    /// <summary>
+    /// Name des gewählten Aufnahmegeräts. Der Index allein ist keine Identität: Er
+    /// verschiebt sich, sobald ein anderes Mikrofon an- oder abgesteckt wird, und
+    /// shout. nähme dann stillschweigend das falsche Gerät. Der Name entscheidet,
+    /// der Index ist nur noch der Rückfall (Mac: Core-Audio-UID).
+    /// </summary>
+    public string InputDeviceName { get; set; } = "";
+
+    /// <summary>Mit Windows starten (Verknüpfung über HKCU\…\Run).</summary>
+    public bool StartAtLogin { get; set; }
+
+    /// <summary>Beim Start still nach Aktualisierungen suchen (Mac: Sparkle-Schalter).</summary>
+    public bool AutoUpdateCheck { get; set; } = true;
 
     [JsonIgnore]
     public static Settings Shared { get; } = Load();

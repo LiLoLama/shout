@@ -17,10 +17,18 @@ public sealed class BackupBundle
     [JsonPropertyName("stats")] public StatsStore.StatsData Stats { get; set; } = new();
     [JsonPropertyName("settings")] public SettingsSnapshot Settings { get; set; } = new();
 
+    /// <summary>Höchste Fassung, die diese App versteht. Eine neuere Datei wird
+    /// abgewiesen statt halb eingelesen — sonst gingen die Felder verloren, die sie
+    /// zusätzlich enthält, und der nächste Export schriebe sie endgültig weg.</summary>
+    public const int CurrentVersion = 1;
+
     /// <summary>Geteilte Einstellungen (Teilmenge; plattformspezifische Felder wie
-    /// der Mac-Hotkey werden beim Import schlicht ignoriert).</summary>
+    /// der Mac-Tastencode werden beim Import schlicht ignoriert).</summary>
     public sealed class SettingsSnapshot
     {
+        /// <summary>Aufnahme-Art — auf beiden Plattformen dieselben drei Werte
+        /// ("hold", "toggle", "doubleTap").</summary>
+        [JsonPropertyName("mode")] public string? Mode { get; set; }
         [JsonPropertyName("autoStop")] public bool? AutoStop { get; set; }
         [JsonPropertyName("silenceSeconds")] public double? SilenceSeconds { get; set; }
         [JsonPropertyName("formattingEnabled")] public bool? FormattingEnabled { get; set; }
@@ -35,11 +43,12 @@ public sealed class BackupBundle
         var s = Core.Settings.Shared;
         var bundle = new BackupBundle
         {
-            Dictionary = dictionary.Data,
+            Dictionary = dictionary.Snapshot(),
             History = history.Entries,
-            Stats = stats.Data,
+            Stats = stats.Snapshot(),
             Settings = new SettingsSnapshot
             {
+                Mode = s.HotkeyMode,
                 AutoStop = s.AutoStopEnabled,
                 SilenceSeconds = s.SilenceSeconds,
                 FormattingEnabled = s.FormattingEnabled,
@@ -66,12 +75,19 @@ public sealed class BackupBundle
             return Loc.T("Ungültige Backup-Datei.");
         }
         if (bundle == null) return Loc.T("Ungültige Backup-Datei.");
+        if (bundle.Version > CurrentVersion)
+            return Loc.F("Dieses Backup stammt aus einer neueren Version von shout. (Fassung {0}). Bitte zuerst shout. aktualisieren.",
+                         bundle.Version);
 
         dictionary.ReplaceContents(bundle.Dictionary);
         history.ReplaceEntries(bundle.History);
         stats.ReplaceData(bundle.Stats);
 
         var s = Core.Settings.Shared;
+        // Die Aufnahme-Art wandert mit, die Tastenbelegung NICHT: Tastencodes und
+        // Modifier-Bits sind auf beiden Systemen verschieden, und eine übernommene
+        // Mac-Kombination wäre unter Windows im besten Fall unbelegt.
+        if (bundle.Settings.Mode is "hold" or "toggle" or "doubleTap") s.HotkeyMode = bundle.Settings.Mode;
         if (bundle.Settings.AutoStop is { } auto) s.AutoStopEnabled = auto;
         if (bundle.Settings.SilenceSeconds is { } sil) s.SilenceSeconds = sil;
         if (bundle.Settings.FormattingEnabled is { } fmt) s.FormattingEnabled = fmt;

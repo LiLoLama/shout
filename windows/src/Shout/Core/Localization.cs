@@ -419,5 +419,58 @@ public static class Loc
             "Audio & video|*.mp3;*.m4a;*.wav;*.aiff;*.aac;*.flac;*.wma;*.mp4;*.m4v;*.mov;*.avi;*.wmv;*.mkv|All files|*.*",
         ["Textdatei (*.txt)|*.txt"] = "Text file (*.txt)|*.txt",
         ["Untertitel (*.srt)|*.srt"] = "Subtitles (*.srt)|*.srt",
+
+        // MARK: Meeting, Aufnahme-Arten, Tastenwahl
+        ["Meeting aufnehmen"] = "Record a meeting",
+        ["Doppeltipp"] = "Double tap",
+        ["Zweimal kurz tippen startet, einmal tippen stoppt."] =
+            "Tap twice quickly to start, once to stop.",
+        ["Drück die Tastenkombination, mit der du diktieren willst. Eine Funktionstaste geht auch allein, ebenso eine einzelne Modifier-Taste (drücken und loslassen)."] =
+            "Press the shortcut you want to dictate with. A function key works on its own, and so does a single modifier key (press and release it).",
+        ["Alt links"] = "Left Alt",
+        ["Alt rechts"] = "Right Alt",
+        ["{0} links"] = "Left {0}",
+        ["{0} rechts"] = "Right {0}",
+        ["‚Komma', ‚Punkt', ‚Fragezeichen', ‚neue Zeile', ‚neuer Absatz' werden zu echten Satzzeichen/Umbrüchen. Auf Englisch ebenso (‚comma', ‚period', ‚new line')."] =
+            "‚comma', ‚period', ‚question mark', ‚new line', ‚new paragraph' become real punctuation and line breaks. German markers work as well.",
+
+        // MARK: Tray-Menü, letztes Diktat
+        ["Text aufbereiten"] = "Clean up text",
+        ["Zuletzt Gesprochenes einfügen"] = "Insert last dictation",
+        ["Letztes Diktat korrigieren …"] = "Correct last dictation…",
+        ["Letztes Diktat korrigieren"] = "Correct last dictation",
+        ["Bessere falsch erkannte Wörter aus. shout. lernt die Korrekturen fürs nächste Mal — in jedem Programm."] =
+            "Fix any misrecognised words. shout. learns the corrections for next time — in every app.",
+        ["Übernehmen"] = "Apply",
+        ["Abbrechen"] = "Cancel",
+        ["Es läuft noch eine Datei-Verarbeitung. Beim Beenden geht sie verloren. Trotzdem beenden?"] =
+            "A file is still being processed. Quitting discards it. Quit anyway?",
+
+        // MARK: System, Mikrofon, Aktualisierung
+        ["System"] = "System",
+        ["Mit Windows starten"] = "Start with Windows",
+        ["shout. läuft nach der Anmeldung von selbst im Infobereich."] =
+            "shout. starts in the notification area after you sign in.",
+        ["Automatisch nach Aktualisierungen suchen"] = "Check for updates automatically",
+        ["Beim Start still prüfen und im Hintergrund laden. Melden tut sich shout. erst, wenn eine Version bereitliegt."] =
+            "Checks quietly at launch and downloads in the background. shout. only speaks up once a version is ready.",
+        ["Der Autostart ließ sich nicht eintragen — auf verwalteten Rechnern ist das gesperrt."] =
+            "The autostart entry could not be written — managed machines block it.",
+        ["Gilt fürs Diktat und für den Meeting-Mitschnitt."] =
+            "Applies to dictation and to meeting recordings.",
+        ["Version kopieren"] = "Copy version",
+        ["Version in die Zwischenablage kopiert."] = "Version copied to the clipboard.",
+        ["Fehler melden"] = "Report a bug",
+        ["Lizenz"] = "License",
+
+        // MARK: Modelle, Protokoll, Backup
+        ["Während einer Aufnahme oder Datei-Verarbeitung lässt sich das Modell nicht wechseln."] =
+            "You cannot switch models while a recording or a file job is running.",
+        ["Es läuft schon ein Download. Warte kurz, bis er fertig ist."] =
+            "A download is already running. Give it a moment to finish.",
+        ["Dafür wird das Modell zum Aufbereiten gebraucht — schalte „Text automatisch aufräumen“ ein."] =
+            "That needs the clean-up model — switch on “Clean up text automatically”.",
+        ["Dieses Backup stammt aus einer neueren Version von shout. (Fassung {0}). Bitte zuerst shout. aktualisieren."] =
+            "This backup comes from a newer version of shout. (format {0}). Please update shout. first.",
     };
 }

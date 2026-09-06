@@ -39,7 +39,8 @@ internal sealed class RecordingPage : PageBase
         {
             ("hold", Loc.T("Halten")),
             ("toggle", Loc.T("Umschalten")),
-        }, s.HotkeyMode == "hold" ? "hold" : "toggle");
+            ("doubleTap", Loc.T("Doppeltipp")),
+        }, s.HotkeyMode is "hold" or "doubleTap" ? s.HotkeyMode : "toggle");
         mode.Changed += key =>
         {
             s.HotkeyMode = key;
@@ -96,12 +97,16 @@ internal sealed class RecordingPage : PageBase
         recording.Add(new PanelRow
         {
             Title = Loc.T("Aufnahme-Art"),
-            HelpFor = () => Settings.Shared.HotkeyMode == "hold"
-                ? Loc.T("Tastenkombination gedrückt halten, beim Loslassen wird eingefügt.")
-                : Loc.T("Einmal drücken zum Starten, nochmal zum Stoppen."),
+            HelpFor = () => Settings.Shared.HotkeyMode switch
+            {
+                "hold" => Loc.T("Tastenkombination gedrückt halten, beim Loslassen wird eingefügt."),
+                "doubleTap" => Loc.T("Zweimal kurz tippen startet, einmal tippen stoppt."),
+                _ => Loc.T("Einmal drücken zum Starten, nochmal zum Stoppen."),
+            },
             Trailing = mode,
         });
-        recording.Add(Loc.T("So startest du"), Loc.T("Drück die Tastenkombination, mit der du diktieren willst."),
+        recording.Add(Loc.T("So startest du"),
+                      Loc.T("Drück die Tastenkombination, mit der du diktieren willst. Eine Funktionstaste geht auch allein, ebenso eine einzelne Modifier-Taste (drücken und loslassen)."),
                       new Cluster(new Control[] { hotkeyCap, changeHotkey }));
         recording.Add(Loc.T("Von selbst aufhören"),
                       Loc.T("Stoppt automatisch nach kurzer Sprechpause (im Umschalt-Modus)."), autoStop);
@@ -143,7 +148,7 @@ internal sealed class RecordingPage : PageBase
                  Loc.T("Füllwörter raus, Satzzeichen und Aufzählungen setzen. Lädt ein zweites Modell."),
                  formatting);
         text.Add(Loc.T("Sprachbefehle"),
-                 Loc.T("‚Komma', ‚Punkt', ‚Fragezeichen', ‚neue Zeile', ‚neuer Absatz' werden zu echten Satzzeichen/Umbrüchen."),
+                 Loc.T("‚Komma', ‚Punkt', ‚Fragezeichen', ‚neue Zeile', ‚neuer Absatz' werden zu echten Satzzeichen/Umbrüchen. Auf Englisch ebenso (‚comma', ‚period', ‚new line')."),
                  speechCommands);
         text.Add(Loc.T("In der Zwischenablage behalten"),
                  Loc.T("Das Diktat bleibt zusätzlich in der Zwischenablage — sonst wird der vorherige Inhalt wiederhergestellt."),
@@ -188,19 +193,51 @@ internal sealed class RecordingPage : PageBase
 
         // MARK: Mikrofon
 
+        // Der NAME ist die Auswahl, nicht der Index: Der verschiebt sich beim
+        // An- und Abstecken anderer Geräte, und shout. nähme dann ein anderes
+        // Mikrofon, ohne es zu sagen.
         var mic = new ConsoleDropdown(220);
-        var devices = new List<(string, string)> { ("-1", Loc.T("Systemstandard")) };
-        devices.AddRange(AudioRecorder.InputDevices().Select(d => (d.Index.ToString(), d.Name)));
-        mic.SetItems(devices, s.InputDeviceIndex.ToString());
+        var devices = new List<(string, string)> { ("", Loc.T("Systemstandard")) };
+        devices.AddRange(AudioRecorder.InputDevices().Select(d => (d.Name, d.Name)));
+        mic.SetItems(devices, s.InputDeviceName);
         mic.Changed += key =>
         {
-            s.InputDeviceIndex = int.TryParse(key, out var index) ? index : -1;
+            s.InputDeviceName = key;
+            s.InputDeviceIndex = -1;
             s.Save();
         };
 
         var micPanel = new ConsolePanel { Title = Loc.T("Mikrofon") };
-        micPanel.Add(Loc.T("Eingang"), null, mic);
+        micPanel.Add(Loc.T("Eingang"),
+                     Loc.T("Gilt fürs Diktat und für den Meeting-Mitschnitt."), mic);
         Push(micPanel);
+
+        // MARK: System
+
+        var startAtLogin = new ConsoleToggle(Autostart.IsEnabled);
+        var startHint = TextBlock.Warning(
+            Loc.T("Der Autostart ließ sich nicht eintragen — auf verwalteten Rechnern ist das gesperrt."));
+        startHint.Visible = false;
+        startAtLogin.Changed += value =>
+        {
+            var ok = Autostart.Apply(value);
+            s.StartAtLogin = ok && value;
+            s.Save();
+            startHint.Visible = !ok;
+            form.PageHeightChanged();
+        };
+
+        var autoUpdate = new ConsoleToggle(s.AutoUpdateCheck);
+        autoUpdate.Changed += value => { s.AutoUpdateCheck = value; s.Save(); };
+
+        var system = new ConsolePanel { Title = Loc.T("System") };
+        system.Add(Loc.T("Mit Windows starten"),
+                   Loc.T("shout. läuft nach der Anmeldung von selbst im Infobereich."), startAtLogin);
+        system.Add(Loc.T("Automatisch nach Aktualisierungen suchen"),
+                   Loc.T("Beim Start still prüfen und im Hintergrund laden. Melden tut sich shout. erst, wenn eine Version bereitliegt."),
+                   autoUpdate);
+        Push(system);
+        Push(startHint, 4);
     }
 
     private static (string Key, string Label)[] PillPositionItems()
@@ -229,11 +266,12 @@ internal sealed class RecordingPage : PageBase
         // Halten-Modus) erreicht dieses Fenster nie — die aktuelle Kombination
         // ließe sich sonst nicht erneut auswählen.
         app.PauseHotkey();
-        form.CaptureHotkey((mods, key) =>
+        form.CaptureHotkey((mods, key, modifierOnly) =>
         {
             var s = Settings.Shared;
             s.HotkeyModifiers = mods;
             s.HotkeyKey = key;
+            s.HotkeyModifierOnly = modifierOnly;
             s.Save();
             hotkeyCap.SetText(HotkeyManager.Describe(mods, key));
             changeHotkey.SetEnabled(true);

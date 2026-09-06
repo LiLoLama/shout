@@ -40,6 +40,7 @@ public sealed class MeetingRecorder : IDisposable
     private System.Threading.Timer? pump;
 
     private long framesWritten;
+    private long framesSinceFlush;
     private bool paused;
     private bool sawSignal;
 
@@ -74,9 +75,19 @@ public sealed class MeetingRecorder : IDisposable
 
     public static IReadOnlyList<string> ExistingRecordings()
     {
-        if (!Directory.Exists(RecordingsPath)) return Array.Empty<string>();
-        return Directory.GetFiles(RecordingsPath, "*.wav")
-            .OrderByDescending(File.GetLastWriteTimeUtc).ToList();
+        try
+        {
+            if (!Directory.Exists(RecordingsPath)) return Array.Empty<string>();
+            return Directory.GetFiles(RecordingsPath, "*.wav")
+                .OrderByDescending(File.GetLastWriteTimeUtc).ToList();
+        }
+        catch (Exception ex)
+        {
+            // Ein unlesbarer Ordner (Rechte, gesperrte Datei) darf nicht verhindern,
+            // dass sich die Einstellungen überhaupt öffnen lassen.
+            StoreIO.Log($"Mitschnitt-Ordner nicht lesbar: {ex.Message}");
+            return Array.Empty<string>();
+        }
     }
 
     /// <summary>Stammt die Datei aus unserem Mitschnitt-Ordner? Nur solche darf die
@@ -135,11 +146,12 @@ public sealed class MeetingRecorder : IDisposable
         try { File.Move(path, target); }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Mitschnitt nicht umbenannt: {ex.Message}");
+            StoreIO.Log($"Mitschnitt nicht umbenannt: {ex.Message}");
             return path;
         }
-        // Anders als am iPhone gibt es hier keine Transkript-Ablage neben der
-        // Datei — Ergebnisse leben unter Windows wie am Mac nur zur Laufzeit.
+        // Das Transkript liegt als „…​.json" daneben und muss mit, sonst gehörte es
+        // nach dem Umbenennen zu keiner Aufnahme mehr (wie am iPhone).
+        TranscriptStore.Move(path, target);
         return target;
     }
 
@@ -154,6 +166,7 @@ public sealed class MeetingRecorder : IDisposable
         writer = new WaveFileWriter(target, format);
         Path = target;
         framesWritten = 0;
+        framesSinceFlush = 0;
         paused = false;
         sawSignal = false;
         NoSignal = false;
@@ -196,9 +209,39 @@ public sealed class MeetingRecorder : IDisposable
         return target;
     }
 
+    /// <summary>
+    /// Das in den Einstellungen gewählte Mikrofon als WASAPI-Endpunkt. Der Mitschnitt
+    /// nahm bisher IMMER über das Systemstandard-Gerät auf und ignorierte die Wahl
+    /// stillschweigend — wer sein Ansteckmikrofon eingestellt hatte, bekam trotzdem
+    /// die Webcam. Gefunden wird über den Namen, weil NAudios Aufnahme-Index (WaveIn)
+    /// und die WASAPI-Endpunkte zwei verschiedene Listen sind.
+    /// </summary>
+    private static MMDevice? SelectedCaptureDevice()
+    {
+        var wanted = Settings.Shared.InputDeviceName;
+        if (string.IsNullOrWhiteSpace(wanted)) return null;
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+            // WaveIn kürzt Gerätenamen auf 31 Zeichen — deshalb Präfix-Vergleich in
+            // beide Richtungen statt Gleichheit.
+            foreach (var device in devices)
+                if (device.FriendlyName.StartsWith(wanted, StringComparison.OrdinalIgnoreCase)
+                    || wanted.StartsWith(device.FriendlyName, StringComparison.OrdinalIgnoreCase))
+                    return device;
+        }
+        catch (Exception ex)
+        {
+            StoreIO.Log($"Aufnahmegerät nicht auflösbar: {ex.Message}");
+        }
+        return null;
+    }
+
     private ISampleProvider StartMicrophone()
     {
-        microphone = new WasapiCapture();
+        var device = SelectedCaptureDevice();
+        microphone = device != null ? new WasapiCapture(device) : new WasapiCapture();
         microphoneBuffer = MakeBuffer(microphone.WaveFormat);
         microphone.DataAvailable += (_, e) => microphoneBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
         microphone.StartRecording();
@@ -261,6 +304,18 @@ public sealed class MeetingRecorder : IDisposable
             }
             writer.Write(bytes, 0, bytes.Length);
             framesWritten += read;
+
+            // Alle fünf Sekunden die RIFF-Kopfdaten nachziehen (NAudios Flush ruft
+            // UpdateHeader). Ohne das stehen Länge und Datengröße erst beim Schließen
+            // richtig in der Datei — ein Absturz oder ein hartes Ausschalten hinterließe
+            // eine WAV, die kein Abspieler öffnet. Eine Stunde Besprechung ist der
+            // falsche Ort, um darauf zu wetten.
+            framesSinceFlush += read;
+            if (framesSinceFlush >= Rate * 5)
+            {
+                framesSinceFlush = 0;
+                try { writer.Flush(); } catch { /* Flush darf die Aufnahme nie beenden */ }
+            }
             Changed?.Invoke();
         }
     }

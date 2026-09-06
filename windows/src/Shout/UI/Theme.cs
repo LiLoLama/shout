@@ -144,6 +144,15 @@ internal static class Theme
             : TextRenderer.MeasureText("i i", font, MaxSize, Tight).Width
               - TextRenderer.MeasureText("ii", font, MaxSize, Tight).Width;
 
+    /// Dieselbe Breite, aber im Gerätekontext des Fensters gemessen: ohne ihn misst
+    /// GDI am Hauptbildschirm, gezeichnet wird bei 150 % aber ein Drittel breiter —
+    /// die Buchstaben eines gesperrten Labels schöben sich übereinander.
+    private static int CharWidth(Graphics g, char ch, Font font)
+        => ch != ' '
+            ? TextRenderer.MeasureText(g, ch.ToString(), font, MaxSize, Tight).Width
+            : TextRenderer.MeasureText(g, "i i", font, MaxSize, Tight).Width
+              - TextRenderer.MeasureText(g, "ii", font, MaxSize, Tight).Width;
+
     /// Text mit Sperrung (SwiftUIs `.tracking`) — für die Abschnitts-Labels.
     public static void DrawTracked(Graphics g, string text, Font font, Color color, PointF at, float tracking)
     {
@@ -153,7 +162,7 @@ internal static class Theme
             if (ch != ' ')
                 TextRenderer.DrawText(g, ch.ToString(), font,
                                       new Point((int)Math.Round(x), (int)at.Y), color, Tight);
-            x += CharWidth(ch, font) + tracking;
+            x += CharWidth(g, ch, font) + tracking;
         }
     }
 
@@ -174,33 +183,6 @@ internal static class Theme
     public static void DrawTight(Graphics g, string text, Font font, Color color, Point at)
         => TextRenderer.DrawText(g, text, font, at, color, Tight);
 
-    /// Einzeiliger Text ohne Umbruch, links ausgerichtet.
-    public static readonly StringFormat NoWrap = new(StringFormatFlags.NoWrap)
-    {
-        Trimming = StringTrimming.EllipsisCharacter,
-        LineAlignment = StringAlignment.Near,
-    };
-
-    /// Umbrechender Text (Hilfetexte, Absätze).
-    public static readonly StringFormat Wrap = new()
-    {
-        Trimming = StringTrimming.Word,
-        LineAlignment = StringAlignment.Near,
-    };
-
-    /// Zentrierter Text (Knöpfe, Badges).
-    public static readonly StringFormat Centered = new(StringFormatFlags.NoWrap)
-    {
-        Alignment = StringAlignment.Center,
-        LineAlignment = StringAlignment.Center,
-    };
-
-    /// Höhe eines umbrechenden Textes bei gegebener Breite.
-    public static int MeasureWrapped(Graphics g, string text, Font font, int width)
-    {
-        if (string.IsNullOrEmpty(text)) return 0;
-        return (int)Math.Ceiling(g.MeasureString(text, font, width, Wrap).Height);
-    }
 }
 
 /// <summary>
@@ -215,10 +197,18 @@ internal static class DarkTitleBar
         {
             var on = 1;
             // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (vor Win-10-20H1: Attribut 19)
-            if (DwmSetWindowAttribute(handle, 20, ref on, sizeof(int)) != 0)
-                DwmSetWindowAttribute(handle, 19, ref on, sizeof(int));
+            var result = DwmSetWindowAttribute(handle, 20, ref on, sizeof(int));
+            if (result != 0) result = DwmSetWindowAttribute(handle, 19, ref on, sizeof(int));
+            // Vor Win 10 2004 kennt DWM beide Attribute nicht. Das Fenster bleibt
+            // benutzbar, also kein Dialog — aber ohne Protokolleintrag sucht man
+            // die helle Titelleiste später im eigenen Zeichencode.
+            if (result != 0)
+                Shout.Core.StoreIO.Log($"Dunkle Titelleiste nicht gesetzt (DwmSetWindowAttribute: 0x{result:X8})");
         }
-        catch (DllNotFoundException) { /* ältere Windows-Version: helle Titelleiste */ }
+        catch (DllNotFoundException ex)
+        {
+            Shout.Core.StoreIO.Log($"Dunkle Titelleiste nicht verfügbar: {ex.Message}");
+        }
     }
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]

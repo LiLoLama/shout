@@ -19,6 +19,8 @@ internal sealed class FilesPage : PageBase, IRefreshablePage
     private readonly TrayContext app;
     private readonly FileTranscriptionQueue queue;
     private readonly Dictionary<Guid, TranscriptForm> windows = new();
+    private readonly Dictionary<Guid, FileJobCard> cards = new();
+    private string structure = "";
 
     public FilesPage(TrayContext app, FileTranscriptionQueue queue)
     {
@@ -30,19 +32,53 @@ internal sealed class FilesPage : PageBase, IRefreshablePage
         DragDrop += OnDragDrop;
 
         // Die Warteschlange meldet sich vom Threadpool — auf den UI-Thread wechseln.
-        queue.Changed += () =>
-        {
-            if (IsDisposed || !IsHandleCreated) return;
-            try { BeginInvoke(new Action(Rebuild)); } catch (ObjectDisposedException) { }
-        };
+        queue.Changed += OnChanged;
 
         Rebuild();
     }
+
+    protected override void Dispose(bool disposing)
+    {
+        // Die Warteschlange lebt so lange wie die App, diese Seite nicht — ohne das
+        // Abmelden bliebe jede alte Seite über den Delegaten erreichbar.
+        if (disposing) queue.Changed -= OnChanged;
+        base.Dispose(disposing);
+    }
+
+    private void OnChanged()
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke(new Action(Tick)); } catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>
+    /// Die Warteschlange meldet sich nach jedem transkribierten Block und bei jedem
+    /// Prozentschritt des Protokolls. Neu gebaut wird nur, wenn sich die Liste oder
+    /// ein Zustand ändert — sonst wandern die Werte in die vorhandenen Karten, und
+    /// „Öffnen" bleibt anklickbar, während nebenan gerechnet wird.
+    /// </summary>
+    private void Tick()
+    {
+        if (Signature() != structure) { Rebuild(); return; }
+        foreach (var card in cards.Values) card.RefreshFromJob();
+    }
+
+    private string Signature()
+    {
+        var jobs = string.Join(",", Jobs().Select(j => $"{j.Id}:{j.State}"));
+        return string.Join("|", app.TranscriberReady, app.FormatterReady, jobs);
+    }
+
+    private List<FileTranscriptionJob> Jobs()
+        // Nur eingeworfene Dateien — Mitschnitte stehen unter „Meeting".
+        => queue.Jobs.Where(j => !MeetingRecorder.IsOwnRecording(j.Path)).ToList();
 
     public void Refresh2() => Rebuild();
 
     private void Rebuild()
     {
+        structure = Signature();
+        cards.Clear();
         TrimStack(0);
 
         Push(new SectionHeader(Loc.T("Dateien")), 0);
@@ -64,6 +100,25 @@ internal sealed class FilesPage : PageBase, IRefreshablePage
         Push(TextBlock.Footnote(Loc.T(
             "Die Datei wird auf diesem Gerät gelesen — nichts wird hochgeladen. Ergebnisse werden nicht automatisch gespeichert und tauchen weder im Verlauf noch in den Statistiken auf.")));
         NotifyHeightChanged();
+        EnableDropOnChildren(this);
+    }
+
+    /// <summary>
+    /// Windows meldet Dateien nur an das Control unter dem Zeiger. Ohne diese Zeile
+    /// nahm die Seite Dateien ausschließlich an ihrem Rand an — genau NICHT auf der
+    /// Fläche, auf der „Dateien hierher ziehen" steht.
+    /// </summary>
+    private void EnableDropOnChildren(Control parent)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            child.AllowDrop = true;
+            child.DragEnter -= OnDragEnter;
+            child.DragDrop -= OnDragDrop;
+            child.DragEnter += OnDragEnter;
+            child.DragDrop += OnDragDrop;
+            EnableDropOnChildren(child);
+        }
     }
 
     private void PushDropZone()
@@ -109,8 +164,7 @@ internal sealed class FilesPage : PageBase, IRefreshablePage
 
     private void PushJobs()
     {
-        // Nur eingeworfene Dateien — Mitschnitte stehen unter „Meeting".
-        var jobs = queue.Jobs.Where(j => !MeetingRecorder.IsOwnRecording(j.Path)).ToList();
+        var jobs = Jobs();
         if (jobs.Count == 0) return;
 
         Push(new GroupLabel(Loc.T("Aufträge")), 20);
@@ -118,12 +172,14 @@ internal sealed class FilesPage : PageBase, IRefreshablePage
         {
             var card = new FileJobCard(job);
             card.OpenRequested += OpenResult;
+            card.StartRequested += j => queue.Start(j);
             card.CancelRequested += j => queue.Cancel(j);
             card.RemoveRequested += j =>
             {
                 CloseResult(j.Id);
                 queue.Remove(j);
             };
+            cards[job.Id] = card;
             Push(card, 8);
         }
 

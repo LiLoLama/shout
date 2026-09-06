@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Bewusst net8.0 und NICHT net8.0-windows: Die geprüfte Logik ist reine
+         Textverarbeitung ohne WinForms, NAudio oder whisper.cpp. So laufen die
+         Tests auf jedem Rechner — auch auf dem Mac, auf dem der Großteil dieses
+         Ports geschrieben wurde, und wo bisher nicht einmal ein Compile-Check ging. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Shout.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Die Quelldateien werden verlinkt statt das App-Projekt zu referenzieren:
+         Shout.csproj ist net8.0-windows und zieht die halbe Windows-Welt mit.
+         Nur die Dateien hier stehen ohne diese Abhängigkeiten. -->
+    <Compile Include="../../src/Shout/Core/TextChunker.cs" Link="Core/TextChunker.cs" />
+    <Compile Include="../../src/Shout/Core/TranscriptLayout.cs" Link="Core/TranscriptLayout.cs" />
+    <Compile Include="../../src/Shout/Core/TranscriptMinutes.cs" Link="Core/TranscriptMinutes.cs" />
+    <Compile Include="../../src/Shout/Core/SubtitleWriter.cs" Link="Core/SubtitleWriter.cs" />
+    <Compile Include="../../src/Shout/Core/FormattingGuard.cs" Link="Core/FormattingGuard.cs" />
+    <Compile Include="../../src/Shout/Core/FormatterPrompt.cs" Link="Core/FormatterPrompt.cs" />
+    <Compile Include="../../src/Shout/Core/CorrectionLearner.cs" Link="Core/CorrectionLearner.cs" />
+    <Compile Include="../../src/Shout/Core/DoubleTapDetector.cs" Link="Core/DoubleTapDetector.cs" />
+    <Compile Include="../../src/Shout/Core/SpeechCommands.cs" Link="Core/SpeechCommands.cs" />
+    <Compile Include="../../src/Shout/Core/PersonalDictionary.cs" Link="Core/PersonalDictionary.cs" />
+    <Compile Include="../../src/Shout/Core/Settings.cs" Link="Core/Settings.cs" />
+    <Compile Include="../../src/Shout/Core/ModelCatalog.cs" Link="Core/ModelCatalog.cs" />
+    <Compile Include="../../src/Shout/Core/StoreIO.cs" Link="Core/StoreIO.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+</Project>

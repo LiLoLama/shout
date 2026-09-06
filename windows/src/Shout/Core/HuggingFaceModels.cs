@@ -107,7 +107,9 @@ public static class HuggingFaceModels
                     // Leer: die Beschreibung baut die Modelle-Seite beim Anzeigen,
                     // sonst würde die Sprache beim Speichern einfrieren.
                     Note: "",
-                    DownloadUrl: downloadUrl),
+                    DownloadUrl: downloadUrl,
+                    // Gewichte plus Kontext und Luft — gleiche Faustregel wie am Mac.
+                    MinRamGB: gb > 0 ? (int)Math.Round(gb * 1.7) : 0),
                 candidate.Downloads ?? 0,
                 candidate.Likes ?? 0,
                 // Gewichte plus Kontext und Luft — gleiche Faustregel wie am Mac.
@@ -171,9 +173,9 @@ public static class HuggingFaceModels
     /// <summary>„1234567" → „1,2M". Die Modelle-Seite baut damit die Beschreibung.</summary>
     public static string Compact(int n) => n switch
     {
-        >= 1_000_000 => $"{n / 1_000_000.0:0.#}M",
-        >= 1_000 => $"{n / 1000}k",
-        _ => n.ToString(),
+        >= 1_000_000 => (n / 1_000_000.0).ToString("0.#", System.Globalization.CultureInfo.CurrentCulture) + "M",
+        >= 1_000 => (n / 1000).ToString(System.Globalization.CultureInfo.CurrentCulture) + "k",
+        _ => n.ToString(System.Globalization.CultureInfo.CurrentCulture),
     };
 
     /// <summary>

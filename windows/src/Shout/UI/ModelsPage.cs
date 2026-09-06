@@ -227,14 +227,13 @@ internal sealed class ModelsPage : PageBase
         NotifyHeightChanged();
     }
 
-    /// <summary>Grober RAM-Bedarf je Modell — nur für das Abzeichen „Viel RAM nötig".</summary>
-    private static int RequiredRam(string id) => id switch
-    {
-        "ggml-large-v3-turbo.bin" => 8,
-        "qwen2.5-3b-instruct-q4_k_m.gguf" => 16,
-        "qwen2.5-1.5b-instruct-q4_k_m.gguf" => 8,
-        _ => 0,
-    };
+    /// <summary>
+    /// Grober RAM-Bedarf — nur für das Abzeichen „Viel RAM nötig". Die Angabe steht
+    /// jetzt im Katalog beim Modell; die frühere Tabelle nach Dateinamen hier wäre
+    /// bei jedem neuen Eintrag stillschweigend veraltet.
+    /// </summary>
+    private static int RequiredRam(string id)
+        => (ModelCatalog.AsrById(id) ?? ModelCatalog.LlmById(id))?.MinRamGB ?? 0;
 
     /// <summary>Kopfzeile der Hardware-Karte: Prozessor, Speicher, Empfehlung.</summary>
     private static void PaintHardware(Graphics g, Rectangle inner,
@@ -259,14 +258,22 @@ internal sealed class ModelsPage : PageBase
             Theme.Gray(0.7), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
     }
 
+    /// <summary>Läuft gerade ein Download? Die feste und die Live-Liste steuern
+    /// dieselbe Einstellung; ohne diese Sperre ließen sich beide gleichzeitig
+    /// starten, und der zweite Lauf scheiterte an der gesperrten .partial-Datei.</summary>
+    private bool downloading;
+
     /// <summary>Modell umschalten: laden (ggf. herunterladen), dann in der App aktivieren.</summary>
     private void SwitchModel(ModelListPanel list, string id, bool isAsr)
     {
         if (app.IsBusy)
         {
-            note.SetText(Loc.T("Während einer Aufnahme lässt sich das Modell nicht wechseln."));
-            note.Visible = true;
-            NotifyHeightChanged();
+            ShowNote(Loc.T("Während einer Aufnahme oder Datei-Verarbeitung lässt sich das Modell nicht wechseln."));
+            return;
+        }
+        if (downloading)
+        {
+            ShowNote(Loc.T("Es läuft schon ein Download. Warte kurz, bis er fertig ist."));
             return;
         }
 
@@ -274,6 +281,7 @@ internal sealed class ModelsPage : PageBase
         var model = isAsr ? ModelCatalog.AsrById(id) : ModelCatalog.LlmById(id);
         if (model == null) return;
 
+        downloading = true;
         list.SetLoading(id, null);
         _ = Task.Run(async () =>
         {
@@ -281,13 +289,21 @@ internal sealed class ModelsPage : PageBase
             {
                 await ModelDownloader.DownloadAsync(model, p =>
                 {
-                    if (p >= 0) BeginInvoke(() => list.SetLoading(id, p));
+                    if (p >= 0) OnUi(() => list.SetLoading(id, p));
                 });
-                BeginInvoke(() =>
+
+                // Die Einstellung wird IMMER geschrieben, auch wenn das Fenster
+                // inzwischen zu ist: Sie gehört zur App, nicht zur Seite. Vorher
+                // hing sie am BeginInvoke — schloss man das Fenster während des
+                // Downloads, warf der Fortschritts-Rückruf mitten im Leseschleifen-
+                // Durchlauf, der Download brach ab und die Wahl war verloren.
+                var s = Settings.Shared;
+                if (isAsr) s.AsrModel = id; else s.LlmModel = id;
+                s.Save();
+                app.ReloadModels();
+
+                OnUi(() =>
                 {
-                    var s = Settings.Shared;
-                    if (isAsr) s.AsrModel = id; else s.LlmModel = id;
-                    s.Save();
                     list.SetSelected(id);
                     // Feste und Live-Liste steuern DIESELBE Einstellung — die
                     // jeweils andere muss ihre Markierung verlieren.
@@ -298,19 +314,39 @@ internal sealed class ModelsPage : PageBase
                             remoteList.SetSelected(id);
                     }
                     list.SetLoading(null, null);
-                    app.ReloadModels();
                 });
             }
             catch (Exception ex)
             {
-                BeginInvoke(() =>
+                StoreIO.Log($"Modell-Download fehlgeschlagen: {ex.Message}");
+                OnUi(() =>
                 {
                     list.SetLoading(null, null);
-                    note.SetText(Loc.F("Download fehlgeschlagen: {0}", ex.Message));
-                    note.Visible = true;
-                    NotifyHeightChanged();
+                    ShowNote(Loc.F("Download fehlgeschlagen: {0}", ex.Message));
                 });
             }
+            finally
+            {
+                downloading = false;
+            }
         });
+    }
+
+    private void ShowNote(string text)
+    {
+        note.SetText(text);
+        note.Visible = true;
+        NotifyHeightChanged();
+    }
+
+    /// <summary>
+    /// Führt etwas auf dem UI-Faden aus — und tut schlicht nichts, wenn die Seite
+    /// inzwischen weg ist. Ohne diese Prüfung warf jeder Rückruf nach dem Schließen
+    /// des Fensters eine Ausnahme mitten in den Download.
+    /// </summary>
+    private void OnUi(Action action)
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke(action); } catch (ObjectDisposedException) { } catch (InvalidOperationException) { }
     }
 }

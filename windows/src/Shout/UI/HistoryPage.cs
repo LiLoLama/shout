@@ -67,6 +67,9 @@ internal sealed class HistoryPage : PageBase, IRefreshablePage
                 {
                     try { Clipboard.SetText(e.Text); } catch { /* Zwischenablage gesperrt */ }
                 };
+                // Aufgeklapptes Rohtranskript ändert die Kartenhöhe — der
+                // Scrollbereich muss das mitbekommen.
+                card.HeightChanged += NotifyHeightChanged;
                 card.DeleteRequested += e =>
                 {
                     history.Delete(e);

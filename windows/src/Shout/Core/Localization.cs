@@ -463,6 +463,9 @@ public static class Loc
         ["Fehler melden"] = "Report a bug",
         ["Lizenz"] = "License",
 
+        ["Original anzeigen"] = "Show original",
+        ["Original ausblenden"] = "Hide original",
+
         // MARK: Modelle, Protokoll, Backup
         ["Während einer Aufnahme oder Datei-Verarbeitung lässt sich das Modell nicht wechseln."] =
             "You cannot switch models while a recording or a file job is running.",

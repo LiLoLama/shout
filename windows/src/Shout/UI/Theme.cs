@@ -166,14 +166,6 @@ internal static class Theme
         }
     }
 
-    /// Breite eines gesperrten Textes (passend zu <see cref="DrawTracked"/>).
-    public static float MeasureTracked(string text, Font font, float tracking)
-    {
-        float w = 0;
-        foreach (var ch in text) w += CharWidth(ch, font) + tracking;
-        return w;
-    }
-
     /// Breite ohne seitliche Polsterung — für nahtlos aneinandergesetzte Teile
     /// wie die Wortmarke „shout" + „.".
     public static int MeasureTight(string text, Font font)
@@ -182,7 +174,6 @@ internal static class Theme
     /// Text ohne seitliche Polsterung an eine exakte Position zeichnen.
     public static void DrawTight(Graphics g, string text, Font font, Color color, Point at)
         => TextRenderer.DrawText(g, text, font, at, color, Tight);
-
 }
 
 /// <summary>

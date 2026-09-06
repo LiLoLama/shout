@@ -61,6 +61,20 @@ internal static class AppIcons
         using var brush = new SolidBrush(Theme.Live);
         g.FillEllipse(brush, 3, 3, 26, 26);
         var handle = bmp.GetHicon();
-        return Icon.FromHandle(handle);
+        try
+        {
+            // Icon.FromHandle übernimmt das HICON NICHT: Ohne die Kopie und das
+            // DestroyIcon bliebe bei jedem Aufnahmestart ein GDI-Handle liegen.
+            using var borrowed = Icon.FromHandle(handle);
+            return (Icon)borrowed.Clone();
+        }
+        finally
+        {
+            DestroyIcon(handle);
+        }
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool DestroyIcon(IntPtr handle);
 }

@@ -55,6 +55,12 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Version: $version"
 
+      # Vor dem Veröffentlichen prüfen: Ein Release, das die eigenen Tests nicht
+      # besteht, soll gar nicht erst gebaut werden.
+      - name: Tests
+        working-directory: windows
+        run: dotnet test tests/Shout.Tests/Shout.Tests.csproj --nologo -v minimal
+
       - name: Release bauen
         shell: pwsh
         working-directory: windows

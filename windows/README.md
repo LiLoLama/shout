@@ -85,13 +85,19 @@ cd windows
 ```
 
 Legt in `windows/release/` das Setup, die Portable-ZIP und den Update-Feed
-(`releases.win.json`) ab. Veröffentlicht wird per Tag — der Workflow
-[`windows-release.yml`](../.github/workflows/windows-release.yml) baut und
-lädt dann selbst hoch:
+(`releases.win.json`) ab. Veröffentlichen erledigt der Workflow
+[`windows-release.yml`](../.github/workflows/windows-release.yml) — auf zwei
+Wegen, die dasselbe Ergebnis haben:
 
 ```bash
 git tag windows-v1.0.0 && git push origin windows-v1.0.0
 ```
+
+Oder **ohne lokales Repo**: auf GitHub unter **Actions → Windows-Release → Run
+workflow** die Version eintragen und „Veröffentlichen" ankreuzen. Ohne den Haken
+wird nur gebaut und das Ergebnis als Artefakt abgelegt — der Probelauf. Den Tag
+setzt der Workflow im Veröffentlichungsfall selbst, auf genau den Commit, den er
+gebaut hat.
 
 Wichtig: `releases.win.json` und die `.nupkg` müssen mit ins Release, sonst
 finden installierte Kopien keine Aktualisierung.

@@ -64,5 +64,7 @@ Modell-Laden abzustürzen. In den Systemvoraussetzungen klar kommunizieren.
 Die Windows-Fassung hat einen eigenen Weg (Velopack statt Sparkle, kein
 Notarisieren, dafür bisher ohne Signatur): siehe
 [`windows/README.md`](windows/README.md) → „Release erzeugen". Ausgelöst wird sie
-über einen Tag `windows-v<version>`, gebaut und veröffentlicht vom Workflow
+über einen Tag `windows-v<version>` — oder ganz ohne lokales Repo über
+**Actions → Windows-Release → Run workflow** mit gesetztem Haken
+„Veröffentlichen". Gebaut und hochgeladen wird beides vom Workflow
 [`windows-release.yml`](.github/workflows/windows-release.yml).

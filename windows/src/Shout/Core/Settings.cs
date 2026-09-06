@@ -122,6 +122,28 @@ public sealed class Settings
     /// <summary>Beim Start still nach Aktualisierungen suchen (Mac: Sparkle-Schalter).</summary>
     public bool AutoUpdateCheck { get; set; } = true;
 
+    // MARK: Externe Anbieter
+    //
+    // Beide Schritte sind GETRENNT einstellbar: Man kann lokal transkribieren und
+    // extern aufbereiten — oder Groq fürs Audio und EURouter für den Text nehmen.
+
+    /// <summary>Wer bereitet den Text auf: "local" (auf diesem Gerät) oder "remote".</summary>
+    public string FormatEngine { get; set; } = "local";
+
+    /// <summary>Wer transkribiert: "local" oder "remote".</summary>
+    public string AsrEngine { get; set; } = "local";
+
+    /// <summary>
+    /// Anbieter-Einstellung für die Aufbereitung. <b>Ohne Schlüssel</b> — der liegt
+    /// DPAPI-verschlüsselt in einer eigenen Datei und gehört nie hierher: settings.json
+    /// steht im Klartext und wandert außerdem nicht ins Backup, der Schlüssel aber
+    /// erst recht nicht.
+    /// </summary>
+    public RemoteConfig? RemoteText { get; set; }
+
+    /// <summary>Anbieter-Einstellung für die Transkription.</summary>
+    public RemoteConfig? RemoteAudio { get; set; }
+
     [JsonIgnore]
     public static Settings Shared { get; } = Load();
 

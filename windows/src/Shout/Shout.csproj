@@ -9,7 +9,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Product>shout.</Product>
     <Company>inthezone</Company>
     <Description>Lokale, private Diktier-App — Windows-Version</Description>
@@ -42,6 +42,9 @@
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.24.0" />
     <!-- Mikrofonaufnahme. -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- DPAPI für die Anbieter-Schlüssel: Windows verschlüsselt sie an das
+         Benutzerkonto gebunden — das Gegenstück zur Keychain am Mac. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <!-- Installer + Auto-Update (Velopack): erzeugt Setup.exe und aktualisiert
          später gegen die GitHub-Releases. Windows-Pendant zu Sparkle am Mac. -->
     <PackageReference Include="Velopack" Version="1.2.0" />

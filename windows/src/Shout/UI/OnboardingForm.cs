@@ -151,6 +151,7 @@ internal sealed class OnboardingForm : Form
     // MARK: Bedienelemente je Schritt
 
     private ConsoleButton? micTest, micPrivacy, modelRetry;
+    private TextBlock? modelHint;
     private ConsoleDropdown? micDevice;
     private LevelMeter? meter;
     private Keycap? hotkeyCap;
@@ -163,6 +164,7 @@ internal sealed class OnboardingForm : Form
         foreach (Control child in extras.Controls.Cast<Control>().ToArray()) child.Dispose();
         extras.Controls.Clear();
         micTest = micPrivacy = modelRetry = null;
+        modelHint = null;
         micDevice = null;
         meter = null;
         hotkeyCap = null;
@@ -244,6 +246,14 @@ internal sealed class OnboardingForm : Form
 
     private void BuildModelStep()
     {
+        // Der Hinweis auf die Anbieter steht GENAU hier: Das ist der Schritt, in dem
+        // jemand mit langsamer Leitung auf einen Gigabyte-Download wartet und sich
+        // fragt, ob das sein muss. Es muss nicht — es ist nur die Vorgabe.
+        modelHint = new TextBlock(
+            Loc.T("Kein Download nötig: Unter „Modelle“ lässt sich stattdessen ein Anbieter im Netz wählen — dann verlässt der Text allerdings diesen Rechner."),
+            Theme.Help, Theme.Gray(0.5));
+        extras.Controls.Add(modelHint);
+
         if (!app.ModelFailed) return;
         modelRetry = new ConsoleButton(Loc.T("Erneut versuchen"), primary: true);
         modelRetry.Click2 += () =>
@@ -480,8 +490,15 @@ internal sealed class OnboardingForm : Form
                 hotkeyMode.Location = new Point(0, hotkeyCap.Bottom + 18);
                 break;
 
-            case 3 when modelRetry != null:
-                modelRetry.Location = new Point(0, 0);
+            case 3:
+                if (modelHint != null)
+                {
+                    modelHint.Location = new Point(0, 0);
+                    modelHint.Width = width;
+                    modelHint.Height = modelHint.PreferredHeightFor(width);
+                }
+                if (modelRetry != null)
+                    modelRetry.Location = new Point(0, (modelHint?.Bottom ?? 0) + 14);
                 break;
 
             case 4 when testField != null:

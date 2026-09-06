@@ -475,5 +475,100 @@ public static class Loc
             "That needs the clean-up model — switch on “Clean up text automatically”.",
         ["Dieses Backup stammt aus einer neueren Version von shout. (Fassung {0}). Bitte zuerst shout. aktualisieren."] =
             "This backup comes from a newer version of shout. (format {0}). Please update shout. first.",
+
+        // MARK: Externe Anbieter — Bedienung
+        ["Auf diesem Gerät"] = "On this device",
+        ["Anbieter"] = "Provider",
+        ["Wo transkribiert wird"] = "Where transcription happens",
+        ["Wo aufbereitet wird"] = "Where clean-up happens",
+        ["Nur Anbieter, die transkribieren können, stehen hier."] =
+            "Only providers that can transcribe are listed here.",
+        ["Adresse"] = "Address",
+        ["Modell"] = "Model",
+        ["Vorschläge …"] = "Suggestions…",
+        ["Hinweis"] = "Note",
+        ["Fehler"] = "Error",
+        ["Auf diesem Gerät bleibt alles lokal. Beim Anbieter geht der Text übers Netz — dafür braucht es keinen Modell-Download."] =
+            "On this device everything stays local. With a provider your text goes over the network — but no model download is needed.",
+        ["Die Basis-Adresse. „/chat/completions“ wird selbst angehängt."] =
+            "The base address. “/chat/completions” is appended automatically.",
+        ["Schlüssel"] = "Key",
+        ["Bekommst du bei: {0}"] = "Get one at: {0}",
+        ["Ersetzen"] = "Replace",
+        ["Entfernen"] = "Remove",
+        ["Speichern"] = "Save",
+        ["Kennung frei eintragbar."] = "Enter any model id.",
+        ["Verbindung"] = "Connection",
+        ["Modelle laden"] = "Load models",
+        ["Verbindung testen"] = "Test connection",
+        ["Verbindung steht · {0} s"] = "Connected · {0} s",
+        ["Verbindung steht, aber „{0}“ steht nicht in der Modell-Liste des Anbieters."] =
+            "Connected, but “{0}” is not in the provider's model list.",
+        ["Verbindung steht · {0} s. Der Anbieter liefert keine Modell-Liste — ob das Modell stimmt, zeigt erst der erste Versuch."] =
+            "Connected · {0} s. The provider offers no model list — whether the model is right shows on the first run.",
+        ["Kosten"] = "Cost",
+        ["Preise aktualisieren"] = "Update prices",
+        ["ca. {0} je Diktat"] = "about {0} per dictation",
+        ["ca. {0} je Minute Audio"] = "about {0} per minute of audio",
+        ["Preis dieses Modells unbekannt."] = "Price of this model is unknown.",
+        ["Diesen Monat: {0}"] = "This month: {0}",
+        ["(ohne die Modelle mit unbekanntem Preis)"] = "(excluding models with unknown prices)",
+        ["Näherung — abgerechnet wird beim Anbieter. Preise: Stand {0}"] =
+            "Approximation — the provider does the billing. Prices as of {0}",
+        ["Der Schlüssel konnte nicht gespeichert werden."] = "The key could not be saved.",
+        ["Der Schlüssel liegt verschlüsselt auf diesem Rechner (DPAPI, an dein Benutzerkonto gebunden) und wandert nie ins Backup."] =
+            "The key is stored encrypted on this machine (DPAPI, bound to your user account) and never travels in a backup.",
+        ["Anbieter · dieser Monat"] = "Providers · this month",
+        ["Kein Download nötig: Unter „Modelle“ lässt sich stattdessen ein Anbieter im Netz wählen — dann verlässt der Text allerdings diesen Rechner."] =
+            "No download needed: under “Models” you can pick a provider on the network instead — your text then leaves this machine, though.",
+        ["Noch nichts bei einem Anbieter verbraucht."] = "Nothing used at a provider yet.",
+        ["{0} Token · {1}"] = "{0} tokens · {1}",
+        ["{0} Audio · {1}"] = "{0} of audio · {1}",
+        ["Sobald du einen Anbieter benutzt, verlässt der Text diesen Rechner. Alles andere bleibt, wie es ist."] =
+            "As soon as you use a provider, your text leaves this machine. Everything else stays as it is.",
+
+        // MARK: Externe Anbieter — Fehler
+        ["Unbekannter Fehler."] = "Unknown error.",
+        ["Es ist kein Schlüssel hinterlegt."] = "No key has been stored.",
+        ["Die Adresse ist unbrauchbar. Sie muss mit http:// oder https:// beginnen."] =
+            "The address is unusable. It has to start with http:// or https://.",
+        ["Der Schlüssel wurde abgelehnt."] = "The key was rejected.",
+        ["Beim Anbieter ist kein Guthaben vorhanden."] = "There is no credit left at the provider.",
+        ["Das Modell „{0}“ kennt der Anbieter nicht."] = "The provider does not know the model “{0}”.",
+        ["Zu viele Anfragen. Später erneut versuchen."] = "Too many requests. Try again later.",
+        ["Zu viele Anfragen. Erneut möglich in etwa {0} Sekunden."] =
+            "Too many requests. Possible again in about {0} seconds.",
+        ["Der Anbieter antwortete mit Fehler {0}."] = "The provider answered with error {0}.",
+        ["Die Antwort des Anbieters war nicht verwertbar."] = "The provider's answer was unusable.",
+        ["Der Anbieter hat nicht rechtzeitig geantwortet."] = "The provider did not answer in time.",
+        ["Keine Verbindung. Stimmt die Adresse — und läuft der Server?"] =
+            "No connection. Is the address right — and is the server running?",
+
+        // MARK: Externe Anbieter — Vorlagentexte (Daten aus dem Katalog)
+        ["Der Referenz-Endpunkt. Kann Text und Transkription."] =
+            "The reference endpoint. Does text and transcription.",
+        ["Ein Schlüssel für hunderte Modelle, auch für die Transkription. Dort liefert er womöglich keine Zeitmarken; Untertitel können dann unbrauchbar werden."] =
+            "One key for hundreds of models, transcription included. It may not return timestamps there, which can make subtitles unusable.",
+        ["Verarbeitung ausschließlich in der EU, ein Schlüssel für über 100 Modelle. Keine Transkription."] =
+            "Processing exclusively in the EU, one key for over 100 models. No transcription.",
+        ["Sehr schnell — die interessanteste Wahl fürs Live-Diktat."] =
+            "Very fast — the most interesting choice for live dictation.",
+        ["Nur Transkription, dafür sehr günstig (rund $0,10 je Stunde) und mit Zeitmarken. Für EU-Verarbeitung „api“ in der Adresse durch „eu-api“ ersetzen."] =
+            "Transcription only, but very cheap (around $0.10 per hour) and with timestamps. For EU processing replace “api” in the address with “eu-api”.",
+        ["Europäischer Anbieter, kann Text und Transkription."] =
+            "European provider, does text and transcription.",
+        ["Günstig. Keine Transkription."] = "Cheap. No transcription.",
+        ["Über die OpenAI-Kompatibilitätsschicht, die Anthropic selbst als Testweg und nicht als Dauerlösung bezeichnet. Keine Transkription."] =
+            "Through the OpenAI compatibility layer, which Anthropic itself calls a way to try things out rather than a permanent solution. No transcription.",
+        ["Über die OpenAI-Kompatibilitätsschicht. Keine Transkription."] =
+            "Through the OpenAI compatibility layer. No transcription.",
+        ["Schlüssel aus der xAI-Konsole. Ein SuperGrok-Abo gilt hier NICHT — Abos enthalten keinen API-Zugang."] =
+            "Key from the xAI console. A SuperGrok subscription does NOT count here — subscriptions include no API access.",
+        ["Läuft auf deinem eigenen Rechner — auch auf einem anderen im eigenen Netz. Dann verlässt nichts dein Netzwerk."] =
+            "Runs on your own machine — or another one on your network. Then nothing leaves your network.",
+        ["Wie Ollama: dein eigener Rechner, dein eigenes Netz."] =
+            "Like Ollama: your machine, your network.",
+        ["Alles selbst eintragen — für whisper.cpp-Server, vLLM, Pauschal-Abos mit eigenem Endpunkt und alles andere OpenAI-kompatible."] =
+            "Enter everything yourself — for whisper.cpp servers, vLLM, flat-rate plans with their own endpoint and anything else OpenAI-compatible.",
     };
 }

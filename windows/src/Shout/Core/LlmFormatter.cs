@@ -1,87 +1,61 @@
-using System.Text;
-using LLama;
-using LLama.Common;
-using LLama.Sampling;
-
 namespace Shout.Core;
 
 /// <summary>
-/// Optionale KI-Formatierung über llama.cpp (LLamaSharp) — das Windows-Pendant
-/// zum MLX-Formatter. Grundprinzip identisch: NIEMALS blockieren. Ist das
-/// Modell nicht geladen, das Diktat zu kurz oder tritt ein Fehler auf, kommt
-/// der Rohtext zurück.
+/// Die Aufbereitung — Prompts, Abschnitte, Antwort-Schutz, Protokoll und
+/// Sprachprofil. Router über einer <see cref="ITextEngine"/>: Ob dahinter
+/// llama.cpp auf diesem Gerät steckt oder ein selbst gewählter Anbieter, spielt
+/// hier keine Rolle (Mac: Formatter.swift).
 ///
-/// Der Katalog enthält bewusst nur Qwen-2.5-Instruct-Modelle, damit EIN
-/// Chat-Template (im_start/im_end) für alle Einträge stimmt.
+/// <para>Grundprinzip unverändert: NIEMALS blockieren. Ist keine Engine bereit, das
+/// Diktat zu kurz oder tritt ein Fehler auf, kommt der Rohtext zurück.</para>
+///
+/// <para>Weil die Engine ausgetauscht wird und nicht der Router, greifen
+/// <see cref="FormattingGuard"/> und <see cref="TextChunker"/> automatisch auch
+/// bei Cloud-Modellen: Ein Anbieter-Modell, das auf das Diktat antwortet statt es
+/// zu formatieren, wird genauso verworfen wie ein lokales.</para>
 /// </summary>
 public sealed class LlmFormatter : IDisposable
 {
-    /// <summary>Diktate kürzer als das fügen wir roh ein (spart LLM-Latenz).</summary>
+    /// <summary>Diktate kürzer als das fügen wir roh ein (spart Latenz und, beim
+    /// Anbieter, Geld).</summary>
     private const int MinCharsForFormatting = 40;
 
-    /// <summary>Zielmaß eines Abschnitts beim Diktat. Ein langes Diktat am Stück ins
-    /// Modell zu geben endet im Kontextfenster-Überlauf: Das Modell gibt dann den
-    /// Anfang zurück und lässt den Rest weg. Deshalb wie am Mac in Abschnitte.</summary>
-    private const int ChunkTarget = 1500;
-    private const int ChunkMinimum = 1000;
+    private readonly Func<ITextEngine> build;
+    private ITextEngine engine;
 
-    private LLamaWeights? weights;
-    private LLama.Abstractions.ILLamaParams? modelParams;
-    private string? loadedModel;
-    private readonly SemaphoreSlim gate = new(1, 1);
-
-    public bool IsReady => weights != null;
-
-    /// <summary>Lädt (und downloadet ggf.) das gewählte Formatierungs-Modell.</summary>
-    public async Task LoadAsync(Action<double>? onProgress = null, CancellationToken cancel = default)
+    /// <param name="build">Woher die Engine kommt. Vorgabe ist die Fabrik, die die
+    /// Einstellung „auf diesem Gerät" gegen „Anbieter" liest; für Tests einsetzbar.</param>
+    public LlmFormatter(Func<ITextEngine>? build = null)
     {
-        var model = ModelCatalog.LlmById(Settings.Shared.LlmModel) ?? ModelCatalog.RecommendedLlm();
-        await gate.WaitAsync(cancel);
-        try
-        {
-            if (loadedModel == model.Id && weights != null) return;
-            await ModelDownloader.DownloadAsync(model, onProgress, cancel);
-
-            var p = new ModelParams(ModelCatalog.PathFor(model))
-            {
-                ContextSize = 4096,
-                GpuLayerCount = 0,   // CPU-Backend; GPU siehe README (Vulkan/CUDA-Pakete)
-            };
-            // Erst laden, dann das alte Modell freigeben: Scheitert der Wechsel,
-            // bleibt die Aufbereitung mit dem bisherigen Modell einsatzbereit,
-            // statt bis zum nächsten Neustart auszufallen.
-            var next = await LLamaWeights.LoadFromFileAsync(p, cancel);
-            weights?.Dispose();
-            weights = next;
-            modelParams = p;
-            loadedModel = model.Id;
-        }
-        catch (Exception ex)
-        {
-            // Ohne geladenes Modell fällt die Formatierung still auf den Rohtext
-            // zurück; ein bereits geladenes bleibt bestehen.
-            StoreIO.Log($"Textmodell nicht geladen: {ex.Message}");
-        }
-        finally
-        {
-            gate.Release();
-        }
+        this.build = build ?? EngineFactory.Text;
+        engine = this.build();
     }
 
-    /// <summary>
-    /// „Aufwärmen": ein winziger Durchlauf, damit das erste echte Diktat nicht die
-    /// einmalige Einrichtung des Ausführers mitbezahlt (wie beim Transcriber).
-    /// </summary>
-    public async Task WarmUpAsync(CancellationToken cancel = default)
+    public bool IsReady => engine.IsReady;
+
+    /// <summary>Was in der Oberfläche steht, z. B. „Qwen 2.5 (3B)" oder
+    /// „gpt-5-mini · OpenAI".</summary>
+    public string DisplayName => engine.DisplayName;
+
+    /// <summary>Lädt bzw. verbindet. <paramref name="reset"/> baut die Engine neu —
+    /// nötig, wenn der Nutzer zwischen Gerät und Anbieter gewechselt hat.</summary>
+    public async Task LoadAsync(Action<double>? onProgress = null, bool reset = false,
+                                CancellationToken cancel = default)
     {
-        if (weights == null || modelParams == null) return;
-        try { _ = await RespondAsync("Antworte mit OK.", "OK", 0.1f, cancel, maxTokens: 4); }
-        catch { /* Aufwärmen darf still scheitern */ }
+        if (reset)
+        {
+            var old = engine;
+            engine = build();
+            old.Dispose();
+        }
+        await engine.PrepareAsync(onProgress, cancel);
     }
+
+    public Task WarmUpAsync(CancellationToken cancel = default) => engine.WarmUpAsync(cancel);
 
     /// <summary>
     /// Liefert bereinigten Text — oder den (getrimmten) Rohtext bei kurzem Diktat,
-    /// fehlendem Modell oder jedem Fehler.
+    /// fehlender Engine oder jedem Fehler.
     ///
     /// <para><paramref name="appHint"/> ist der Name des Programms, in das eingefügt
     /// wird; daraus entsteht der Register-Hinweis (E-Mail formell, Chat knapp,
@@ -92,10 +66,10 @@ public sealed class LlmFormatter : IDisposable
                                           CancellationToken cancel = default)
     {
         var text = raw.Trim();
-        if (weights == null || modelParams == null) return text;
+        if (!engine.IsReady) return text;
         if (text.Length < MinCharsForFormatting) return text;
 
-        var parts = TextChunker.Chunks(text, ChunkTarget, ChunkMinimum);
+        var parts = TextChunker.Chunks(text, engine.ChunkTargetLength, engine.ChunkMinLength);
         if (parts.Count == 0) return text;
 
         var pieces = new List<string>(parts.Count);
@@ -112,7 +86,7 @@ public sealed class LlmFormatter : IDisposable
                                                 CancellationToken cancel)
     {
         var cleaned = await RespondAsync(FormatterPrompt.System(appHint, termHint),
-                                         FormatterPrompt.User(text), 0.2f, cancel);
+                                         FormatterPrompt.User(text), 0.2f, 1024, cancel);
         if (cleaned == null) return text;
 
         cleaned = FormatterPrompt.StripMarkers(cleaned);
@@ -131,57 +105,25 @@ public sealed class LlmFormatter : IDisposable
 
     /// <summary>
     /// „Dein Sprachprofil": beschreibt den Diktierstil aus einer Textprobe
-    /// (Mac: Formatter.describeVoice). Liefert null, wenn kein Modell geladen
-    /// ist oder etwas schiefgeht — die Statistik-Seite zeigt dann einen Hinweis.
-    /// Anders als FormatAsync gilt hier KEINE Mindestlänge; die Probe kommt aus
-    /// dem Verlauf und ist ohnehin lang.
+    /// (Mac: Formatter.describeVoice). Liefert null, wenn keine Engine bereit ist
+    /// oder etwas schiefgeht — die Statistik-Seite zeigt dann einen Hinweis.
+    /// Anders als <see cref="FormatAsync"/> gilt hier KEINE Mindestlänge; die Probe
+    /// kommt aus dem Verlauf und ist ohnehin lang.
     /// </summary>
     public async Task<string?> DescribeVoiceAsync(string sample, CancellationToken cancel = default)
     {
         var text = sample.Trim();
-        if (weights == null || modelParams == null) return null;
-        if (text.Length == 0) return null;
-
-        await gate.WaitAsync(cancel);
-        try
-        {
-            var executor = new StatelessExecutor(weights, modelParams);
-            var prompt =
-                "<|im_start|>system\n" + VoicePrompt() + "<|im_end|>\n" +
-                "<|im_start|>user\n" + text + "<|im_end|>\n" +
-                "<|im_start|>assistant\n";
-
-            // Wärmer als die Bereinigung (0,2): hier soll ein lesbarer Absatz
-            // entstehen, keine wortgetreue Umschrift.
-            var inference = new InferenceParams
-            {
-                MaxTokens = 260,
-                AntiPrompts = new[] { "<|im_end|>" },
-                SamplingPipeline = new DefaultSamplingPipeline { Temperature = 0.6f },
-            };
-
-            var output = new StringBuilder();
-            await foreach (var token in executor.InferAsync(prompt, inference, cancel))
-                output.Append(token);
-
-            var cleaned = StripArtifacts(output.ToString());
-            return cleaned.Length == 0 ? null : cleaned;
-        }
-        catch
-        {
-            return null;
-        }
-        finally
-        {
-            gate.Release();
-        }
+        if (!engine.IsReady || text.Length == 0) return null;
+        // Wärmer als die Bereinigung (0,2): hier soll ein lesbarer Absatz
+        // entstehen, keine wortgetreue Umschrift.
+        return await RespondAsync(VoicePrompt(), text, 0.6f, 260, cancel);
     }
 
     /// <summary>
     /// Macht aus einem Datei-Transkript ein Protokoll: Zusammenfassung, Kernpunkte,
     /// darunter der gegliederte Volltext (Mac: Formatter.minutes).
     ///
-    /// <para>Liefert <c>null</c>, wenn kein Modell geladen ist oder nichts Brauchbares
+    /// <para>Liefert <c>null</c>, wenn keine Engine bereit ist oder nichts Brauchbares
     /// herauskam. Bewusst null statt des Rohtexts: Wer den Rohtext zurückbekommt,
     /// sieht in der Oberfläche zwei identische Fassungen und hält das für ein
     /// kaputtes Protokoll.</para>
@@ -195,18 +137,18 @@ public sealed class LlmFormatter : IDisposable
                                             CancellationToken cancel = default)
     {
         var text = raw.Trim();
-        if (weights == null || modelParams == null || text.Length == 0) return null;
+        if (!engine.IsReady || text.Length == 0) return null;
 
         // Größere Abschnitte als beim Diktat: Das Modell soll hier gliedern und
         // verdichten, nicht Wort für Wort putzen — und jeder Aufruf kostet Zeit.
-        var parts = TextChunker.Chunks(text, 3000, 2000);
+        var parts = TextChunker.Chunks(text, engine.ChunkTargetLength * 2, engine.ChunkMinLength * 2);
         if (parts.Count == 0) return null;
 
         var sections = new List<TranscriptMinutes.Section>();
         for (var i = 0; i < parts.Count; i++)
         {
             cancel.ThrowIfCancellationRequested();
-            var answer = await RespondAsync(SectionPrompt(termHint), parts[i], 0.3f, cancel);
+            var answer = await RespondAsync(SectionPrompt(termHint), parts[i], 0.3f, 1536, cancel);
             if (answer == null) continue;
             var section = TranscriptMinutes.ParseSection(answer);
             // Hat das Modell den Text verschluckt, ist der Abschnitt des Transkripts
@@ -244,7 +186,7 @@ public sealed class LlmFormatter : IDisposable
         - Nur zusammenfassen, was dasteht. Nichts hinzuerfinden, nicht bewerten.
         Gib AUSSCHLIESSLICH die Zusammenfassung aus.
         """;
-        return await RespondAsync(system, overview, 0.3f, cancel);
+        return await RespondAsync(system, overview, 0.3f, 1536, cancel);
     }
 
     private static string SectionPrompt(string? termHint)
@@ -272,45 +214,58 @@ public sealed class LlmFormatter : IDisposable
     }
 
     /// <summary>
-    /// Ein Aufruf ans Modell. Ohne den Kürzungs-Schutz aus <see cref="FormatAsync"/> —
-    /// der ist fürs Diktat gedacht und würde hier JEDE Zusammenfassung verwerfen,
-    /// weil sie naturgemäß deutlich kürzer ist als die Eingabe.
+    /// Ein Aufruf an die Engine, mit Zeitgrenze und ohne den Kürzungs-Schutz aus
+    /// <see cref="FormatChunkAsync"/> — der ist fürs Diktat gedacht und würde hier
+    /// JEDE Zusammenfassung verwerfen, weil sie naturgemäß kürzer ist als die Eingabe.
+    /// Liefert null bei jedem Fehler; der Aufrufer entscheidet, was das bedeutet.
     /// </summary>
     private async Task<string?> RespondAsync(string system, string user, float temperature,
-                                             CancellationToken cancel, int maxTokens = 1536)
+                                             int maxTokens, CancellationToken cancel)
     {
-        if (weights == null || modelParams == null) return null;
-        await gate.WaitAsync(cancel);
         try
         {
-            var executor = new StatelessExecutor(weights, modelParams);
-            var prompt =
-                "<|im_start|>system\n" + system + "<|im_end|>\n" +
-                "<|im_start|>user\n" + user + "<|im_end|>\n" +
-                "<|im_start|>assistant\n";
-            var inference = new InferenceParams
-            {
-                MaxTokens = maxTokens,
-                AntiPrompts = new[] { "<|im_end|>" },
-                SamplingPipeline = new DefaultSamplingPipeline { Temperature = temperature },
-            };
-            var output = new StringBuilder();
-            await foreach (var token in executor.InferAsync(prompt, inference, cancel))
-                output.Append(token);
-            var cleaned = StripArtifacts(output.ToString());
+            // Beim Diktat KEIN Wiederholungsversuch: Der Mensch steht mit dem Finger
+            // auf der Taste, und ein zweiter Anlauf verdoppelt die Wartezeit, statt
+            // sie zu retten.
+            var raw = await WithDeadline(engine.CallTimeoutSeconds, cancel,
+                token => engine.RespondAsync(system, user, temperature, maxTokens, token));
+            var cleaned = StripArtifacts(raw);
             return cleaned.Length == 0 ? null : cleaned;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
+            StoreIO.Log($"Aufbereitung fehlgeschlagen: {Describe(ex)}");
             return null;
         }
-        finally
+    }
+
+    /// <summary>Fehlertext fürs Protokoll — bei einem Anbieter die knappe Form ohne
+    /// Schlüssel und ohne Antwortrumpf.</summary>
+    private static string Describe(Exception ex)
+        => ex is RemoteProviderException remote ? remote.LogDescription : ex.Message;
+
+    /// <summary>
+    /// Führt den Aufruf aus und bricht nach <paramref name="seconds"/> ab. Bei 0
+    /// läuft er ohne Grenze — so verhält sich das lokale Modell weiter wie bisher.
+    /// </summary>
+    private static async Task<string> WithDeadline(double seconds, CancellationToken cancel,
+                                                   Func<CancellationToken, Task<string>> operation)
+    {
+        if (seconds <= 0) return await operation(cancel);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
+        try
         {
-            gate.Release();
+            return await operation(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+        {
+            throw new RemoteProviderException(RemoteFailure.TimedOut);
         }
     }
 
@@ -340,9 +295,5 @@ public sealed class LlmFormatter : IDisposable
         return t;
     }
 
-    public void Dispose()
-    {
-        weights?.Dispose();
-        weights = null;
-    }
+    public void Dispose() => engine.Dispose();
 }

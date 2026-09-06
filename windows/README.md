@@ -158,6 +158,40 @@ mit der Maus frei verschieben; Ecke und „immer anzeigen" stehen in den
 Einstellungen. Die Einstellungen öffnest du über das Tray-Menü — oder mit
 `shout.exe --settings` (eine bereits laufende Instanz holt ihr Fenster nach vorn).
 
+## Externe Anbieter (optional)
+
+Standardmäßig läuft alles auf diesem Rechner. Wer möchte, kann **jeden der beiden
+Schritte einzeln** stattdessen an einen selbst gewählten, OpenAI-kompatiblen
+Anbieter geben — unter **Modelle → „Wo transkribiert wird" / „Wo aufbereitet
+wird"**. Beide sind unabhängig: lokal transkribieren und extern aufbereiten geht
+genauso wie Groq fürs Audio und EURouter für den Text.
+
+Mitgeliefert sind Vorlagen für OpenAI, OpenRouter, EURouter, Groq, Lemonfox,
+Mistral, DeepSeek, Anthropic, Google Gemini, xAI, Ollama, LM Studio und „Eigener
+Endpunkt". Eine Vorlage ist **reine Daten** — ein neuer Anbieter ist ein
+Listeneintrag, kein Code, weil ein einziger OpenAI-kompatibler Client für alle
+reicht. Ollama und LM Studio laufen auf dem eigenen Rechner; damit verlässt auch
+in dieser Betriebsart nichts das eigene Netz.
+
+- **Schlüssel** liegen mit **DPAPI** verschlüsselt in
+  `%APPDATA%\shout\anbieter-schluessel.json`, an dein Windows-Benutzerkonto
+  gebunden (das Gegenstück zur Keychain am Mac). Sie stehen nie in `settings.json`,
+  nie im Backup und nie im Protokoll — auch nicht in Fehlermeldungen.
+- **Ohne hinterlegten Schlüssel wird lokal gearbeitet, nicht gescheitert.** Das
+  fängt einen importierten Sicherungsstand ab: Die Einstellung reist mit, der
+  Schlüssel nicht.
+- **„Verbindung testen"** prüft über die Modell-Liste statt über einen
+  Probe-Aufruf: kostet nichts und prüft genau die drei Dinge, die schiefgehen —
+  Adresse, Schlüssel und ob das Modell dort existiert.
+- **Kosten** stehen gemessen in den Einstellungen und auf der Statistik-Seite:
+  Token-Zahlen kommen aus jeder Antwort, Audio-Sekunden zählt shout. selbst. Die
+  Preistabelle ist eine Näherung und sagt das auch; abgerechnet wird beim Anbieter.
+- **Scheitert die Transkription beim Anbieter**, übernimmt ein bereits vorhandenes
+  lokales Modell — aber nur aus dem Cache, nie mit Download mitten im Diktat.
+- Bei Anbietern **ohne Zeitmarken** (OpenRouter etwa dokumentiert keine) entsteht
+  ein Ersatzsegment über die ganze Länge: Diktat und `.txt` gehen weiter,
+  Untertitel werden unbrauchbar. Die Vorlage sagt das vorher.
+
 ## Performance-Hinweise
 
 - Standard ist das **CPU-Backend** — läuft überall, braucht keinen speziellen
@@ -213,6 +247,9 @@ Karten, Schalter, Segment-Umschalter, Dropdowns, Chips, Listen).
   Erststart-Assistent (alle fünf Schritte, deutsch und englisch), Halten- und
   Umschalt-Modus, automatische Ausweich-Kombination, „Dein Sprachprofil" und die
   Hugging-Face-Live-Liste.
+- **Externe Anbieter sind auf echter Hardware noch ungetestet** — geprüft sind
+  die Zerlegung, die Adress-Regeln, die Fehler-Zuordnung und die Kostenrechnung
+  über Unit-Tests, nicht ein echter Aufruf gegen einen echten Endpunkt.
 - **Datei-Transkription und Meeting-Mitschnitt sind auf echter Hardware noch
   ungetestet.** Beide sind seit dem letzten Gerätetest dazugekommen und bisher nur
   gegen den Compiler und die Tests geprüft.

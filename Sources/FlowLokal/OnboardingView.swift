@@ -149,6 +149,16 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
+            // Ebenfalls kein eigener Schritt: Wer schon Modelle auf der Platte
+            // hat (z. B. aus LM Studio), soll das hier erfahren — genau an der
+            // Stelle, an der shout. sonst mehrere Gigabyte neu herunterladen
+            // will. Der Abschnitt dazu liegt auf der Modelle-Seite.
+            Button(Loc.t("Schon Modelle auf dem Rechner?")) {
+                zeigeModelleSeite()
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 11))
+            .padding(.top, 2)
         }
     }
 
@@ -203,6 +213,14 @@ struct OnboardingView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Springt aus dem Onboarding direkt zur Modelle-Seite: Das geteilte
+    /// `DashboardModel` schon auf „Modelle“ stellen und dann den vorhandenen
+    /// Abschluss-Übergang (`onFinish`) nehmen — keine eigene Navigation bauen.
+    private func zeigeModelleSeite() {
+        dashboard.tab = .modelle
+        onFinish()
     }
 
     private func openSettings(_ anchor: String) {

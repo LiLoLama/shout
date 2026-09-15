@@ -348,6 +348,7 @@ final class Loc: ObservableObject {
         "Geschätzte Kosten": "Estimated cost",
         "Rechner zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später unter „Modelle“.":
             "Machine too weak? You can run both steps at a provider of your choice instead — later under “Models”.",
+        "Schon Modelle auf dem Rechner?": "Already have models on this Mac?",
         "Gerät zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später in den Einstellungen.":
             "Device too weak? You can run both steps at a provider of your choice instead — later in Settings.",
         "Näherung — abgerechnet wird beim Anbieter.":

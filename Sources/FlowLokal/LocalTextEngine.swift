@@ -79,9 +79,23 @@ actor LocalTextEngine: TextEngine {
             #endif
             loadedModel = id
             isReady = true
+            #if os(macOS)
+            Abkuerzungsgedaechtnis.geteilt.ladenGelungen(id)
+            #endif
         } catch {
             NSLog("Formatter-Modell konnte nicht geladen werden: \(error)")
             isReady = false
+            #if os(macOS)
+            // Kam der Pfad aus der Abkürzung in einen fremden Ordner, darf der
+            // nächste Versuch sie nicht erneut nehmen: Ein Ordner kann die
+            // Prüfung des Stores bestehen (config.json plus irgendeine
+            // *.safetensors) und trotzdem nicht ladbar sein — fehlende
+            // tokenizer.json, halber Shard-Satz, andere Architektur. Sonst
+            // nähme jeder weitere Versuch denselben Weg, und die Aufbereitung
+            // bliebe dauerhaft und unbemerkt tot. Der nächste Versuch geht an
+            // den Hub.
+            Abkuerzungsgedaechtnis.geteilt.ladenGescheitert(id)
+            #endif
         }
     }
 

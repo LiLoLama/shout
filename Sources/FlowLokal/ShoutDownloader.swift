@@ -39,7 +39,14 @@ struct ShoutDownloader: Downloader {
         // Prüfung des Stores ist dagegen schwach (config.json plus irgendeine
         // *.safetensors) — sie hier vorzuschalten machte jeden halben Snapshot
         // dauerhaft und lautlos zum "fertigen" Modell.
+        //
+        // `darfAbkuerzen` hält eine Kennung heraus, deren Abkürzung schon
+        // einmal in einen Ladefehler lief (siehe Abkuerzungsgedaechtnis):
+        // Ein fremder Ordner kann die Prüfung bestehen und trotzdem nicht
+        // ladbar sein, und ohne diese Sperre nähme jeder weitere Versuch
+        // denselben Weg.
         if !useLatest,
+           Abkuerzungsgedaechtnis.geteilt.darfAbkuerzen(id),
            let vorhanden = store.abkuerzbarerFund(id, eigenerDownloadOrdner: eigenerDownloadOrdner) {
             // Nur HIER wird verknüpft, und zwar genau dann, wenn ein FREMDER
             // Ordner tatsächlich mitbenutzt wird: Dieser Pfad kann verschwinden
@@ -56,6 +63,9 @@ struct ShoutDownloader: Downloader {
             // Verknüpfungen — der Basisordner bleibt unberührt, auch wenn hier
             // mehrere Downloads gleichzeitig durchlaufen.
             ModelPaths.verknuepfungMerken(id, pfad: vorhanden, in: .standard)
+            // Damit ein Ladefehler weiter oben dieser Abkürzung zugerechnet
+            // werden kann — und nicht einem eigenen Download.
+            Abkuerzungsgedaechtnis.geteilt.abkuerzungGemerkt(id)
             return vorhanden
         }
 

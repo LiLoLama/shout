@@ -1,5 +1,6 @@
 import Foundation
 import WhisperKit
+import HuggingFace
 
 /// Dünne Hülle um WhisperKit. Lädt beim ersten Start das Modell (wird von
 /// WhisperKit automatisch von Hugging Face heruntergeladen und danach lokal
@@ -68,7 +69,13 @@ actor LocalSpeechEngine: SpeechEngine {
             pipe = try await WhisperKit(WhisperKitConfig(model: name))
         }
         #else
-        pipe = try await WhisperKit(WhisperKitConfig(model: name))
+        // Ablageort wie beim Textmodell: derselbe Basisordner (`ModelPaths`),
+        // dieselbe Vorgabe (`HubCache.default.cacheDirectory`, beachtet
+        // HF_HUB_CACHE/HF_HOME) — nur der Ort ist wählbar, kein Mitbenutzen
+        // fremder Ordner (das bleibt dem Textmodell vorbehalten).
+        let pfade = ModelPaths.laden(aus: .standard,
+                                     vorgabe: { HubCache.default.cacheDirectory })
+        pipe = try await WhisperKit(WhisperKitConfig(model: name, downloadBase: pfade.basisordner))
         #endif
         loadedModel = name
     }

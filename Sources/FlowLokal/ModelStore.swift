@@ -1,5 +1,19 @@
 import Foundation
 
+/// Wo ein Modell steht — und ob es überhaupt noch da ist.
+///
+/// `nichtAuffindbar` ist der Zustand, der diese Erweiterung überhaupt
+/// rechtfertigt: Ein verknüpftes Modell aus einem fremden Ordner kann
+/// verschwinden, ohne dass shout. etwas dafür kann (Platte ab, Ordner
+/// aufgeräumt). Das ist etwas anderes als "nie da gewesen", und die Oberfläche
+/// muss es anders beantworten.
+enum ModelZustand: Equatable {
+    case nichtVorhanden
+    case eigen(URL)
+    case fremd(URL)
+    case nichtAuffindbar
+}
+
 /// Beantwortet genau eine Frage: **Welcher Pfad gehört zu welcher Kennung?**
 ///
 /// Lädt nichts herunter und löscht nichts — dadurch ist er vollständig gegen
@@ -44,6 +58,17 @@ struct ModelStore {
             if Self.istVollstaendig(kandidat) { return kandidat }
         }
         return nil
+    }
+
+    func zustand(_ kennung: String, verknuepft: URL?) -> ModelZustand {
+        // Ein echter Fund schlägt jede gespeicherte Verknüpfung: Wer das Modell
+        // inzwischen selbst geladen hat, soll nicht auf einen toten Pfad starren.
+        if let gefunden = aufloesen(kennung) {
+            let imBasis = gefunden.standardizedFileURL.path
+                .hasPrefix(basisordner.standardizedFileURL.path)
+            return imBasis ? .eigen(gefunden) : .fremd(gefunden)
+        }
+        return verknuepft == nil ? .nichtVorhanden : .nichtAuffindbar
     }
 
     /// Ein Ordner zählt erst als Modell, wenn die Gewichte da sind. Ein

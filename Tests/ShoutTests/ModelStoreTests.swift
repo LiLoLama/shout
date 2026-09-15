@@ -77,4 +77,46 @@ final class ModelStoreTests: XCTestCase {
             ModelStore.ordnername(fuer: "mlx-community/Qwen3-4B-4bit"),
             "models--mlx-community--Qwen3-4B-4bit")
     }
+
+    func testZustandNichtVorhandenOhneVerknuepfung() {
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .nichtVorhanden)
+    }
+
+    func testZustandEigenImBasisordner() throws {
+        let pfad = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .eigen(pfad))
+    }
+
+    func testZustandFremdImSuchordner() throws {
+        let pfad = try legeMLXAn(in: fremd, kennung: "mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .fremd(pfad))
+    }
+
+    /// Der wichtigste Zustand: Es war einmal da, jetzt ist es weg. Das darf
+    /// NICHT als "nicht vorhanden" durchgehen, sonst bietet die Oberfläche
+    /// einen Download an, obwohl bloß eine Platte nicht steckt.
+    func testZustandNichtAuffindbarWennVerknuepftUndWeg() {
+        let weg = fremd.appendingPathComponent("models--mlx-community--Qwen3-4B-4bit",
+                                               isDirectory: true)
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: weg),
+                       .nichtAuffindbar)
+    }
+
+    /// Eine alte Verknüpfung darf einen echten Fund nicht überstimmen: Wer das
+    /// Modell inzwischen in den Basisordner geladen hat, sieht "eigen".
+    func testFundSchlaegtAlteVerknuepfung() throws {
+        let pfad = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
+        let alt = fremd.appendingPathComponent("models--mlx-community--Qwen3-4B-4bit",
+                                               isDirectory: true)
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: alt),
+                       .eigen(pfad))
+    }
 }

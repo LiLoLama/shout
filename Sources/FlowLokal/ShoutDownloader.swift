@@ -15,8 +15,8 @@ import HuggingFace
 struct ShoutDownloader: Downloader {
 
     let store: ModelStore
-    /// Wohin eigene Downloads gehen.
-    let basisordner: URL
+    /// Wohin eigene Downloads gehen — `nil`, solange nichts eingestellt ist.
+    let gewaehlterBasisordner: URL?
 
     func download(id: String,
                   revision: String?,
@@ -30,13 +30,21 @@ struct ShoutDownloader: Downloader {
             return vorhanden
         }
 
-        // Sonst der echte Hub, mit unserem Ablageort. Der Aufruf ist genau der,
-        // den das Makro #hubDownloader erzeugt (siehe HuggingFaceIntegrationMacros.swift,
-        // Zeile 46 ff.) — nur mit gesetztem Cache-Verzeichnis statt HubCache.default.
+        // Sonst der echte Hub. Der Aufruf ist genau der, den das Makro
+        // #hubDownloader erzeugt (siehe HuggingFaceIntegrationMacros.swift,
+        // Zeile 46 ff.) — nur mit gesetztem Cache-Verzeichnis, WENN einer
+        // gewählt wurde.
+        //
+        // Ohne Wahl bleibt es beim unveränderten Standardweg (`HubClient()`
+        // nimmt `HubCache.default`). Einen eigenen Pfad zu erfinden wäre
+        // teuer: WhisperKit und MLX haben unterschiedliche Standardorte, und
+        // jede Verschiebung bedeutet für Bestandsnutzer einen Neu-Download im
+        // Gigabyte-Bereich.
         guard let repoID = Repo.ID(rawValue: id) else {
             throw ShoutDownloaderError.ungueltigeKennung(id)
         }
-        let client = HubClient(cache: HubCache(cacheDirectory: basisordner))
+        let client = gewaehlterBasisordner.map { HubClient(cache: HubCache(cacheDirectory: $0)) }
+            ?? HubClient()
         return try await client.downloadSnapshot(
             of: repoID,
             revision: revision ?? "main",

@@ -73,6 +73,50 @@ final class ModelPathsTests: XCTestCase {
         XCTAssertTrue(pfade.suchordner.contains(ordner("lmstudio")))
     }
 
+    /// Das eigentliche Versprechen: Wer nichts einstellt, merkt nichts. Ohne
+    /// gespeicherte Einstellung gibt es keinen gewählten Ordner — nur so können
+    /// WhisperKit und MLX bei ihrem jeweiligen Standardort bleiben, statt über
+    /// einen erfundenen gemeinsamen Pfad Gigabytes erneut zu laden.
+    func testOhneEinstellungGibtEsKeinenGewaehltenOrdner() {
+        let pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("hf-cache") })
+        XCTAssertNil(pfade.gewaehlterBasisordner)
+        // Anzeige und Auflösung brauchen trotzdem einen brauchbaren Pfad.
+        XCTAssertEqual(pfade.basisordner, ordner("hf-cache"))
+    }
+
+    /// Nach dem Sichern ist die Wahl ausdrücklich — und überlebt das Laden.
+    func testGesicherteWahlGiltAlsGewaehlt() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.basisordner = ordner("platte")
+        pfade.sichern(in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        XCTAssertEqual(neu.gewaehlterBasisordner, ordner("platte"))
+        XCTAssertEqual(neu.basisordner, ordner("platte"))
+    }
+
+    /// Ein Ordnerwechsel ist eine bewusste Wahl — auch ohne vorheriges Sichern.
+    func testOrdnerwechselSetztDieWahl() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("alt") })
+        XCTAssertNil(pfade.gewaehlterBasisordner)
+        pfade.basisordnerWechseln(zu: ordner("neu"))
+        XCTAssertEqual(pfade.gewaehlterBasisordner, ordner("neu"))
+        XCTAssertEqual(pfade.basisordner, ordner("neu"))
+    }
+
+    /// Ein Sichern ohne eigene Wahl (etwa nur der Suchordner) darf die Vorgabe
+    /// nicht heimlich zur Einstellung machen.
+    func testSichernOhneWahlSchreibtKeinenBasisordner() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.suchordner = [ordner("lmstudio")]
+        pfade.sichern(in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("andere-vorgabe") })
+        XCTAssertNil(neu.gewaehlterBasisordner)
+        XCTAssertEqual(neu.basisordner, ordner("andere-vorgabe"))
+        XCTAssertEqual(neu.suchordner, [ordner("lmstudio")])
+    }
+
     func testStoreUebernimmtReihenfolge() {
         var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("basis") })
         pfade.suchordner = [ordner("a"), ordner("b")]

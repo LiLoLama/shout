@@ -57,9 +57,17 @@ actor LocalSpeechEngine: SpeechEngine {
             // Nur die Ermittlung ist auf macOS beschränkt: `ModelPaths` steht
             // nicht in der Quellenliste des iOS-Ziels `ShoutMobile` (project.yml)
             // — ein ungeschützter Aufruf würde dessen Build brechen.
+            //
+            // Weitergereicht wird nur ein AUSDRÜCKLICH gewählter Ordner; ohne
+            // Einstellung bleibt es bei `nil` und damit beim bisherigen Weg.
+            // WhisperKit reicht `downloadBase` an `HubApi` weiter, dessen
+            // Standardort ein anderer ist als der des MLX-Hubs. Ein erfundener
+            // gemeinsamer Pfad fände das vorhandene Modell nicht mehr und
+            // bescherte jedem Bestandsnutzer einen Multi-GB-Download.
             #if os(macOS)
             let basisordner = ModelPaths.laden(aus: .standard,
-                                               vorgabe: { HubCache.default.cacheDirectory }).basisordner
+                                               vorgabe: { HubCache.default.cacheDirectory })
+                .gewaehlterBasisordner
             #else
             let basisordner: URL? = nil
             #endif
@@ -86,9 +94,18 @@ actor LocalSpeechEngine: SpeechEngine {
         // dieselbe Vorgabe (`HubCache.default.cacheDirectory`, beachtet
         // HF_HUB_CACHE/HF_HOME) — nur der Ort ist wählbar, kein Mitbenutzen
         // fremder Ordner (das bleibt dem Textmodell vorbehalten).
+        //
+        // `downloadBase` bekommt nur den ausdrücklich gewählten Ordner, sonst
+        // `nil` — exakt das bisherige Verhalten. WhisperKit gibt den Wert an
+        // `HubApi` weiter (Standard: <Documents>/huggingface), während MLX über
+        // `HubCache.default` geht (~/.cache/huggingface/hub). Wer beiden Seiten
+        // ungefragt einen gemeinsamen Pfad unterschiebt, lässt WhisperKit das
+        // vorhandene large-v3-turbo nicht mehr finden: 1,6 GB neu, die alte
+        // Kopie bleibt als Leiche liegen.
         let pfade = ModelPaths.laden(aus: .standard,
                                      vorgabe: { HubCache.default.cacheDirectory })
-        pipe = try await WhisperKit(WhisperKitConfig(model: name, downloadBase: pfade.basisordner))
+        pipe = try await WhisperKit(WhisperKitConfig(model: name,
+                                                    downloadBase: pfade.gewaehlterBasisordner))
         #endif
         loadedModel = name
     }

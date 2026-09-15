@@ -66,7 +66,8 @@ actor LocalTextEngine: TextEngine {
             let pfade = ModelPaths.laden(aus: .standard,
                                          vorgabe: { HubCache.default.cacheDirectory })
             container = try await loadModelContainer(
-                from: ShoutDownloader(store: pfade.store, basisordner: pfade.basisordner),
+                from: ShoutDownloader(store: pfade.store,
+                                      gewaehlterBasisordner: pfade.gewaehlterBasisordner),
                 using: #huggingFaceTokenizerLoader(),
                 configuration: cfg) { progress in
                 onProgress?(progress.fractionCompleted)

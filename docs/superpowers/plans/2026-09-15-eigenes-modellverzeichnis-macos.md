@@ -1021,7 +1021,7 @@ cd /Users/liam/Developer/LIAM/flow-lokal && xcodegen generate
 - [ ] **Schritt 4: Übersetzen und Tests laufen lassen**
 
 ```bash
-cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme shout -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -25
+cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme FlowLokal -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -25
 ```
 
 Erwartet: `** BUILD SUCCEEDED **`. Bei Fehlern zu `HubClient.snapshot` die
@@ -1106,7 +1106,7 @@ import HuggingFace
 - [ ] **Schritt 3: Übersetzen**
 
 ```bash
-cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme shout -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -25
+cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme FlowLokal -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -25
 ```
 
 Erwartet: `** BUILD SUCCEEDED **`.
@@ -1389,7 +1389,7 @@ sonst greift die Übersetzung still nicht und es bleibt Deutsch stehen.
 - [ ] **Schritt 5: Übersetzen und Tests laufen lassen**
 
 ```bash
-cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme shout -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -25
+cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme FlowLokal -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -25
 ```
 
 Erwartet: `** BUILD SUCCEEDED **`.
@@ -1449,7 +1449,7 @@ Die vorhandene Navigation der Onboarding-Ansicht benutzen — keine neue bauen.
 - [ ] **Schritt 2: Übersetzen**
 
 ```bash
-cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme shout -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -20
+cd /Users/liam/Developer/LIAM/flow-lokal && xcodebuild build -project FlowLokal.xcodeproj -scheme FlowLokal -destination 'platform=macOS,arch=arm64' -skipPackagePluginValidation -skipMacroValidation 2>&1 | tail -20
 ```
 
 Erwartet: `** BUILD SUCCEEDED **`. Der Schlüssel `"Schon Modelle auf dem Rechner?"`

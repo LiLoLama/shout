@@ -86,6 +86,26 @@ struct ModelPaths {
                           verknuepfungen: verknuepft)
     }
 
+    /// Sichert die **Einstellungen**: Basisordner, Suchordner, gemerkte Funde.
+    ///
+    /// Die Verknüpfungen fasst diese Fassung mit Absicht NICHT an. Sie werden
+    /// woanders geschrieben — `ShoutDownloader` merkt mitten in einem Download
+    /// über `ModelPaths.verknuepfungMerken(_:pfad:in:)`, dass ein fremder
+    /// Ordner mitbenutzt wurde. Ein Aufrufer mit einem älteren Stand in der
+    /// Hand (die Modelle-Seite hält `pfade` als `@State`-Schnappschuss)
+    /// schriebe seine veralteten Verknüpfungen darüber und löschte damit
+    /// genau den Eintrag, der ein verschwundenes Fremdmodell als
+    /// `nichtAuffindbar` statt `nichtVorhanden` ausweist — die Oberfläche böte
+    /// für eine bloß abgezogene Platte einen Multi-GB-Download an.
+    ///
+    /// Zwei Wege wären möglich gewesen: die Oberfläche vor jedem Sichern neu
+    /// laden lassen, oder diese Fassung die Verknüpfungen gar nicht anfassen
+    /// lassen. Es ist der zweite geworden, weil er der schwerer falsch zu
+    /// benutzende ist: Das Neuladen müsste jeder künftige Aufrufer von sich
+    /// aus wieder mitbringen, und ein vergessenes Neuladen fällt erst auf,
+    /// wenn eine Platte fehlt. Hier dagegen gibt es für die Verknüpfungen nur
+    /// noch einen Schreibweg — `verknuepfungenSichern(in:)` bzw. die statische
+    /// Kurzfassung —, und wer ihn nicht nimmt, kann nichts kaputt machen.
     func sichern(in defaults: UserDefaults) {
         // Nur eine echte Wahl wird geschrieben. Würde hier die Vorgabe landen,
         // wäre „nichts eingestellt" ab dem nächsten Start eine ausdrückliche
@@ -97,7 +117,6 @@ struct ModelPaths {
             defaults.removeObject(forKey: Schluessel.basis)
         }
         defaults.set(suchordner.map(\.path), forKey: Schluessel.such)
-        defaults.set(verknuepfungen.mapValues(\.path), forKey: Schluessel.verknuepft)
     }
 
     /// Merkt sich, dass eine Kennung aus einem fremden Ordner benutzt wurde.
@@ -112,14 +131,15 @@ struct ModelPaths {
         verknuepfungen[kennung] = pfad
     }
 
-    /// Sichert **nur** die Verknüpfungen.
+    /// Sichert **nur** die Verknüpfungen — der einzige Weg, auf dem sie
+    /// überhaupt in die Einstellungen kommen (`sichern(in:)` fasst sie nicht
+    /// an).
     ///
-    /// `sichern(in:)` schreibt den ganzen Satz und entscheidet dabei auch über
-    /// Basis- und Suchordner. Genau das darf hier nicht passieren: Wer mitten
-    /// in einem Download bloß einen Fund festhalten will, hat einen womöglich
-    /// veralteten Stand in der Hand und würde eine inzwischen getroffene Wahl
-    /// des Nutzers überschreiben. Diese Fassung fasst die anderen Schlüssel
-    /// nicht an — die Zusage aus `basisordner` bleibt unangetastet.
+    /// Umgekehrt gilt dasselbe: Wer mitten in einem Download bloß einen Fund
+    /// festhalten will, hat einen womöglich veralteten Stand in der Hand und
+    /// würde über `sichern(in:)` eine inzwischen getroffene Wahl des Nutzers
+    /// überschreiben. Diese Fassung fasst die anderen Schlüssel nicht an — die
+    /// Zusage aus `basisordner` bleibt unangetastet.
     func verknuepfungenSichern(in defaults: UserDefaults) {
         defaults.set(verknuepfungen.mapValues(\.path), forKey: Schluessel.verknuepft)
     }

@@ -149,12 +149,38 @@ final class ModelPathsTests: XCTestCase {
         var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
         pfade.verknuepfungMerken("mlx-community/modell-a", pfad: ordner("platte/modell-a"))
         pfade.verknuepfungMerken("mlx-community/modell-b", pfad: ordner("lmstudio/modell-b"))
-        pfade.sichern(in: defaults)
+        pfade.verknuepfungenSichern(in: defaults)
 
         let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
         XCTAssertEqual(neu.verknuepfungen,
                        ["mlx-community/modell-a": ordner("platte/modell-a"),
                         "mlx-community/modell-b": ordner("lmstudio/modell-b")])
+    }
+
+    /// Der Wächter gegen den Verlust: Die Oberfläche hält `pfade` als
+    /// Schnappschuss. Merkt der Downloader währenddessen eine benutzte
+    /// Fremdverknüpfung, darf ein späteres `sichern(in:)` aus dem alten Stand
+    /// sie nicht wieder wegschreiben — sonst fiele ein verschwundenes
+    /// Fremdmodell von `nichtAuffindbar` auf `nichtVorhanden` zurück, und die
+    /// Oberfläche böte für eine bloß abgezogene Platte einen Multi-GB-Download
+    /// an.
+    func testSichernLoeschtGemerkteVerknuepfungenNicht() {
+        // Der Stand, den die Oberfläche in der Hand hält: noch ohne Eintrag.
+        var schnappschuss = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        XCTAssertTrue(schnappschuss.verknuepfungen.isEmpty)
+
+        // Währenddessen merkt der Downloader einen mitbenutzten fremden Ordner.
+        ModelPaths.verknuepfungMerken("mlx-community/modell-a",
+                                      pfad: ordner("lmstudio/modell-a"), in: defaults)
+
+        // Und erst danach sichert die Oberfläche ihre Ordner-Einstellung.
+        schnappschuss.suchordner = [ordner("lmstudio")]
+        schnappschuss.sichern(in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        XCTAssertEqual(neu.suchordner, [ordner("lmstudio")])
+        XCTAssertEqual(neu.verknuepfungen,
+                       ["mlx-community/modell-a": ordner("lmstudio/modell-a")])
     }
 
     /// Der Wächter für den Weg aus dem Downloader: Ein Fund in einem fremden
@@ -181,6 +207,7 @@ final class ModelPathsTests: XCTestCase {
         pfade.suchordner = [ordner("lmstudio")]
         pfade.verknuepfungMerken("mlx-community/modell-a", pfad: ordner("lmstudio/modell-a"))
         pfade.sichern(in: defaults)
+        pfade.verknuepfungenSichern(in: defaults)
 
         ModelPaths.verknuepfungMerken("mlx-community/modell-b",
                                       pfad: ordner("platte/modell-b"), in: defaults)

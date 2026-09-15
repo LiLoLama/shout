@@ -101,7 +101,12 @@ struct ModelsView: View {
                     }
                 }
 
-                if formatEngine == "local" { remotePanel }
+                if formatEngine == "local" {
+                    // Was schon auf der Platte liegt, steht vor dem, was
+                    // erst geladen werden müsste.
+                    gefundenePanel
+                    remotePanel
+                }
 
                 ordnerAbschnitt
 
@@ -136,6 +141,84 @@ struct ModelsView: View {
                 }),
                 options: [("local", Loc.t("Auf diesem Gerät")), ("remote", Loc.t("Anbieter"))])
         }
+    }
+
+    // MARK: - Auf diesem Rechner gefundene Modelle
+
+    /// Was das Durchsuchen gefunden hat — ohne das, was ohnehin im Katalog
+    /// steht.
+    ///
+    /// Ohne diesen Abschnitt zählte das Durchsuchen seine Funde bloß: Sie
+    /// landen über `fundeMerken` im Auflösungs-Verzeichnis (`ModelPaths.funde`),
+    /// aber wer ein Modell hat, das nicht zufällig im Katalog steht, könnte es
+    /// nirgends auswählen — gefunden und trotzdem unbenutzbar.
+    ///
+    /// Katalog-Kennungen bleiben draußen: Ihre Zeile oben zeigt die Herkunft
+    /// schon über das Abzeichen, ein zweiter Eintrag wäre dieselbe Auswahl an
+    /// zwei Stellen. Sortiert wird nach Kennung — die Reihenfolge darf nicht
+    /// an der eines Wörterbuchs hängen und bei jedem Aufbau anders sein.
+    private var gefundeneModelle: [(kennung: String, pfad: URL)] {
+        let imKatalog = Set(ModelCatalog.formatting.map(\.id))
+        return pfade.funde
+            .filter { !imKatalog.contains($0.key) }
+            .map { (kennung: $0.key, pfad: $0.value) }
+            .sorted { $0.kennung < $1.kennung }
+    }
+
+    /// Die Funde als auswählbare Zeilen — nur für die Aufbereitung.
+    ///
+    /// Für die Transkription gibt es das mit Absicht nicht: WhisperKit legt in
+    /// einem eigenen Format ab, das der `ModelStore` nicht auflöst, und benutzt
+    /// fremde Ordner nicht mit. Eine Zeile dort wäre ein Versprechen, das der
+    /// Lader nicht einlöst.
+    @ViewBuilder
+    private var gefundenePanel: some View {
+        let funde = gefundeneModelle
+        // Keine leere Überschrift: Wer nie durchsucht hat, soll hier nichts
+        // sehen statt eines Abschnitts, der nichts enthält.
+        if !funde.isEmpty {
+            VStack(alignment: .leading, spacing: 9) {
+                ConsolePanel(title: Loc.t("Auf diesem Rechner gefunden")) {
+                    ForEach(Array(funde.enumerated()), id: \.element.kennung) { i, fund in
+                        fundZeile(fund.kennung, pfad: fund.pfad)
+                        if i < funde.count - 1 { ConsoleDivider() }
+                    }
+                }
+                Text(Loc.t("Aus den durchsuchten Ordnern. Diese Modelle liegen schon auf diesem Rechner und werden nicht heruntergeladen."))
+                    .font(.system(size: 11)).foregroundStyle(Color(white: 0.42))
+                    .fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
+            }
+        }
+    }
+
+    /// Eine Fund-Zeile: Kennung als Name, darunter der Pfad. Auswahl setzt das
+    /// Formatierungs-Modell — derselbe Weg wie bei `modelRow`.
+    private func fundZeile(_ kennung: String, pfad: URL) -> some View {
+        let selected = formatID == kennung
+        let loading = loadingFormat == kennung
+        return Button(action: { selectFormat(kennung) }) {
+            HStack(spacing: 12) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 16)).foregroundStyle(selected ? Color.shoutLive : Color(white: 0.4))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(kennung).font(.system(size: 13.5, weight: .medium))
+                        .foregroundStyle(Color(white: 0.9))
+                        .lineLimit(1).truncationMode(.middle)
+                    // Gekürzt wird vorne, wie bei den durchsuchten Ordnern:
+                    // Der Modellname am Ende des Pfades sagt mehr als der
+                    // Heimatordner am Anfang.
+                    Text(pfad.path).font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Color(white: 0.5))
+                        .lineLimit(1).truncationMode(.head)
+                }
+                Spacer(minLength: 8)
+                if loading { loadingIndicator(model.formatProgress) }
+            }
+            .padding(.horizontal, 15).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isSwitchingModel)
     }
 
     // MARK: - Live-Modelle von Hugging Face

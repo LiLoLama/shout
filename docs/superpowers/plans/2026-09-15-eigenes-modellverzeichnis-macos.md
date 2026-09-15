@@ -75,9 +75,8 @@ das vorhandene Feld `downloadBase`.
 **Schnittstellen:**
 - Benutzt: nichts (abhängigkeitsfrei, nur `Foundation`)
 - Liefert:
-  - `enum ModelArt { case mlx, whisper }`
-  - `struct ModelStore { init(basisordner: URL, suchordner: [URL]); func aufloesen(_ kennung: String, art: ModelArt) -> URL? }`
-  - `ModelStore.ordnername(fuer kennung: String, art: ModelArt) -> String`
+  - `struct ModelStore { init(basisordner: URL, suchordner: [URL]); func aufloesen(_ kennung: String) -> URL? }`
+  - `ModelStore.ordnername(fuer kennung: String) -> String`
 
 - [ ] **Schritt 1: Den fehlschlagenden Test schreiben**
 
@@ -110,7 +109,7 @@ final class ModelStoreTests: XCTestCase {
     /// Der Inhalt ist gleichgültig — der Store prüft Struktur, nicht Inhalt.
     private func legeMLXAn(in ordner: URL, kennung: String) throws -> URL {
         let ziel = ordner.appendingPathComponent(
-            ModelStore.ordnername(fuer: kennung, art: .mlx), isDirectory: true)
+            ModelStore.ordnername(fuer: kennung), isDirectory: true)
         try FileManager.default.createDirectory(at: ziel, withIntermediateDirectories: true)
         try Data("{}".utf8).write(to: ziel.appendingPathComponent("config.json"))
         try Data().write(to: ziel.appendingPathComponent("model.safetensors"))
@@ -121,19 +120,19 @@ final class ModelStoreTests: XCTestCase {
     /// den es noch nicht gibt — sonst hielte der Aufrufer ihn für gültig.
     func testOhneModellKeinPfad() {
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit", art: .mlx))
+        XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit"))
     }
 
     func testFindetModellImBasisordner() throws {
         let erwartet = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
         let store = ModelStore(basisordner: basis, suchordner: [])
-        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit", art: .mlx), erwartet)
+        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), erwartet)
     }
 
     func testFindetModellImSuchordner() throws {
         let erwartet = try legeMLXAn(in: fremd, kennung: "mlx-community/Qwen3-4B-4bit")
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit", art: .mlx), erwartet)
+        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), erwartet)
     }
 
     /// Der Vorrang ist die Kernregel: Liegt dasselbe Modell doppelt, gewinnt
@@ -142,25 +141,25 @@ final class ModelStoreTests: XCTestCase {
         let imBasis = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
         _ = try legeMLXAn(in: fremd, kennung: "mlx-community/Qwen3-4B-4bit")
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit", art: .mlx), imBasis)
+        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), imBasis)
     }
 
     /// Ein Ordner ohne Gewichte ist kein Modell, auch wenn er richtig heißt.
     /// Ein abgebrochener Download darf nicht als fertiges Modell gelten.
     func testOrdnerOhneGewichteZaehltNicht() throws {
         let leer = basis.appendingPathComponent(
-            ModelStore.ordnername(fuer: "mlx-community/Qwen3-4B-4bit", art: .mlx),
+            ModelStore.ordnername(fuer: "mlx-community/Qwen3-4B-4bit"),
             isDirectory: true)
         try FileManager.default.createDirectory(at: leer, withIntermediateDirectories: true)
         try Data("{}".utf8).write(to: leer.appendingPathComponent("config.json"))
         let store = ModelStore(basisordner: basis, suchordner: [])
-        XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit", art: .mlx))
+        XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit"))
     }
 
     /// Der HF-Cache benutzt das Python-Format models--org--repo.
     func testOrdnernameFolgtDemHFFormat() {
         XCTAssertEqual(
-            ModelStore.ordnername(fuer: "mlx-community/Qwen3-4B-4bit", art: .mlx),
+            ModelStore.ordnername(fuer: "mlx-community/Qwen3-4B-4bit"),
             "models--mlx-community--Qwen3-4B-4bit")
     }
 }
@@ -180,13 +179,6 @@ Erwartet: Übersetzungsfehler, `cannot find 'ModelStore' in scope`.
 
 ```swift
 import Foundation
-
-/// Welche Art von Modell gemeint ist. Die beiden liegen unterschiedlich:
-/// MLX als Ordner mit Gewichten, Whisper als CoreML-Ordner von WhisperKit.
-enum ModelArt {
-    case mlx
-    case whisper
-}
 
 /// Beantwortet genau eine Frage: **Welcher Pfad gehört zu welcher Kennung?**
 ///
@@ -220,16 +212,16 @@ struct ModelStore {
     /// Ordnername im Python-Format des Hugging-Face-Caches
     /// (`models--<org>--<repo>`) — so legt `HubCache` ab, und so sieht
     /// `~/.cache/huggingface/hub` aus.
-    static func ordnername(fuer kennung: String, art: ModelArt) -> String {
+    static func ordnername(fuer kennung: String) -> String {
         let teile = kennung.split(separator: "/").map(String.init)
         return (["models"] + teile).joined(separator: "--")
     }
 
-    func aufloesen(_ kennung: String, art: ModelArt) -> URL? {
-        let name = Self.ordnername(fuer: kennung, art: art)
+    func aufloesen(_ kennung: String) -> URL? {
+        let name = Self.ordnername(fuer: kennung)
         for ort in orteInReihenfolge {
             let kandidat = ort.appendingPathComponent(name, isDirectory: true)
-            if Self.istVollstaendig(kandidat, art: art) { return kandidat }
+            if Self.istVollstaendig(kandidat) { return kandidat }
         }
         return nil
     }
@@ -237,28 +229,15 @@ struct ModelStore {
     /// Ein Ordner zählt erst als Modell, wenn die Gewichte da sind. Ein
     /// abgebrochener Download hinterlässt sonst eine Hülle, die wie ein
     /// fertiges Modell aussieht und erst beim Laden auffliegt.
-    static func istVollstaendig(_ ordner: URL, art: ModelArt) -> Bool {
+    static func istVollstaendig(_ ordner: URL) -> Bool {
         let fm = FileManager.default
         var istOrdner: ObjCBool = false
         guard fm.fileExists(atPath: ordner.path, isDirectory: &istOrdner),
               istOrdner.boolValue,
               let inhalt = try? fm.contentsOfDirectory(atPath: ordner.path)
         else { return false }
-
-        switch art {
-        case .mlx:
-            return inhalt.contains("config.json")
-                && inhalt.contains { $0.hasSuffix(".safetensors") }
-        case .whisper:
-            // WhisperKit legt kompilierte CoreML-Pakete ab.
-            return inhalt.contains { $0.hasSuffix(".mlmodelc") }
-        }
-    }
-}
-
-private extension Array where Element == String {
-    func contains(_ pruefung: (String) -> Bool) -> Bool {
-        first(where: pruefung) != nil
+        return inhalt.contains("config.json")
+            && inhalt.contains(where: { $0.hasSuffix(".safetensors") })
     }
 }
 ```
@@ -304,9 +283,9 @@ git commit -m "ModelStore: Kennung zu Pfad auflösen, Basisordner hat Vorrang"
 - Ändern: `Tests/ShoutTests/ModelStoreTests.swift`
 
 **Schnittstellen:**
-- Benutzt: `ModelStore`, `ModelArt` aus Aufgabe 1
+- Benutzt: `ModelStore` aus Aufgabe 1
 - Liefert: `enum ModelZustand: Equatable { case nichtVorhanden, eigen(URL), fremd(URL), nichtAuffindbar }`
-  und `ModelStore.zustand(_ kennung: String, art: ModelArt, verknuepft: URL?) -> ModelZustand`
+  und `ModelStore.zustand(_ kennung: String, verknuepft: URL?) -> ModelZustand`
 
 Der Parameter `verknuepft` ist der zuletzt bekannte Pfad aus den Einstellungen.
 Ist er gesetzt, das Modell aber nirgends mehr auffindbar, lautet der Zustand
@@ -321,21 +300,21 @@ An `ModelStoreTests.swift` anhängen (vor der schließenden Klammer):
 ```swift
     func testZustandNichtVorhandenOhneVerknuepfung() {
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", art: .mlx, verknuepft: nil),
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
                        .nichtVorhanden)
     }
 
     func testZustandEigenImBasisordner() throws {
         let pfad = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", art: .mlx, verknuepft: nil),
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
                        .eigen(pfad))
     }
 
     func testZustandFremdImSuchordner() throws {
         let pfad = try legeMLXAn(in: fremd, kennung: "mlx-community/Qwen3-4B-4bit")
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", art: .mlx, verknuepft: nil),
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
                        .fremd(pfad))
     }
 
@@ -346,7 +325,7 @@ An `ModelStoreTests.swift` anhängen (vor der schließenden Klammer):
         let weg = fremd.appendingPathComponent("models--mlx-community--Qwen3-4B-4bit",
                                                isDirectory: true)
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", art: .mlx, verknuepft: weg),
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: weg),
                        .nichtAuffindbar)
     }
 
@@ -357,7 +336,7 @@ An `ModelStoreTests.swift` anhängen (vor der schließenden Klammer):
         let alt = fremd.appendingPathComponent("models--mlx-community--Qwen3-4B-4bit",
                                                isDirectory: true)
         let store = ModelStore(basisordner: basis, suchordner: [fremd])
-        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", art: .mlx, verknuepft: alt),
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: alt),
                        .eigen(pfad))
     }
 ```
@@ -393,10 +372,10 @@ enum ModelZustand: Equatable {
 Und innerhalb von `struct ModelStore`, nach `aufloesen`:
 
 ```swift
-    func zustand(_ kennung: String, art: ModelArt, verknuepft: URL?) -> ModelZustand {
+    func zustand(_ kennung: String, verknuepft: URL?) -> ModelZustand {
         // Ein echter Fund schlägt jede gespeicherte Verknüpfung: Wer das Modell
         // inzwischen selbst geladen hat, soll nicht auf einen toten Pfad starren.
-        if let gefunden = aufloesen(kennung, art: art) {
+        if let gefunden = aufloesen(kennung) {
             let imBasis = gefunden.standardizedFileURL.path
                 .hasPrefix(basisordner.standardizedFileURL.path)
             return imBasis ? .eigen(gefunden) : .fremd(gefunden)
@@ -430,9 +409,9 @@ git commit -m "ModelStore: vier Zustände, 'nicht auffindbar' getrennt von 'nich
 - Ändern: `project.yml` (Quellenliste Testziel)
 
 **Schnittstellen:**
-- Benutzt: `ModelArt`, `ModelStore.istVollstaendig` aus Aufgabe 1
+- Benutzt: `ModelStore.istVollstaendig` aus Aufgabe 1
 - Liefert:
-  - `struct ModelFund: Equatable { let kennung: String; let pfad: URL; let art: ModelArt; let groesseBytes: Int64 }`
+  - `struct ModelFund: Equatable { let kennung: String; let pfad: URL; let groesseBytes: Int64 }`
   - `enum ModelScan { static func durchsuchen(_ wurzel: URL, maxTiefe: Int = 6, maxEintraege: Int = 50_000, abbruch: () -> Bool = { false }) -> (funde: [ModelFund], grenzeErreicht: Bool) }`
 
 Grenzen laut Entwurf: **sechs Ebenen, höchstens 50 000 besuchte Einträge.** Wird
@@ -559,7 +538,6 @@ import Foundation
 struct ModelFund: Equatable {
     let kennung: String
     let pfad: URL
-    let art: ModelArt
     let groesseBytes: Int64
 }
 
@@ -603,10 +581,9 @@ enum ModelScan {
 
             // Ist dieser Ordner selbst ein Modell? Dann nicht weiter hinein —
             // in den Gewichten liegt nichts, was uns noch interessiert.
-            if ModelStore.istVollstaendig(ordner, art: .mlx) {
+            if ModelStore.istVollstaendig(ordner) {
                 funde.append(ModelFund(kennung: kennung(fuer: ordner, unter: wurzel),
                                        pfad: ordner,
-                                       art: .mlx,
                                        groesseBytes: groesse(von: ordner)))
                 continue
             }
@@ -969,7 +946,7 @@ struct ShoutDownloader: Downloader {
 
         // Erst der Store: Liegt das Modell irgendwo — im eigenen Ordner oder in
         // einem durchsuchten —, wird es benutzt, nicht erneut geladen.
-        if !useLatest, let vorhanden = store.aufloesen(id, art: .mlx) {
+        if !useLatest, let vorhanden = store.aufloesen(id) {
             return vorhanden
         }
 

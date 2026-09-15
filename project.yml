@@ -367,6 +367,7 @@ targets:
       - path: Sources/FlowLokal/StoreIO.swift
       # Modellverzeichnis: abhängigkeitsfrei, ohne MLX-/WhisperKit-Bezug.
       - path: Sources/FlowLokal/ModelStore.swift
+      - path: Sources/FlowLokal/ModelScan.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

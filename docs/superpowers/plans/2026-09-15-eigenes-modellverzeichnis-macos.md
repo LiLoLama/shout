@@ -376,8 +376,11 @@ Und innerhalb von `struct ModelStore`, nach `aufloesen`:
         // Ein echter Fund schlägt jede gespeicherte Verknüpfung: Wer das Modell
         // inzwischen selbst geladen hat, soll nicht auf einen toten Pfad starren.
         if let gefunden = aufloesen(kennung) {
-            let imBasis = gefunden.standardizedFileURL.path
-                .hasPrefix(basisordner.standardizedFileURL.path)
+            // Exakter Elternvergleich statt Pfad-Präfix: Modelle liegen immer
+            // direkt in ihrem Ordner, und ein Präfixvergleich hielte einen Fund
+            // in "/Modelle-Alt" für einen aus "/Modelle".
+            let imBasis = gefunden.deletingLastPathComponent().standardizedFileURL
+                == basisordner.standardizedFileURL
             return imBasis ? .eigen(gefunden) : .fremd(gefunden)
         }
         return verknuepft == nil ? .nichtVorhanden : .nichtAuffindbar

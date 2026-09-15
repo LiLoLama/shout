@@ -278,6 +278,72 @@ final class ModelStoreTests: XCTestCase {
                                             eigenerDownloadOrdner: basis))
     }
 
+    // MARK: - Zweistufige Form (LM Studio)
+
+    /// Der Fehler, den kein bestehender Test finden konnte: Alle Attrappen
+    /// hier bauen ihren Ordnernamen über `ModelStore.ordnername(…)` und prüfen
+    /// die Annahme damit mit sich selbst. Dieser Test legt den Pfad deshalb
+    /// **wörtlich** an — `mlx-community/Qwen3-4B-4bit` als zwei Ebenen, so wie
+    /// LM Studio ablegt und wie `ModelScan.kennung` es ausdrücklich mitliest.
+    func testFindetModellInZweistufigerLMStudioForm() throws {
+        let ziel = fremd
+            .appendingPathComponent("mlx-community", isDirectory: true)
+            .appendingPathComponent("Qwen3-4B-4bit", isDirectory: true)
+        try FileManager.default.createDirectory(at: ziel, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: ziel.appendingPathComponent("config.json"))
+        try Data().write(to: ziel.appendingPathComponent("model.safetensors"))
+
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), ziel)
+    }
+
+    /// Der Gewinn, für den die Erweiterung gebaut wurde: Ein LM-Studio-Ordner
+    /// wird mitbenutzt statt ein zweites Mal geladen.
+    func testZweistufigerFundImFremdenOrdnerKuerztAb() throws {
+        let ziel = fremd
+            .appendingPathComponent("mlx-community", isDirectory: true)
+            .appendingPathComponent("Qwen3-4B-4bit", isDirectory: true)
+        try FileManager.default.createDirectory(at: ziel, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: ziel.appendingPathComponent("config.json"))
+        try Data().write(to: ziel.appendingPathComponent("model.safetensors"))
+
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .fremd(ziel))
+        XCTAssertEqual(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                              eigenerDownloadOrdner: basis),
+                       ziel)
+    }
+
+    /// Auch zweistufig zählt ein Ordner ohne Gewichte nicht — sonst gälte ein
+    /// halb entpacktes Archiv als fertiges Modell.
+    func testZweistufigOhneGewichteZaehltNicht() throws {
+        let ziel = fremd
+            .appendingPathComponent("mlx-community", isDirectory: true)
+            .appendingPathComponent("Qwen3-4B-4bit", isDirectory: true)
+        try FileManager.default.createDirectory(at: ziel, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: ziel.appendingPathComponent("config.json"))
+
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit"))
+    }
+
+    /// Das HF-Cache-Format hat Vorrang: Liegt dasselbe Modell im selben Ort in
+    /// beiden Formen, gewinnt die berechenbare Form — sonst wäre nicht
+    /// vorhersagbar, welche Gewichte geladen werden.
+    func testHFFormatSchlaegtZweistufigeFormImSelbenOrt() throws {
+        let hf = try legeMLXAn(in: fremd, kennung: "mlx-community/Qwen3-4B-4bit")
+        let zweistufig = fremd
+            .appendingPathComponent("mlx-community", isDirectory: true)
+            .appendingPathComponent("Qwen3-4B-4bit", isDirectory: true)
+        try FileManager.default.createDirectory(at: zweistufig, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: zweistufig.appendingPathComponent("config.json"))
+        try Data().write(to: zweistufig.appendingPathComponent("model.safetensors"))
+
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), hf)
+    }
+
     // MARK: - Symlinks in den Ortsvergleichen
 
     /// Die Sperre gegen das Abkürzen im eigenen Cache darf nicht an der

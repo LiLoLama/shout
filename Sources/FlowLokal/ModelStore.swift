@@ -102,8 +102,29 @@ struct ModelStore {
             if let snapshot = Self.neuesterSnapshot(unter: repoOrdner) {
                 return Fund(pfad: snapshot, ort: ort)
             }
+            // Zweistufige Form: LM Studio legt unter <org>/<repo>/ ab — genau
+            // die Form, die `ModelScan.kennung` ausdrücklich mitliest. Ohne
+            // sie meldete die Modelle-Seite „1 Modelle gefunden" für
+            // ~/.lmstudio/models, und shout. lüde dieselben Gigabyte trotzdem
+            // erneut: gefunden, aber nie aufgelöst.
+            if let zweistufig = Self.zweistufigerOrdner(in: ort, fuer: kennung),
+               Self.istVollstaendig(zweistufig) {
+                return Fund(pfad: zweistufig, ort: ort)
+            }
         }
         return nil
+    }
+
+    /// `<ort>/<org>/<repo>/` — nur für Kennungen mit genau einem Schrägstrich.
+    ///
+    /// Eine Kennung ohne Schrägstrich hätte keine zwei Ebenen, eine mit
+    /// mehreren ist keine Hugging-Face-Kennung; in beiden Fällen gibt es
+    /// nichts zu bauen.
+    private static func zweistufigerOrdner(in ort: URL, fuer kennung: String) -> URL? {
+        let teile = kennung.split(separator: "/").map(String.init)
+        guard teile.count == 2 else { return nil }
+        return ort.appendingPathComponent(teile[0], isDirectory: true)
+                  .appendingPathComponent(teile[1], isDirectory: true)
     }
 
     func aufloesen(_ kennung: String) -> URL? {

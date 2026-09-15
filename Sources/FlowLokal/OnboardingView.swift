@@ -8,7 +8,10 @@ import ApplicationServices
 struct OnboardingView: View {
     @ObservedObject var dashboard: DashboardModel
     @ObservedObject var settings: RecordingSettings
-    let onFinish: () -> Void
+    /// Abschluss — mit dem Tab, auf dem das Dashboard danach stehen soll.
+    /// Ohne dieses Ziel landete der Hinweis „Schon Modelle auf dem Rechner?"
+    /// doch wieder auf „Aufnahme", weil der Abschluss den Tab selbst setzt.
+    let onFinish: (DashboardModel.Tab) -> Void
     let onRetryModel: () -> Void
 
     @State private var step = 0
@@ -149,6 +152,16 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
+            // Ebenfalls kein eigener Schritt: Wer schon Modelle auf der Platte
+            // hat (z. B. aus LM Studio), soll das hier erfahren — genau an der
+            // Stelle, an der shout. sonst mehrere Gigabyte neu herunterladen
+            // will. Der Abschnitt dazu liegt auf der Modelle-Seite.
+            Button(Loc.t("Schon Modelle auf dem Rechner?")) {
+                zeigeModelleSeite()
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 11))
+            .padding(.top, 2)
         }
     }
 
@@ -180,7 +193,7 @@ struct OnboardingView: View {
             if step < stepCount - 1 {
                 Button(Loc.t("Weiter")) { step += 1 }.buttonStyle(PrimaryOnboardButton())
             } else {
-                Button(Loc.t("Los geht’s")) { onFinish() }.buttonStyle(PrimaryOnboardButton())
+                Button(Loc.t("Los geht’s")) { onFinish(.aufnahme) }.buttonStyle(PrimaryOnboardButton())
             }
         }
         .padding(.horizontal, 22).padding(.vertical, 16)
@@ -203,6 +216,17 @@ struct OnboardingView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Springt aus dem Onboarding direkt zur Modelle-Seite: den vorhandenen
+    /// Abschluss-Übergang nehmen und ihm „Modelle“ als Ziel mitgeben — keine
+    /// eigene Navigation bauen.
+    ///
+    /// Den Tab hier selbst zu setzen reichte nicht: Der Abschluss öffnet das
+    /// Dashboard und bestimmt dabei den Tab, der Wunsch wäre also sofort wieder
+    /// überschrieben.
+    private func zeigeModelleSeite() {
+        onFinish(.modelle)
     }
 
     private func openSettings(_ anchor: String) {

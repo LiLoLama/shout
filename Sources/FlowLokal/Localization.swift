@@ -348,6 +348,7 @@ final class Loc: ObservableObject {
         "Geschätzte Kosten": "Estimated cost",
         "Rechner zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später unter „Modelle“.":
             "Machine too weak? You can run both steps at a provider of your choice instead — later under “Models”.",
+        "Schon Modelle auf dem Rechner?": "Already have models on this Mac?",
         "Gerät zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später in den Einstellungen.":
             "Device too weak? You can run both steps at a provider of your choice instead — later in Settings.",
         "Näherung — abgerechnet wird beim Anbieter.":
@@ -853,5 +854,30 @@ final class Loc: ObservableObject {
         "%@ · %d Wörter": "%@ · %d words",
         "%@ in die Zwischenablage kopiert.": "%@ copied to the clipboard.",
         "Untertitel folgen immer dem ursprünglichen Transkript — Änderungen in diesem Fenster wirken sich nicht auf die Zeitmarken aus.": "Subtitles always follow the original transcript — edits in this window do not affect the timestamps.",
+
+        // MARK: - Modellverzeichnis
+
+        "%d Modelle gefunden": "%d models found",
+        "%d Modelle gefunden. Der Ordner ist sehr groß — es wurde nicht vollständig durchsucht.":
+            "%d models found. This folder is very large — it was not searched completely.",
+        "Abgebrochen bei %d Modellen.": "Cancelled at %d models.",
+        "Basisordner": "Base folder",
+        "Durchsuchen": "Search",
+        "Durchsuchte Ordner": "Searched folders",
+        "Erneut durchsuchen": "Search again",
+        "Fremder Ordner": "External folder",
+        "Hierhin lädt shout. selbst. Vorhandene Modelle bleiben, wo sie sind.":
+            "This is where shout. downloads to. Existing models stay where they are.",
+        "Modelle aus diesen Ordnern werden mitbenutzt statt neu geladen.":
+            "Models in these folders are used as they are instead of downloaded again.",
+        "Nicht auffindbar": "Not found",
+        "Noch keiner. Wer schon Modelle hat, spart sich den Download.":
+            "None yet. If you already have models, this saves the download.",
+        "Noch nicht durchsucht.": "Not searched yet.",
+        "Ordner hinzufügen": "Add folder",
+        "Standardort": "Default location",
+        "Wird durchsucht …": "Searching…",
+        "Wo die Modelle liegen": "Where the models live",
+        "Wählen": "Choose",
     ]
 }

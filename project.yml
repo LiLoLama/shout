@@ -107,8 +107,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.flowlokal
         # Datei-/Produktname ohne Punkt (sonst "shout..app"); Anzeigename mit Punkt.
         PRODUCT_NAME: "shout"
-        MARKETING_VERSION: "1.10.1"
-        CURRENT_PROJECT_VERSION: "29"
+        MARKETING_VERSION: "1.11.0"
+        CURRENT_PROJECT_VERSION: "30"
         # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"
@@ -365,6 +365,14 @@ targets:
       - path: Sources/FlowLokal/SystemAudioTap.swift
       - path: Sources/FlowLokal/PillPlacement.swift
       - path: Sources/FlowLokal/StoreIO.swift
+      # Modellverzeichnis: abhängigkeitsfrei, ohne MLX-/WhisperKit-Bezug.
+      - path: Sources/FlowLokal/ModelStore.swift
+      - path: Sources/FlowLokal/ModelScan.swift
+      - path: Sources/FlowLokal/ModelPaths.swift
+      # Abbruchwunsch über die Strang-Grenze — von der Modelle-Seite benutzt.
+      - path: Sources/FlowLokal/AbbruchFlagge.swift
+      # Gedächtnis für fehlgeschlagene Abkürzungen; nur Foundation.
+      - path: Sources/FlowLokal/Abkuerzungsgedaechtnis.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

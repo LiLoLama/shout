@@ -54,14 +54,48 @@ actor LocalTextEngine: TextEngine {
         defer { isLoading = false }
         do {
             let cfg = ModelConfiguration(id: id)
+            // Der eigene Basisordner ist bewusst nur eine macOS-Erweiterung:
+            // am iPhone gibt es kein geteiltes Dateisystem, in dem ein Nutzer
+            // einen Ordner wählen könnte, und das iOS-Ziel (ShoutMobile) kennt
+            // `ModelPaths`/`ShoutDownloader` nicht — project.yml listet für iOS
+            // nur eine Teilmenge der Dateien. Deshalb dort weiterhin der alte
+            // Weg über das Makro mit dem Standard-Hub.
+            #if os(macOS)
+            // Ausgeschrieben statt über das Makro: Nur so lässt sich der
+            // Downloader austauschen — das Makro nimmt fest den Standard-Hub.
+            let pfade = ModelPaths.laden(aus: .standard,
+                                         vorgabe: { HubCache.default.cacheDirectory })
+            container = try await loadModelContainer(
+                from: ShoutDownloader(store: pfade.store,
+                                      gewaehlterBasisordner: pfade.gewaehlterBasisordner),
+                using: #huggingFaceTokenizerLoader(),
+                configuration: cfg) { progress in
+                onProgress?(progress.fractionCompleted)
+            }
+            #else
             container = try await #huggingFaceLoadModelContainer(configuration: cfg) { progress in
                 onProgress?(progress.fractionCompleted)
             }
+            #endif
             loadedModel = id
             isReady = true
+            #if os(macOS)
+            Abkuerzungsgedaechtnis.geteilt.ladenGelungen(id)
+            #endif
         } catch {
             NSLog("Formatter-Modell konnte nicht geladen werden: \(error)")
             isReady = false
+            #if os(macOS)
+            // Kam der Pfad aus der Abkürzung in einen fremden Ordner, darf der
+            // nächste Versuch sie nicht erneut nehmen: Ein Ordner kann die
+            // Prüfung des Stores bestehen (config.json plus irgendeine
+            // *.safetensors) und trotzdem nicht ladbar sein — fehlende
+            // tokenizer.json, halber Shard-Satz, andere Architektur. Sonst
+            // nähme jeder weitere Versuch denselben Weg, und die Aufbereitung
+            // bliebe dauerhaft und unbemerkt tot. Der nächste Versuch geht an
+            // den Hub.
+            Abkuerzungsgedaechtnis.geteilt.ladenGescheitert(id)
+            #endif
         }
     }
 

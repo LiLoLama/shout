@@ -221,6 +221,74 @@ final class ModelPathsTests: XCTestCase {
                         "mlx-community/modell-b": ordner("platte/modell-b")])
     }
 
+    /// Die Funde des Durchsuchens müssen den Programmlauf überleben —
+    /// sonst wäre „Erneut durchsuchen" bei jedem Start wieder nötig.
+    func testFundeUeberlebenSichernUndLaden() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.fundeMerken([ModelFund(kennung: "mlx-community/modell-a",
+                                     pfad: ordner("archiv/tief/modell-a"),
+                                     groesseBytes: 42)],
+                          ausOrdner: ordner("archiv"))
+        pfade.sichern(in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        XCTAssertEqual(neu.funde,
+                       ["mlx-community/modell-a": ordner("archiv/tief/modell-a")])
+        XCTAssertEqual(neu.store.gemerkteFunde, neu.funde)
+    }
+
+    /// „Erneut durchsuchen" bildet den Ordner ab, wie er jetzt ist: Was im
+    /// zweiten Durchlauf fehlt, fällt heraus. Funde aus anderen Ordnern
+    /// bleiben unangetastet.
+    func testErneutesDurchsuchenErsetztNurDenEigenenOrdner() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.fundeMerken([ModelFund(kennung: "mlx-community/modell-a",
+                                     pfad: ordner("archiv/modell-a"), groesseBytes: 1),
+                           ModelFund(kennung: "mlx-community/modell-b",
+                                     pfad: ordner("archiv/modell-b"), groesseBytes: 1)],
+                          ausOrdner: ordner("archiv"))
+        pfade.fundeMerken([ModelFund(kennung: "mlx-community/modell-c",
+                                     pfad: ordner("lmstudio/modell-c"), groesseBytes: 1)],
+                          ausOrdner: ordner("lmstudio"))
+
+        // Zweiter Durchlauf über „archiv": modell-b ist weg.
+        pfade.fundeMerken([ModelFund(kennung: "mlx-community/modell-a",
+                                     pfad: ordner("archiv/modell-a"), groesseBytes: 1)],
+                          ausOrdner: ordner("archiv"))
+
+        XCTAssertEqual(pfade.funde,
+                       ["mlx-community/modell-a": ordner("archiv/modell-a"),
+                        "mlx-community/modell-c": ordner("lmstudio/modell-c")])
+    }
+
+    /// Wer einen Suchordner entfernt, will nicht, dass shout. weiter daraus
+    /// lädt — auch nicht über einen gemerkten Fund.
+    func testEntfernterOrdnerVerliertSeineFunde() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.fundeMerken([ModelFund(kennung: "mlx-community/modell-a",
+                                     pfad: ordner("archiv/modell-a"), groesseBytes: 1)],
+                          ausOrdner: ordner("archiv"))
+        pfade.fundeMerken([ModelFund(kennung: "mlx-community/modell-c",
+                                     pfad: ordner("lmstudio/modell-c"), groesseBytes: 1)],
+                          ausOrdner: ordner("lmstudio"))
+
+        pfade.fundeVergessen(unter: ordner("archiv"))
+        XCTAssertEqual(pfade.funde,
+                       ["mlx-community/modell-c": ordner("lmstudio/modell-c")])
+    }
+
+    /// Ein ähnlich benannter Nachbarordner darf beim Entfernen nicht
+    /// mitgenommen werden.
+    func testVergessenTrifftNurDenEigenenOrdner() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.fundeMerken([ModelFund(kennung: "mlx-community/modell-a",
+                                     pfad: ordner("archiv-alt/modell-a"), groesseBytes: 1)],
+                          ausOrdner: ordner("archiv-alt"))
+        pfade.fundeVergessen(unter: ordner("archiv"))
+        XCTAssertEqual(pfade.funde,
+                       ["mlx-community/modell-a": ordner("archiv-alt/modell-a")])
+    }
+
     func testStoreUebernimmtReihenfolge() {
         var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("basis") })
         pfade.suchordner = [ordner("a"), ordner("b")]

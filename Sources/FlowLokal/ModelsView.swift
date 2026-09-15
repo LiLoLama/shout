@@ -519,6 +519,9 @@ struct ModelsView: View {
         pfade.suchordner.removeAll {
             ModelStore.vergleichsform($0) == ModelStore.vergleichsform(ordner) }
         suchstand[ordner] = nil
+        // Auch die gemerkten Funde aus diesem Ordner gehen weg: Wer ihn aus
+        // der Liste nimmt, will nicht, dass shout. weiter daraus lädt.
+        pfade.fundeVergessen(unter: ordner)
         pfade.sichern(in: .standard)
     }
 
@@ -551,6 +554,16 @@ struct ModelsView: View {
                     ? .unvollstaendig(ergebnis.funde)
                     : .fertig(ergebnis.funde)
             }
+            // Das Ergebnis wird nicht nur angezeigt, sondern gemerkt: Ein Fund
+            // in einer tieferen Ebene liegt unter keiner berechenbaren Form,
+            // und ohne dieses Merken bliebe er sichtbar, aber unbenutzbar —
+            // „Erneut durchsuchen" bewirkte funktional nichts.
+            //
+            // Auch ein abgebrochener Durchlauf merkt, was er bis dahin gefunden
+            // hat: Diese Modelle liegen wirklich dort, und beim Auflösen wird
+            // ohnehin nachgesehen, ob sie noch vollständig sind.
+            pfade.fundeMerken(ergebnis.funde, ausOrdner: ordner)
+            pfade.sichern(in: .standard)
             durchsuchtGerade = nil
             laufendeSuche = nil
         }

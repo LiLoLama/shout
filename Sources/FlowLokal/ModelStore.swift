@@ -28,9 +28,19 @@ struct ModelStore {
     let basisordner: URL
     let suchordner: [URL]
 
-    init(basisordner: URL, suchordner: [URL]) {
+    /// Was `ModelScan` gefunden hat: Kennung → Pfad.
+    ///
+    /// Nur so wird das Durchsuchen überhaupt wirksam. Ein Fund in einer
+    /// tieferen Ebene (`~/Modelle/archiv/2024/mlx-community/Qwen…`) liegt
+    /// unter keiner der berechenbaren Formen — ohne dieses Verzeichnis bliebe
+    /// er sichtbar, aber unbenutzbar, und „Erneut durchsuchen" bewirkte
+    /// funktional nichts.
+    let gemerkteFunde: [String: URL]
+
+    init(basisordner: URL, suchordner: [URL], gemerkteFunde: [String: URL] = [:]) {
         self.basisordner = basisordner
         self.suchordner = suchordner
+        self.gemerkteFunde = gemerkteFunde
     }
 
     /// Alle Orte in Vorrangreihenfolge. Doppelte Einträge fallen heraus —
@@ -112,7 +122,29 @@ struct ModelStore {
                 return Fund(pfad: zweistufig, ort: ort)
             }
         }
-        return nil
+        // Zuletzt das Gedächtnis des Durchsuchens — erst NACHDEM die
+        // berechenbaren Formen nicht gegriffen haben. Sie sind die stärkere
+        // Aussage: Sie beschreiben, wo etwas jetzt liegt, während ein
+        // gemerkter Fund beschreibt, wo einmal etwas lag.
+        return gemerkterFund(fuer: kennung)
+    }
+
+    /// Ein gemerkter Fund — aber nur, wenn er beim Nachsehen noch vollständig
+    /// ist. Ein Verzeichniseintrag auf einen inzwischen leeren oder
+    /// verschwundenen Ordner wäre eine Lüge: Der Aufrufer bekäme einen Pfad,
+    /// unter dem keine Gewichte liegen, und der Ladevorgang bräche erst
+    /// später und ohne erkennbaren Grund ab.
+    private func gemerkterFund(fuer kennung: String) -> Fund? {
+        guard let pfad = gemerkteFunde[kennung], Self.istVollstaendig(pfad) else { return nil }
+        // Der Ort lässt sich hier nicht am Elternordner ablesen — ein Fund aus
+        // dem Durchsuchen kann beliebig tief liegen. Deshalb der Vergleich
+        // gegen die bekannten Orte, bestandteilweise. Der Basisordner steht
+        // vorn: Liegt der Pfad in ihm, gilt der Fund als eigen und darf keinen
+        // Download abkürzen. Passt kein Ort (etwa weil der Suchordner
+        // inzwischen aus der Liste genommen wurde), gilt der Pfad sich selbst
+        // als Ort — dann ist er jedenfalls nicht der Basisordner.
+        let ort = orteInReihenfolge.first { Self.istUnterhalb(pfad, $0) } ?? pfad
+        return Fund(pfad: pfad, ort: ort)
     }
 
     /// `<ort>/<org>/<repo>/` — nur für Kennungen mit genau einem Schrägstrich.
@@ -158,6 +190,12 @@ struct ModelStore {
         // (/basis und /basis-alt) dürfen sich nicht überschneiden.
         guard Self.vergleichsform(f.ort) != Self.vergleichsform(eigenerDownloadOrdner)
         else { return nil }
+        // Zweiter Riegel für gemerkte Funde: Deren Ort wird aus dem Pfad
+        // erschlossen und nicht aus der Reihenfolge übernommen. Liegt der Pfad
+        // trotz abweichendem Ort im eigenen Download-Ordner, wird ebenfalls
+        // nicht abgekürzt — die Sperre darf nicht davon abhängen, dass die
+        // Zuordnung des Ortes gelungen ist.
+        guard !Self.istUnterhalb(f.pfad, eigenerDownloadOrdner) else { return nil }
         return f.pfad
     }
 

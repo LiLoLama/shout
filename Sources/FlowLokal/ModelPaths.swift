@@ -42,20 +42,33 @@ struct ModelPaths {
     /// auffindbar" von „nie da gewesen" zu unterscheiden.
     var verknuepfungen: [String: URL]
 
+    /// Was das Durchsuchen gefunden hat: Kennung → Pfad.
+    ///
+    /// Bewusst getrennt von `verknuepfungen`, obwohl beide gleich aussehen:
+    /// Eine Verknüpfung sagt „das hier wurde benutzt und kann verschwinden",
+    /// ein Fund sagt „das hier liegt dort, auch wenn keine berechenbare Form
+    /// darauf zeigt". Aus einem Fund darf nie `nichtAuffindbar` werden — sonst
+    /// machte ein aufgeräumter fremder Ordner aus einem nie benutzten Modell
+    /// ein vermeintlich verschwundenes.
+    var funde: [String: URL]
+
     init(gewaehlterBasisordner: URL?,
          vorgabeBasisordner: URL,
          suchordner: [URL],
-         verknuepfungen: [String: URL]) {
+         verknuepfungen: [String: URL],
+         funde: [String: URL] = [:]) {
         self.gewaehlterBasisordner = gewaehlterBasisordner
         self.vorgabeBasisordner = vorgabeBasisordner
         self.suchordner = suchordner
         self.verknuepfungen = verknuepfungen
+        self.funde = funde
     }
 
     private enum Schluessel {
         static let basis = "modelBaseDirectory"
         static let such = "modelSearchDirectories"
         static let verknuepft = "modelLinks"
+        static let funde = "modelFinds"
     }
 
     /// Lädt die Einstellung. `vorgabe` wird **zur Laufzeit** erfragt und nur
@@ -80,10 +93,13 @@ struct ModelPaths {
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
         let verknuepft = (defaults.dictionary(forKey: Schluessel.verknuepft) as? [String: String] ?? [:])
             .mapValues { URL(fileURLWithPath: $0, isDirectory: true) }
+        let gefunden = (defaults.dictionary(forKey: Schluessel.funde) as? [String: String] ?? [:])
+            .mapValues { URL(fileURLWithPath: $0, isDirectory: true) }
         return ModelPaths(gewaehlterBasisordner: gewaehlt,
                           vorgabeBasisordner: vorgabe(),
                           suchordner: such,
-                          verknuepfungen: verknuepft)
+                          verknuepfungen: verknuepft,
+                          funde: gefunden)
     }
 
     /// Sichert die **Einstellungen**: Basisordner, Suchordner, gemerkte Funde.
@@ -117,6 +133,7 @@ struct ModelPaths {
             defaults.removeObject(forKey: Schluessel.basis)
         }
         defaults.set(suchordner.map(\.path), forKey: Schluessel.such)
+        defaults.set(funde.mapValues(\.path), forKey: Schluessel.funde)
     }
 
     /// Merkt sich, dass eine Kennung aus einem fremden Ordner benutzt wurde.
@@ -129,6 +146,24 @@ struct ModelPaths {
     /// vermeintlich verschwundenes.
     mutating func verknuepfungMerken(_ kennung: String, pfad: URL) {
         verknuepfungen[kennung] = pfad
+    }
+
+    /// Übernimmt das Ergebnis eines Durchlaufs für **einen** Ordner.
+    ///
+    /// Die alten Funde aus genau diesem Ordner fallen vorher heraus: „Erneut
+    /// durchsuchen" soll den Ordner abbilden, wie er jetzt ist, und nicht die
+    /// Summe aller Durchläufe seit dem ersten. Funde aus anderen Ordnern
+    /// bleiben unangetastet.
+    mutating func fundeMerken(_ neue: [ModelFund], ausOrdner ordner: URL) {
+        fundeVergessen(unter: ordner)
+        for fund in neue { funde[fund.kennung] = fund.pfad }
+    }
+
+    /// Vergisst alle Funde, die unter `ordner` liegen — beim Entfernen eines
+    /// Suchordners. Wer einen Ordner aus der Liste nimmt, will nicht, dass
+    /// shout. weiter daraus lädt.
+    mutating func fundeVergessen(unter ordner: URL) {
+        funde = funde.filter { !ModelStore.istUnterhalb($0.value, ordner) }
     }
 
     /// Sichert **nur** die Verknüpfungen — der einzige Weg, auf dem sie
@@ -185,6 +220,7 @@ struct ModelPaths {
     }
 
     var store: ModelStore {
-        ModelStore(basisordner: basisordner, suchordner: suchordner)
+        ModelStore(basisordner: basisordner, suchordner: suchordner,
+                   gemerkteFunde: funde)
     }
 }

@@ -344,6 +344,100 @@ final class ModelStoreTests: XCTestCase {
         XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), hf)
     }
 
+    // MARK: - Gemerkte Funde aus dem Durchsuchen
+
+    /// Legt ein Modell in beliebiger Tiefe an — unter keiner berechenbaren
+    /// Form erreichbar, genau wie ein selbst sortierter Archivordner.
+    private func legeTiefAn(_ unterpfad: String) throws -> URL {
+        var ziel: URL = fremd
+        for teil in unterpfad.split(separator: "/") {
+            ziel = ziel.appendingPathComponent(String(teil), isDirectory: true)
+        }
+        try FileManager.default.createDirectory(at: ziel, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: ziel.appendingPathComponent("config.json"))
+        try Data().write(to: ziel.appendingPathComponent("model.safetensors"))
+        return ziel
+    }
+
+    /// Der Gewinn aus dem Durchsuchen: Ein Fund in einer tieferen Ebene ist
+    /// ohne das Gedächtnis sichtbar, aber unbenutzbar.
+    func testGemerkterFundLoestAuf() throws {
+        let tief = try legeTiefAn("archiv/2024/mlx-community/Qwen3-4B-4bit")
+        let ohne = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertNil(ohne.aufloesen("mlx-community/Qwen3-4B-4bit"))
+
+        let mit = ModelStore(basisordner: basis, suchordner: [fremd],
+                             gemerkteFunde: ["mlx-community/Qwen3-4B-4bit": tief])
+        XCTAssertEqual(mit.aufloesen("mlx-community/Qwen3-4B-4bit"), tief)
+        XCTAssertEqual(mit.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .fremd(tief))
+        XCTAssertEqual(mit.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                            eigenerDownloadOrdner: basis),
+                       tief)
+    }
+
+    /// Ein gemerkter Pfad gilt nur, solange dort wirklich noch ein Modell
+    /// liegt. Sonst bekäme der Aufrufer einen Pfad ohne Gewichte, und das
+    /// Laden bräche später und ohne erkennbaren Grund ab.
+    func testGemerkterFundOhneGewichteGiltNicht() throws {
+        let leer = fremd.appendingPathComponent("archiv", isDirectory: true)
+        try FileManager.default.createDirectory(at: leer, withIntermediateDirectories: true)
+        let store = ModelStore(basisordner: basis, suchordner: [fremd],
+                               gemerkteFunde: ["mlx-community/Qwen3-4B-4bit": leer])
+        XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit"))
+    }
+
+    /// Ein verschwundener gemerkter Pfad ist einfach kein Fund — und mit
+    /// Verknüpfung weiterhin `nichtAuffindbar`.
+    func testVerschwundenerGemerkterFundGiltNicht() {
+        let weg = fremd.appendingPathComponent("archiv/weg", isDirectory: true)
+        let store = ModelStore(basisordner: basis, suchordner: [fremd],
+                               gemerkteFunde: ["mlx-community/Qwen3-4B-4bit": weg])
+        XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit"))
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: weg),
+                       .nichtAuffindbar)
+    }
+
+    /// Die berechenbaren Formen sind die stärkere Aussage: Sie beschreiben,
+    /// wo etwas jetzt liegt. Ein gemerkter Fund kommt erst danach.
+    func testBerechenbareFormSchlaegtGemerktenFund() throws {
+        let imBasis = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
+        let tief = try legeTiefAn("archiv/2024/mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: basis, suchordner: [fremd],
+                               gemerkteFunde: ["mlx-community/Qwen3-4B-4bit": tief])
+        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), imBasis)
+    }
+
+    /// Die Sperre gilt auch für gemerkte Funde: Liegt der gemerkte Pfad im
+    /// eigenen Download-Ordner, wird nicht abgekürzt — dort weiß der
+    /// HubClient mehr als unsere schwache Prüfung.
+    func testGemerkterFundImEigenenOrdnerKuerztNichtAb() throws {
+        let tief = basis
+            .appendingPathComponent("archiv", isDirectory: true)
+            .appendingPathComponent("mlx-community", isDirectory: true)
+            .appendingPathComponent("Qwen3-4B-4bit", isDirectory: true)
+        try FileManager.default.createDirectory(at: tief, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: tief.appendingPathComponent("config.json"))
+        try Data().write(to: tief.appendingPathComponent("model.safetensors"))
+
+        let store = ModelStore(basisordner: basis, suchordner: [fremd],
+                               gemerkteFunde: ["mlx-community/Qwen3-4B-4bit": tief])
+        XCTAssertEqual(store.aufloesen("mlx-community/Qwen3-4B-4bit"), tief)
+        XCTAssertNil(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                            eigenerDownloadOrdner: basis))
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .eigen(tief))
+    }
+
+    /// `istUnterhalb` vergleicht bestandteilweise: `/basis-alt` liegt nicht
+    /// in `/basis`, auch wenn die Zeichenkette es nahelegt.
+    func testIstUnterhalbVerwechseltNachbarordnerNicht() {
+        let basisAlt = wurzel.appendingPathComponent("basis-alt", isDirectory: true)
+        XCTAssertFalse(ModelStore.istUnterhalb(basisAlt, basis))
+        XCTAssertTrue(ModelStore.istUnterhalb(basisAlt.appendingPathComponent("x"), basisAlt))
+        XCTAssertTrue(ModelStore.istUnterhalb(basis, basis))
+    }
+
     // MARK: - Symlinks in den Ortsvergleichen
 
     /// Die Sperre gegen das Abkürzen im eigenen Cache darf nicht an der

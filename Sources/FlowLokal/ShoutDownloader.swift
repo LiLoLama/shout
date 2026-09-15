@@ -41,6 +41,21 @@ struct ShoutDownloader: Downloader {
         // dauerhaft und lautlos zum "fertigen" Modell.
         if !useLatest,
            let vorhanden = store.abkuerzbarerFund(id, eigenerDownloadOrdner: eigenerDownloadOrdner) {
+            // Nur HIER wird verknüpft, und zwar genau dann, wenn ein FREMDER
+            // Ordner tatsächlich mitbenutzt wird: Dieser Pfad kann verschwinden
+            // (Platte ab, LM Studio aufgeräumt), ohne dass shout. etwas dafür
+            // kann. Erst die Verknüpfung macht daraus später `nichtAuffindbar`
+            // statt `nichtVorhanden` — sonst böte die Oberfläche einen
+            // Multi-GB-Download an, obwohl bloß eine Platte fehlt.
+            //
+            // Unterhalb dieser Stelle lädt shout. in den EIGENEN Ordner. Dort
+            // wird nichts gemerkt: Ein eigener Download ist kein fremdes
+            // Modell, und die Suche findet ihn von allein wieder.
+            //
+            // `ModelPaths.verknuepfungMerken` schreibt ausschließlich die
+            // Verknüpfungen — der Basisordner bleibt unberührt, auch wenn hier
+            // mehrere Downloads gleichzeitig durchlaufen.
+            ModelPaths.verknuepfungMerken(id, pfad: vorhanden, in: .standard)
             return vorhanden
         }
 

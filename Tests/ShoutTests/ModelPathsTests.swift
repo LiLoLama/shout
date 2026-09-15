@@ -142,6 +142,58 @@ final class ModelPathsTests: XCTestCase {
         XCTAssertEqual(neu.suchordner, [ordner("lmstudio")])
     }
 
+    /// Die Verknüpfungen sind der einzige Unterschied zwischen „nicht
+    /// auffindbar" und „nie da gewesen". Gehen sie beim Sichern verloren, böte
+    /// shout. für ein bloß abgehängtes Laufwerk einen Neu-Download an.
+    func testVerknuepfungenUeberlebenSichernUndLaden() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.verknuepfungMerken("mlx-community/modell-a", pfad: ordner("platte/modell-a"))
+        pfade.verknuepfungMerken("mlx-community/modell-b", pfad: ordner("lmstudio/modell-b"))
+        pfade.sichern(in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        XCTAssertEqual(neu.verknuepfungen,
+                       ["mlx-community/modell-a": ordner("platte/modell-a"),
+                        "mlx-community/modell-b": ordner("lmstudio/modell-b")])
+    }
+
+    /// Der Wächter für den Weg aus dem Downloader: Ein Fund in einem fremden
+    /// Ordner wird gemerkt, während der Nutzer nie einen Basisordner gewählt
+    /// hat. Macht dieses Sichern aus der Vorgabe eine ausdrückliche Wahl, zieht
+    /// es bei jedem Bestandsnutzer den Multi-GB-Neu-Download nach sich.
+    func testVerknuepfungenSichernErzeugtKeineWahl() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.verknuepfungMerken("mlx-community/modell-a", pfad: ordner("lmstudio/modell-a"))
+        pfade.verknuepfungenSichern(in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("andere-vorgabe") })
+        XCTAssertNil(neu.gewaehlterBasisordner)
+        XCTAssertEqual(neu.basisordner, ordner("andere-vorgabe"))
+        XCTAssertEqual(neu.verknuepfungen,
+                       ["mlx-community/modell-a": ordner("lmstudio/modell-a")])
+    }
+
+    /// Dasselbe für die Kurzfassung, die der Downloader benutzt: Sie ergänzt
+    /// die vorhandenen Verknüpfungen und fasst sonst nichts an — weder eine
+    /// getroffene Wahl noch die Suchordner.
+    func testGemerkteVerknuepfungLaesstDieUebrigenEinstellungenInRuhe() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.suchordner = [ordner("lmstudio")]
+        pfade.verknuepfungMerken("mlx-community/modell-a", pfad: ordner("lmstudio/modell-a"))
+        pfade.sichern(in: defaults)
+
+        ModelPaths.verknuepfungMerken("mlx-community/modell-b",
+                                      pfad: ordner("platte/modell-b"), in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("andere-vorgabe") })
+        XCTAssertNil(neu.gewaehlterBasisordner)
+        XCTAssertEqual(neu.basisordner, ordner("andere-vorgabe"))
+        XCTAssertEqual(neu.suchordner, [ordner("lmstudio")])
+        XCTAssertEqual(neu.verknuepfungen,
+                       ["mlx-community/modell-a": ordner("lmstudio/modell-a"),
+                        "mlx-community/modell-b": ordner("platte/modell-b")])
+    }
+
     func testStoreUebernimmtReihenfolge() {
         var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("basis") })
         pfade.suchordner = [ordner("a"), ordner("b")]

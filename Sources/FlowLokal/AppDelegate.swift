@@ -205,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if onboardingWindow == nil {
             let view = OnboardingView(
                 dashboard: dashboardModel, settings: settings,
-                onFinish: { [weak self] in self?.finishOnboarding() },
+                onFinish: { [weak self] tab in self?.finishOnboarding(tab) },
                 onRetryModel: { [weak self] in self?.retryLoadModel() }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -225,12 +225,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         onboardingWindow?.makeKeyAndOrderFront(nil)
     }
 
-    private func finishOnboarding() {
+    /// Schließt das Onboarding und öffnet das Dashboard auf `tab`.
+    ///
+    /// Das Ziel kommt von außen, statt hier fest zu stehen: Der Hinweis
+    /// „Schon Modelle auf dem Rechner?" will auf der Modelle-Seite landen, und
+    /// `openDashboard(_:)` setzt den Tab ohnehin selbst — ein festes
+    /// `.aufnahme` überschriebe den Wunsch also sofort wieder. Der normale
+    /// Abschluss („Los geht's") übergibt weiterhin `.aufnahme`.
+    private func finishOnboarding(_ tab: DashboardModel.Tab) {
         UserDefaults.standard.set(true, forKey: "didCompleteOnboarding")
         UserDefaults.standard.set(true, forKey: "didShowDashboard")
         onboardingWindow?.close()
         onboardingWindow = nil
-        openDashboard(.aufnahme)
+        openDashboard(tab)
     }
 
     private func handleLearnedCorrection(wrong: String, right: String) {

@@ -100,6 +100,47 @@ struct ModelPaths {
         defaults.set(verknuepfungen.mapValues(\.path), forKey: Schluessel.verknuepft)
     }
 
+    /// Merkt sich, dass eine Kennung aus einem fremden Ordner benutzt wurde.
+    ///
+    /// Nur so kommt etwas in `verknuepfungen` — und nur deshalb kann
+    /// `ModelStore.zustand(_:verknuepft:)` später `nichtAuffindbar` von
+    /// `nichtVorhanden` unterscheiden. Eigene Downloads in den eigenen Ordner
+    /// gehören hier NICHT hinein: Die findet die Suche von allein wieder, und
+    /// ein Eintrag dafür machte aus einem selbst gelöschten Modell ein
+    /// vermeintlich verschwundenes.
+    mutating func verknuepfungMerken(_ kennung: String, pfad: URL) {
+        verknuepfungen[kennung] = pfad
+    }
+
+    /// Sichert **nur** die Verknüpfungen.
+    ///
+    /// `sichern(in:)` schreibt den ganzen Satz und entscheidet dabei auch über
+    /// Basis- und Suchordner. Genau das darf hier nicht passieren: Wer mitten
+    /// in einem Download bloß einen Fund festhalten will, hat einen womöglich
+    /// veralteten Stand in der Hand und würde eine inzwischen getroffene Wahl
+    /// des Nutzers überschreiben. Diese Fassung fasst die anderen Schlüssel
+    /// nicht an — die Zusage aus `basisordner` bleibt unangetastet.
+    func verknuepfungenSichern(in defaults: UserDefaults) {
+        defaults.set(verknuepfungen.mapValues(\.path), forKey: Schluessel.verknuepft)
+    }
+
+    /// Dasselbe für Aufrufer ohne eigenen `ModelPaths` — etwa `ShoutDownloader`
+    /// mitten in einem `async` Download.
+    ///
+    /// Bewusst ohne `laden`/`sichern`: Die Kurzfassung kennt nur den einen
+    /// Schlüssel und kann den Basisordner gar nicht erst anfassen, und sie
+    /// braucht auch keine Vorgabe. Die Sperre hält zwei gleichzeitige Downloads
+    /// auseinander, die sich sonst gegenseitig den Eintrag überschrieben.
+    static func verknuepfungMerken(_ kennung: String, pfad: URL, in defaults: UserDefaults) {
+        sperre.lock()
+        defer { sperre.unlock() }
+        var gemerkt = defaults.dictionary(forKey: Schluessel.verknuepft) as? [String: String] ?? [:]
+        gemerkt[kennung] = pfad.path
+        defaults.set(gemerkt, forKey: Schluessel.verknuepft)
+    }
+
+    private static let sperre = NSLock()
+
     /// Wechselt den Basisordner, **ohne etwas zu verschieben**.
     ///
     /// Der bisherige Ordner rutscht an die erste Stelle der Suchordner: Sonst

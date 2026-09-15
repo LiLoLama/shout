@@ -119,4 +119,21 @@ final class ModelStoreTests: XCTestCase {
         XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: alt),
                        .eigen(pfad))
     }
+
+    /// Ähnlich benannte Nachbarordner dürfen sich nicht überschneiden:
+    /// Wenn der Basisordner "/Users/x/basis" ist und ein Suchordner
+    /// "/Users/x/basis-alt", dann darf ein Fund in "basis-alt" nicht
+    /// fälschlich als .eigen (im Basisordner) gemeldet werden, sondern
+    /// muss korrekt als .fremd erkannt werden.
+    func testÄhnlichBenannteSuchordnerVerwechselnSichNicht() throws {
+        let basisAlt = wurzel.appendingPathComponent("basis-alt", isDirectory: true)
+        try FileManager.default.createDirectory(at: basisAlt, withIntermediateDirectories: true)
+
+        let pfad = try legeMLXAn(in: basisAlt, kennung: "mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: basis, suchordner: [basisAlt])
+
+        // Das Modell liegt in "basis-alt", nicht in "basis" — muss als .fremd gelten.
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .fremd(pfad))
+    }
 }

@@ -64,8 +64,11 @@ struct ModelStore {
         // Ein echter Fund schlägt jede gespeicherte Verknüpfung: Wer das Modell
         // inzwischen selbst geladen hat, soll nicht auf einen toten Pfad starren.
         if let gefunden = aufloesen(kennung) {
-            let imBasis = gefunden.standardizedFileURL.path
-                .hasPrefix(basisordner.standardizedFileURL.path)
+            // Der Elternordner des Fundes MUSS genau der Basisordner sein.
+            // Exakter Vergleich statt Präfix, weil ähnlich benannte Nachbarordner
+            // (/basis und /basis-alt) sich sonst überschneiden würden.
+            let imBasis = gefunden.deletingLastPathComponent().standardizedFileURL
+                == basisordner.standardizedFileURL
             return imBasis ? .eigen(gefunden) : .fremd(gefunden)
         }
         return verknuepft == nil ? .nichtVorhanden : .nichtAuffindbar

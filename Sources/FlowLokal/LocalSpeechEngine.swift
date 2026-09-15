@@ -49,9 +49,22 @@ actor LocalSpeechEngine: SpeechEngine {
         }
         let name = modelName
         guard allowDownload else {
-            // Nur aus dem Cache. Fehlt das Modell, wirft WhisperKit — genau so
-            // ist es gemeint.
-            pipe = try await WhisperKit(WhisperKitConfig(model: name, download: false))
+            // Nur aus dem Cache — aber im selben Ordner, aus dem auch der normale
+            // Ladeweg lädt: Sonst findet dieser Rückfall (Anbieter ausgefallen,
+            // ein vorhandenes lokales Modell soll einspringen) Modelle nicht, die
+            // auf einem gewählten Basisordner (z. B. externe Platte) liegen.
+            //
+            // Nur die Ermittlung ist auf macOS beschränkt: `ModelPaths` steht
+            // nicht in der Quellenliste des iOS-Ziels `ShoutMobile` (project.yml)
+            // — ein ungeschützter Aufruf würde dessen Build brechen.
+            #if os(macOS)
+            let basisordner = ModelPaths.laden(aus: .standard,
+                                               vorgabe: { HubCache.default.cacheDirectory }).basisordner
+            #else
+            let basisordner: URL? = nil
+            #endif
+            // Fehlt das Modell, wirft WhisperKit — genau so ist es gemeint.
+            pipe = try await WhisperKit(WhisperKitConfig(model: name, downloadBase: basisordner, download: false))
             loadedModel = name
             return
         }

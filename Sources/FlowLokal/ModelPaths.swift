@@ -26,10 +26,15 @@ struct ModelPaths {
     /// Auflösen, auch wenn der Nutzer nie etwas eingestellt hat. Zum Weiterreichen
     /// an WhisperKit oder den Hub ist dagegen `gewaehlterBasisordner` das
     /// richtige Feld.
-    var basisordner: URL {
-        get { gewaehlterBasisordner ?? vorgabeBasisordner }
-        set { gewaehlterBasisordner = newValue }
-    }
+    ///
+    /// **Nur lesbar, mit Absicht.** Ein Setter wäre eine Falle: Jede Zuweisung
+    /// — auch `pfade.basisordner = pfade.basisordner` — machte aus der bloßen
+    /// Vorgabe eine ausdrückliche Wahl. Eine Oberfläche, die beim Öffnen den
+    /// angezeigten Wert zurückschreibt, löste damit still genau den
+    /// Multi-GB-Neu-Download aus, den `gewaehlterBasisordner` verhindern soll.
+    /// Änderungen laufen deshalb ausschließlich über `basisordnerWechseln(zu:)`,
+    /// das den Gleichheitsfall abfängt.
+    var basisordner: URL { gewaehlterBasisordner ?? vorgabeBasisordner }
 
     /// Fremde Ordner, in denen mitbenutzt wird. Reihenfolge = Vorrang.
     var suchordner: [URL]
@@ -105,7 +110,7 @@ struct ModelPaths {
     mutating func basisordnerWechseln(zu neu: URL) {
         let alt = basisordner
         guard alt.standardizedFileURL != neu.standardizedFileURL else { return }
-        basisordner = neu
+        gewaehlterBasisordner = neu
         // Der neue Basisordner darf nicht zusätzlich als Suchordner stehen,
         // sonst erschiene jedes Modell doppelt.
         suchordner.removeAll { $0.standardizedFileURL == neu.standardizedFileURL }

@@ -85,6 +85,36 @@ struct ModelStore {
         fund(fuer: kennung)?.pfad
     }
 
+    /// Der Fund, der einen Download **abkürzen** darf — oder `nil`.
+    ///
+    /// `eigenerDownloadOrdner` ist genau der Ordner, in den shout. selbst
+    /// ablegt: ohne ausdrückliche Wahl der Standard-Cache des Hubs, mit Wahl
+    /// der gewählte Ordner. Liegt der Fund dort, wird NICHT abgekürzt.
+    ///
+    /// Der Grund ist die Beweiskraft der Prüfung. Im eigenen Cache weiß der
+    /// `HubClient` mehr als wir: Er kennt die Snapshot-Metadaten und damit
+    /// JEDE erwartete Datei (`*.safetensors` samt aller Shards, `*.json`,
+    /// `*.jinja`) und lädt Fehlendes nach. `istVollstaendig` sieht dagegen nur
+    /// `config.json` plus irgendeine `*.safetensors` — ein abgebrochener
+    /// Download oder ein halber Shard-Satz besteht diese Prüfung. Würde er den
+    /// Hub abkürzen, bliebe der Ordner für immer halb, weil jeder weitere
+    /// Versuch dieselbe Abkürzung nimmt.
+    ///
+    /// In FREMDEN Ordnern (LM Studio, von Hand abgelegte Modelle) gibt es
+    /// keine Metadaten und niemanden, der vervollständigen könnte. Dort ist
+    /// unsere schwache Prüfung alles, was es gibt — und ein Mitbenutzen immer
+    /// besser als ein zweiter Download derselben Gigabytes daneben.
+    func abkuerzbarerFund(_ kennung: String, eigenerDownloadOrdner: URL) -> URL? {
+        guard let f = fund(fuer: kennung) else { return nil }
+        // Exakter Ortsvergleich statt Präfix — wie in `zustand(_:verknuepft:)`:
+        // Der Fundpfad taugt nicht, weil er beim HF-Cache-Format unter
+        // `snapshots/<hash>/` liegt, und ähnlich benannte Nachbarordner
+        // (/basis und /basis-alt) dürfen sich nicht überschneiden.
+        guard f.ort.standardizedFileURL != eigenerDownloadOrdner.standardizedFileURL
+        else { return nil }
+        return f.pfad
+    }
+
     func zustand(_ kennung: String, verknuepft: URL?) -> ModelZustand {
         // Ein echter Fund schlägt jede gespeicherte Verknüpfung: Wer das Modell
         // inzwischen selbst geladen hat, soll nicht auf einen toten Pfad starren.

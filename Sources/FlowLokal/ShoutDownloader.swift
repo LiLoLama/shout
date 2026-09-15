@@ -24,9 +24,23 @@ struct ShoutDownloader: Downloader {
                   useLatest: Bool,
                   progressHandler: @Sendable @escaping (Progress) -> Void) async throws -> URL {
 
-        // Erst der Store: Liegt das Modell irgendwo — im eigenen Ordner oder in
-        // einem durchsuchten —, wird es benutzt, nicht erneut geladen.
-        if !useLatest, let vorhanden = store.aufloesen(id) {
+        // Wohin shout. selbst ablegt: mit Wahl der gewählte Ordner, ohne Wahl
+        // der Standard-Cache des Hubs. Genau dieser Ordner geht unten auch an
+        // den `HubClient` — die beiden dürfen nicht auseinanderlaufen.
+        let eigenerDownloadOrdner = gewaehlterBasisordner ?? HubCache.default.cacheDirectory
+
+        // Erst der Store — aber nur für FREMDE Ordner (LM Studio, von Hand
+        // abgelegte Modelle). Dort weiß niemand mehr als wir, und ein
+        // Mitbenutzen erspart denselben Download ein zweites Mal.
+        //
+        // Im EIGENEN Cache entscheidet weiterhin der `HubClient`: Er kennt die
+        // Snapshot-Metadaten und damit jede erwartete Datei (Shards, *.json,
+        // *.jinja) und vervollständigt einen abgebrochenen Download. Die
+        // Prüfung des Stores ist dagegen schwach (config.json plus irgendeine
+        // *.safetensors) — sie hier vorzuschalten machte jeden halben Snapshot
+        // dauerhaft und lautlos zum "fertigen" Modell.
+        if !useLatest,
+           let vorhanden = store.abkuerzbarerFund(id, eigenerDownloadOrdner: eigenerDownloadOrdner) {
             return vorhanden
         }
 

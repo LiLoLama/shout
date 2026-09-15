@@ -35,7 +35,7 @@ final class ModelPathsTests: XCTestCase {
 
     func testGesicherteEinstellungUeberlebtDasLaden() {
         var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
-        pfade.basisordner = ordner("platte")
+        pfade.basisordnerWechseln(zu: ordner("platte"))
         pfade.suchordner = [ordner("lmstudio")]
         pfade.sichern(in: defaults)
 
@@ -87,7 +87,7 @@ final class ModelPathsTests: XCTestCase {
     /// Nach dem Sichern ist die Wahl ausdrücklich — und überlebt das Laden.
     func testGesicherteWahlGiltAlsGewaehlt() {
         var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
-        pfade.basisordner = ordner("platte")
+        pfade.basisordnerWechseln(zu: ordner("platte"))
         pfade.sichern(in: defaults)
 
         let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
@@ -102,6 +102,31 @@ final class ModelPathsTests: XCTestCase {
         pfade.basisordnerWechseln(zu: ordner("neu"))
         XCTAssertEqual(pfade.gewaehlterBasisordner, ordner("neu"))
         XCTAssertEqual(pfade.basisordner, ordner("neu"))
+    }
+
+    /// Die Falle, gegen die `basisordner` nur noch lesbar ist: Eine Oberfläche,
+    /// die beim Öffnen den angezeigten Wert zurückschreibt, darf aus der bloßen
+    /// Vorgabe keine ausdrückliche Wahl machen — sonst zöge allein das Öffnen
+    /// der Einstellungen den Multi-GB-Neu-Download nach sich.
+    func testZurueckschreibenDesAngezeigtenWertesErzeugtKeineWahl() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        pfade.basisordnerWechseln(zu: pfade.basisordner)
+        XCTAssertNil(pfade.gewaehlterBasisordner)
+        XCTAssertEqual(pfade.basisordner, ordner("vorgabe"))
+        // Und die Vorgabe darf sich auch nicht als Suchordner einschleichen.
+        XCTAssertTrue(pfade.suchordner.isEmpty)
+    }
+
+    /// Ohne Wechsel bleibt es bei der Vorgabe ohne Wahl — auch über das
+    /// Sichern und Laden hinweg, und selbst wenn die Vorgabe sich ändert.
+    func testOhneWechselBleibtEsBeiDerVorgabeOhneWahl() {
+        var pfade = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("vorgabe") })
+        XCTAssertNil(pfade.gewaehlterBasisordner)
+        pfade.sichern(in: defaults)
+
+        let neu = ModelPaths.laden(aus: defaults, vorgabe: { self.ordner("andere-vorgabe") })
+        XCTAssertNil(neu.gewaehlterBasisordner)
+        XCTAssertEqual(neu.basisordner, ordner("andere-vorgabe"))
     }
 
     /// Ein Sichern ohne eigene Wahl (etwa nur der Suchordner) darf die Vorgabe

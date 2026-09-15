@@ -220,4 +220,61 @@ final class ModelStoreTests: XCTestCase {
         let store = ModelStore(basisordner: basis, suchordner: [])
         XCTAssertNil(store.aufloesen("mlx-community/Qwen3-4B-4bit"))
     }
+
+    // MARK: - Abkürzung des Downloads
+
+    /// In einem FREMDEN Ordner ist die Abkürzung richtig: Dort gibt es keine
+    /// Metadaten und niemanden, der vervollständigen könnte — das Modell
+    /// mitzubenutzen erspart denselben Download ein zweites Mal.
+    func testFremderFundKuerztAb() throws {
+        let ziel = try legeMLXAn(in: fremd, kennung: "mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertEqual(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                              eigenerDownloadOrdner: basis),
+                       ziel)
+    }
+
+    /// Der Kern der Korrektur: Im EIGENEN Cache wird nicht abgekürzt. Sonst
+    /// ersetzte die schwache Prüfung des Stores (config.json plus irgendeine
+    /// *.safetensors) die starke des HubClients, der anhand der Metadaten
+    /// jede erwartete Datei kennt — ein abgebrochener Download bliebe für
+    /// immer halb, weil jeder weitere Versuch dieselbe Abkürzung nähme.
+    func testFundImEigenenCacheKuerztNichtAb() throws {
+        _ = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertNil(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                            eigenerDownloadOrdner: basis))
+        // Der Fund als solcher bleibt bestehen — nur abgekürzt wird er nicht.
+        XCTAssertNotNil(store.aufloesen("mlx-community/Qwen3-4B-4bit"))
+    }
+
+    /// Auch im HF-Cache-Format (snapshots/<hash>/) muss der eigene Ordner
+    /// erkannt werden: Der Fundpfad liegt dann zwei Ebenen tiefer, entscheidend
+    /// ist der durchsuchte Ort, nicht der Elternordner des Fundes.
+    func testFundImEigenenCacheKuerztAuchImHFFormatNichtAb() throws {
+        _ = try legeHFCacheModellAn(
+            in: basis, kennung: "mlx-community/Qwen3-4B-4bit", hash: "abc123")
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertNil(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                            eigenerDownloadOrdner: basis))
+    }
+
+    /// Mit gewähltem Basisordner ist der eigene Download-Ordner ein anderer
+    /// als ohne. Maßgeblich ist immer der Ordner, der im selben Aufruf an den
+    /// HubClient geht — liegt der Fund woanders, darf abgekürzt werden.
+    func testEigenerOrdnerIstDerUebergebene() throws {
+        let ziel = try legeMLXAn(in: basis, kennung: "mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        // Herunterladen würde shout. nach `fremd` — `basis` ist damit fremd.
+        XCTAssertEqual(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                              eigenerDownloadOrdner: fremd),
+                       ziel)
+    }
+
+    /// Ohne Fund gibt es nichts abzukürzen — der Hub ist zuständig.
+    func testOhneFundKeineAbkuerzung() {
+        let store = ModelStore(basisordner: basis, suchordner: [fremd])
+        XCTAssertNil(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                            eigenerDownloadOrdner: basis))
+    }
 }

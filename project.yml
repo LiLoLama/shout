@@ -369,6 +369,8 @@ targets:
       - path: Sources/FlowLokal/ModelStore.swift
       - path: Sources/FlowLokal/ModelScan.swift
       - path: Sources/FlowLokal/ModelPaths.swift
+      # Abbruchwunsch über die Strang-Grenze — von der Modelle-Seite benutzt.
+      - path: Sources/FlowLokal/AbbruchFlagge.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

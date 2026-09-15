@@ -853,5 +853,30 @@ final class Loc: ObservableObject {
         "%@ · %d Wörter": "%@ · %d words",
         "%@ in die Zwischenablage kopiert.": "%@ copied to the clipboard.",
         "Untertitel folgen immer dem ursprünglichen Transkript — Änderungen in diesem Fenster wirken sich nicht auf die Zeitmarken aus.": "Subtitles always follow the original transcript — edits in this window do not affect the timestamps.",
+
+        // MARK: - Modellverzeichnis
+
+        "%d Modelle gefunden": "%d models found",
+        "%d Modelle gefunden. Der Ordner ist sehr groß — es wurde nicht vollständig durchsucht.":
+            "%d models found. This folder is very large — it was not searched completely.",
+        "Abgebrochen bei %d Modellen.": "Cancelled at %d models.",
+        "Basisordner": "Base folder",
+        "Durchsuchen": "Search",
+        "Durchsuchte Ordner": "Searched folders",
+        "Erneut durchsuchen": "Search again",
+        "Fremder Ordner": "External folder",
+        "Hierhin lädt shout. selbst. Vorhandene Modelle bleiben, wo sie sind.":
+            "This is where shout. downloads to. Existing models stay where they are.",
+        "Modelle aus diesen Ordnern werden mitbenutzt statt neu geladen.":
+            "Models in these folders are used as they are instead of downloaded again.",
+        "Nicht auffindbar": "Not found",
+        "Noch keiner. Wer schon Modelle hat, spart sich den Download.":
+            "None yet. If you already have models, this saves the download.",
+        "Noch nicht durchsucht.": "Not searched yet.",
+        "Ordner hinzufügen": "Add folder",
+        "Standardort": "Default location",
+        "Wird durchsucht …": "Searching…",
+        "Wo die Modelle liegen": "Where the models live",
+        "Wählen": "Choose",
     ]
 }

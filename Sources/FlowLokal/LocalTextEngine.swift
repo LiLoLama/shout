@@ -54,6 +54,13 @@ actor LocalTextEngine: TextEngine {
         defer { isLoading = false }
         do {
             let cfg = ModelConfiguration(id: id)
+            // Der eigene Basisordner ist bewusst nur eine macOS-Erweiterung:
+            // am iPhone gibt es kein geteiltes Dateisystem, in dem ein Nutzer
+            // einen Ordner wählen könnte, und das iOS-Ziel (ShoutMobile) kennt
+            // `ModelPaths`/`ShoutDownloader` nicht — project.yml listet für iOS
+            // nur eine Teilmenge der Dateien. Deshalb dort weiterhin der alte
+            // Weg über das Makro mit dem Standard-Hub.
+            #if os(macOS)
             // Ausgeschrieben statt über das Makro: Nur so lässt sich der
             // Downloader austauschen — das Makro nimmt fest den Standard-Hub.
             let pfade = ModelPaths.laden(aus: .standard,
@@ -64,6 +71,11 @@ actor LocalTextEngine: TextEngine {
                 configuration: cfg) { progress in
                 onProgress?(progress.fractionCompleted)
             }
+            #else
+            container = try await #huggingFaceLoadModelContainer(configuration: cfg) { progress in
+                onProgress?(progress.fractionCompleted)
+            }
+            #endif
             loadedModel = id
             isReady = true
         } catch {

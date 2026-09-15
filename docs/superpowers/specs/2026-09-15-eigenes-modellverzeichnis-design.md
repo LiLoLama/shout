@@ -1,7 +1,9 @@
 # Eigenes Modellverzeichnis: Ablageort wählen und vorhandene Modelle mitbenutzen (macOS + Windows)
 
 Stand: 2026-09-15 · Status: **Entwurf**, noch nicht umgesetzt.
-Umsetzungsplan: `docs/superpowers/plans/2026-09-15-eigenes-modellverzeichnis.md`
+Umsetzungspläne (zwei, da die Plattformen keine Codezeile teilen):
+- macOS: `docs/superpowers/plans/2026-09-15-eigenes-modellverzeichnis-macos.md`
+- Windows: `docs/superpowers/plans/2026-09-15-eigenes-modellverzeichnis-windows.md` (noch zu schreiben)
 
 ## Ziel
 
@@ -195,11 +197,22 @@ Vier, und sie müssen in der Oberfläche unterscheidbar sein:
 | fremd | liegt in einem Suchordner, mit sichtbarem Pfad |
 | **nicht auffindbar** | war verlinkt, Datei ist weg |
 
-### Löschen — die wichtigste Regel
+### Löschen — es wird keins gebaut
 
-Bei einem **eigenen** Modell heißt der Knopf „Löschen" und löscht die Datei, wie
-heute. Bei einem **fremden** heißt er „Aus der Liste entfernen" und fasst die
-Datei nicht an. shout. darf niemandem sein LM Studio ausräumen.
+Beim Nachsehen in `Sources/FlowLokal/ModelsView.swift` stellte sich heraus:
+**Es gibt heute gar kein Löschen von Modellen.** Die Seite wählt aus und lädt,
+mehr nicht. Eine frühere Fassung dieses Entwurfs behauptete „löscht die Datei,
+wie heute" — das war falsch.
+
+Damit wird die Regel einfacher und sicherer, statt komplizierter: **Diese
+Erweiterung fügt kein Löschen hinzu.** Keine Datei wird angefasst, weder eine
+eigene noch eine fremde. Die einzige entfernende Handlung ist „Ordner aus der
+Liste der durchsuchten Ordner nehmen" — die ändert eine Einstellung und rührt
+den Datenträger nicht an.
+
+Das erspart uns die gefährlichste Stelle des ganzen Vorhabens. Ein Löschen kann
+später kommen, wenn es jemand vermisst; dann aber als eigene Überlegung mit
+eigener Rückfrage, nicht nebenbei.
 
 ### Ordnerwechsel
 
@@ -295,8 +308,9 @@ Alles gegen Attrappen, kein echtes Modell nötig:
 - `GgufHeader`: Template gelesen, Template fehlt, Datei abgeschnitten, Magic
   falsch
 - Familienerkennung je Fingerabdruck, und der Rückfall bei Unbekanntem
-- **Ein fremdes Modell entfernen löscht die Datei nicht** — die eine Prüfung,
-  die wirklich zählt
+- **Kein Weg in der Erweiterung löscht eine Datei** — geprüft dadurch, dass
+  weder `ModelStore` noch `ModelScan` noch `ModelPaths` `FileManager.removeItem`
+  benutzen; ein Test hält das fest, damit es nicht später hineinwandert
 - Mac: `ShoutDownloader` fragt erst den Store und reicht nur bei Fehlschlag weiter
 - **Ohne Einstellung zeigt der Basisordner auf denselben Ort wie vor der
   Umstellung** — geprüft auch mit gesetztem `HF_HOME` bzw. `HF_HUB_CACHE`. Diese

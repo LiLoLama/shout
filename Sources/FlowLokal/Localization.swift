@@ -861,6 +861,9 @@ final class Loc: ObservableObject {
         "%d Modelle gefunden. Der Ordner ist sehr groß — es wurde nicht vollständig durchsucht.":
             "%d models found. This folder is very large — it was not searched completely.",
         "Abgebrochen bei %d Modellen.": "Cancelled at %d models.",
+        "Auf diesem Rechner gefunden": "Found on this Mac",
+        "Aus den durchsuchten Ordnern. Diese Modelle liegen schon auf diesem Rechner und werden nicht heruntergeladen.":
+            "From the searched folders. These models are already on this Mac and will not be downloaded.",
         "Basisordner": "Base folder",
         "Durchsuchen": "Search",
         "Durchsuchte Ordner": "Searched folders",

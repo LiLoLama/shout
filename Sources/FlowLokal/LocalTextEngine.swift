@@ -54,7 +54,14 @@ actor LocalTextEngine: TextEngine {
         defer { isLoading = false }
         do {
             let cfg = ModelConfiguration(id: id)
-            container = try await #huggingFaceLoadModelContainer(configuration: cfg) { progress in
+            // Ausgeschrieben statt über das Makro: Nur so lässt sich der
+            // Downloader austauschen — das Makro nimmt fest den Standard-Hub.
+            let pfade = ModelPaths.laden(aus: .standard,
+                                         vorgabe: { HubCache.default.cacheDirectory })
+            container = try await loadModelContainer(
+                from: ShoutDownloader(store: pfade.store, basisordner: pfade.basisordner),
+                using: #huggingFaceTokenizerLoader(),
+                configuration: cfg) { progress in
                 onProgress?(progress.fractionCompleted)
             }
             loadedModel = id

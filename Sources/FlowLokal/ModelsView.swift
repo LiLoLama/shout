@@ -501,8 +501,13 @@ struct ModelsView: View {
 
     private func suchordnerHinzufuegen() {
         guard let neu = ordnerAuswaehlen() else { return }
-        guard !pfade.suchordner.contains(where: { $0.standardizedFileURL == neu.standardizedFileURL }),
-              neu.standardizedFileURL != pfade.basisordner.standardizedFileURL else { return }
+        // Ortsvergleiche über `ModelStore.vergleichsform`: `/tmp/x` und
+        // `/private/tmp/x` sind derselbe Ordner und dürfen nicht zweimal in
+        // der Liste landen.
+        guard !pfade.suchordner.contains(where: {
+                  ModelStore.vergleichsform($0) == ModelStore.vergleichsform(neu) }),
+              ModelStore.vergleichsform(neu) != ModelStore.vergleichsform(pfade.basisordner)
+        else { return }
         pfade.suchordner.append(neu)
         pfade.sichern(in: .standard)
         durchsuchen(neu)
@@ -511,7 +516,8 @@ struct ModelsView: View {
     /// Nimmt den Ordner aus der Liste. Löscht nichts — die Dateien darin
     /// gehören jemand anderem.
     private func suchordnerEntfernen(_ ordner: URL) {
-        pfade.suchordner.removeAll { $0.standardizedFileURL == ordner.standardizedFileURL }
+        pfade.suchordner.removeAll {
+            ModelStore.vergleichsform($0) == ModelStore.vergleichsform(ordner) }
         suchstand[ordner] = nil
         pfade.sichern(in: .standard)
     }

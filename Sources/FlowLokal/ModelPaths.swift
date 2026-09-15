@@ -150,12 +150,16 @@ struct ModelPaths {
     /// dafür ist der Gewinn zu klein.
     mutating func basisordnerWechseln(zu neu: URL) {
         let alt = basisordner
-        guard alt.standardizedFileURL != neu.standardizedFileURL else { return }
+        // Ortsvergleiche laufen über `ModelStore.vergleichsform` — sonst gälten
+        // `/tmp/x` und `/private/tmp/x` als zwei Ordner, und ein Wechsel auf
+        // denselben Ordner in der anderen Schreibweise machte aus der Vorgabe
+        // eine ausdrückliche Wahl und trüge sie zusätzlich als Suchordner ein.
+        guard ModelStore.vergleichsform(alt) != ModelStore.vergleichsform(neu) else { return }
         gewaehlterBasisordner = neu
         // Der neue Basisordner darf nicht zusätzlich als Suchordner stehen,
         // sonst erschiene jedes Modell doppelt.
-        suchordner.removeAll { $0.standardizedFileURL == neu.standardizedFileURL }
-        if !suchordner.contains(where: { $0.standardizedFileURL == alt.standardizedFileURL }) {
+        suchordner.removeAll { ModelStore.vergleichsform($0) == ModelStore.vergleichsform(neu) }
+        if !suchordner.contains(where: { ModelStore.vergleichsform($0) == ModelStore.vergleichsform(alt) }) {
             suchordner.insert(alt, at: 0)
         }
     }

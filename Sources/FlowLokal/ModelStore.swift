@@ -39,8 +39,33 @@ struct ModelStore {
     var orteInReihenfolge: [URL] {
         var gesehen = Set<String>()
         return ([basisordner] + suchordner).filter { ordner in
-            gesehen.insert(ordner.standardizedFileURL.path).inserted
+            gesehen.insert(Self.vergleichsform(ordner).path).inserted
         }
+    }
+
+    /// Die Form, in der zwei Ordner verglichen werden: Symlinks aufgelöst,
+    /// `.` und `..` entfernt.
+    ///
+    /// `standardizedFileURL` allein genügt NICHT — es normalisiert nur `.` und
+    /// `..`. `/tmp/x` und `/private/tmp/x` bezeichnen denselben Ordner, gälten
+    /// aber als verschieden. Daran hängt die Sperre in `abkuerzbarerFund`:
+    /// Über die jeweils andere Schreibweise wäre der eigene Cache nicht mehr
+    /// als eigener zu erkennen, und shout. kürzte ausgerechnet dort ab, wo es
+    /// das nicht darf. Jeder Ortsvergleich läuft deshalb hierüber — auch in
+    /// `ModelPaths` und in der Oberfläche.
+    static func vergleichsform(_ ordner: URL) -> URL {
+        ordner.resolvingSymlinksInPath().standardizedFileURL
+    }
+
+    /// Liegt `pfad` in `ordner` (oder ist es dieser selbst)?
+    ///
+    /// Bestandteilweise statt über ein Zeichenketten-Präfix: Sonst gälte
+    /// `/basis-alt` als Teil von `/basis`.
+    static func istUnterhalb(_ pfad: URL, _ ordner: URL) -> Bool {
+        let teile = vergleichsform(pfad).pathComponents
+        let rahmen = vergleichsform(ordner).pathComponents
+        guard teile.count >= rahmen.count else { return false }
+        return Array(teile.prefix(rahmen.count)) == rahmen
     }
 
     /// Ordnername im Python-Format des Hugging-Face-Caches
@@ -110,7 +135,7 @@ struct ModelStore {
         // Der Fundpfad taugt nicht, weil er beim HF-Cache-Format unter
         // `snapshots/<hash>/` liegt, und ähnlich benannte Nachbarordner
         // (/basis und /basis-alt) dürfen sich nicht überschneiden.
-        guard f.ort.standardizedFileURL != eigenerDownloadOrdner.standardizedFileURL
+        guard Self.vergleichsform(f.ort) != Self.vergleichsform(eigenerDownloadOrdner)
         else { return nil }
         return f.pfad
     }
@@ -124,7 +149,7 @@ struct ModelStore {
             // "snapshots" heißt. Exakter Vergleich statt Präfix, weil ähnlich
             // benannte Nachbarordner (/basis und /basis-alt) sich sonst
             // überschneiden würden.
-            let imBasis = f.ort.standardizedFileURL == basisordner.standardizedFileURL
+            let imBasis = Self.vergleichsform(f.ort) == Self.vergleichsform(basisordner)
             return imBasis ? .eigen(f.pfad) : .fremd(f.pfad)
         }
         return verknuepft == nil ? .nichtVorhanden : .nichtAuffindbar

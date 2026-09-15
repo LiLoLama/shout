@@ -277,4 +277,65 @@ final class ModelStoreTests: XCTestCase {
         XCTAssertNil(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
                                             eigenerDownloadOrdner: basis))
     }
+
+    // MARK: - Symlinks in den Ortsvergleichen
+
+    /// Die Sperre gegen das Abkürzen im eigenen Cache darf nicht an der
+    /// Schreibweise scheitern: `/tmp` ist ein Symlink auf `/private/tmp`,
+    /// beide Wege bezeichnen denselben Ordner. Mit bloßem
+    /// `standardizedFileURL` gälten sie als verschieden — und shout. kürzte
+    /// ausgerechnet im eigenen halben Download ab.
+    func testEigenerOrdnerWirdUeberDenSymlinkErkannt() throws {
+        let (ueberSymlink, echt) = try symlinkPaar()
+        defer { try? FileManager.default.removeItem(at: ueberSymlink) }
+
+        _ = try legeMLXAn(in: ueberSymlink, kennung: "mlx-community/Qwen3-4B-4bit")
+        let store = ModelStore(basisordner: ueberSymlink, suchordner: [])
+        XCTAssertNil(store.abkuerzbarerFund("mlx-community/Qwen3-4B-4bit",
+                                            eigenerDownloadOrdner: echt))
+    }
+
+    /// Dieselbe Gleichheit muss auch der Zustand sehen: Ein Modell im
+    /// Basisordner bleibt `.eigen`, auch wenn der Basisordner über die andere
+    /// Schreibweise hereinkommt — sonst trüge die Oberfläche „Fremder Ordner"
+    /// an den eigenen Download.
+    func testZustandEigenTrotzUnterschiedlicherSchreibweise() throws {
+        let (ueberSymlink, echt) = try symlinkPaar()
+        defer { try? FileManager.default.removeItem(at: ueberSymlink) }
+
+        _ = try legeMLXAn(in: ueberSymlink, kennung: "mlx-community/Qwen3-4B-4bit")
+        // Angelegt über `/tmp`, dem Store bekannt als `/private/tmp` — derselbe
+        // Ordner. Der gelieferte Pfad hängt an der Schreibweise des Ortes.
+        let store = ModelStore(basisordner: echt, suchordner: [ueberSymlink])
+        let erwartet = echt.appendingPathComponent(
+            ModelStore.ordnername(fuer: "mlx-community/Qwen3-4B-4bit"), isDirectory: true)
+        XCTAssertEqual(store.zustand("mlx-community/Qwen3-4B-4bit", verknuepft: nil),
+                       .eigen(erwartet))
+    }
+
+    /// Derselbe Ordner in zwei Schreibweisen ist EIN Ort, kein zweiter.
+    func testOrteInReihenfolgeFasstSchreibweisenZusammen() throws {
+        let (ueberSymlink, echt) = try symlinkPaar()
+        defer { try? FileManager.default.removeItem(at: ueberSymlink) }
+
+        let store = ModelStore(basisordner: echt, suchordner: [ueberSymlink])
+        XCTAssertEqual(store.orteInReihenfolge, [echt])
+    }
+
+    /// Legt einen echten Ordner an und liefert ihn in beiden Schreibweisen.
+    ///
+    /// Bewusst unter `/tmp` statt unter `FileManager.temporaryDirectory`: Der
+    /// temporäre Ordner kommt schon als `/var/…` (also aufgelöst) daher, ein
+    /// Unterschied wäre dort gar nicht zu erzeugen. Und der Ordner muss
+    /// wirklich existieren — `resolvingSymlinksInPath()` löst nur auf, was da
+    /// ist.
+    private func symlinkPaar() throws -> (ueberSymlink: URL, echt: URL) {
+        let name = "shout-symlink-\(UUID().uuidString)"
+        let ueberSymlink = URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: ueberSymlink, withIntermediateDirectories: true)
+        let echt = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        return (ueberSymlink, echt)
+    }
 }

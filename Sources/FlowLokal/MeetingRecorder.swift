@@ -98,10 +98,16 @@ final class MeetingRecorder: ObservableObject {
     /// „Meeting 2026-08-11 17-42.m4a" — lesbar und ohne Zeichen, die Dateisysteme
     /// oder Freigabe-Dialoge stören (kein Doppelpunkt, kein Schrägstrich).
     static func fileName(for date: Date = Date()) -> String {
+        "Meeting \(timestamp(for: date)).m4a"
+    }
+
+    /// „2026-08-11 17-42" — auch einzeln gebraucht: Ein automatisch gestarteter
+    /// Mitschnitt heißt nach dem Programm, aus dem er kommt („Zoom 2026-08-11 17-42").
+    static func timestamp(for date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH-mm"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        return "Meeting \(formatter.string(from: date)).m4a"
+        return formatter.string(from: date)
     }
 
     // MARK: - Umbenennen
@@ -166,8 +172,12 @@ final class MeetingRecorder: ObservableObject {
 
     // MARK: - Steuerung
 
+    /// - Parameter limitedTo: Prozessobjekt (Core Audio), dessen Ton allein
+    ///   abgegriffen werden soll. Kommt von der Meeting-Erkennung; ohne Angabe
+    ///   wird wie bisher der gesamte Systemton genommen. `UInt32` statt
+    ///   `AudioObjectID`, weil diese Datei auch am iPhone übersetzt wird.
     @discardableResult
-    func start(source: MeetingSource = .microphone) throws -> URL {
+    func start(source: MeetingSource = .microphone, limitedTo processObject: UInt32? = nil) throws -> URL {
         guard !isRecording else { throw MeetingRecorderError.alreadyRunning }
 
         #if os(iOS)
@@ -205,7 +215,8 @@ final class MeetingRecorder: ObservableObject {
             case .microphone:
                 try startMicrophone(writeFormat: writeFormat)
             case .systemAudio, .both:
-                try startSystemAudio(includeMicrophone: source == .both, writeFormat: writeFormat)
+                try startSystemAudio(includeMicrophone: source == .both,
+                                     writeFormat: writeFormat, limitedTo: processObject)
             }
         } catch {
             // Angefangene Datei nicht liegen lassen, sonst taucht ein leerer
@@ -237,10 +248,12 @@ final class MeetingRecorder: ObservableObject {
     }
 
     #if os(macOS)
-    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat) throws {
+    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat,
+                                  limitedTo processObject: UInt32?) throws {
         guard #available(macOS 14.2, *) else { throw MeetingRecorderError.systemAudioUnsupported }
         let capture = SystemAudioTap()
-        try capture.start(includeMicrophone: includeMicrophone) { [weak self] samples in
+        try capture.start(includeMicrophone: includeMicrophone,
+                          onlyProcesses: processObject.map { [$0] } ?? []) { [weak self] samples in
             self?.handleTap(samples)
         }
         // Format erst NACH dem Start: Die Rate richtet sich nach dem Ausgabegerät.
@@ -256,7 +269,8 @@ final class MeetingRecorder: ObservableObject {
         tap = capture
     }
     #else
-    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat) throws {
+    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat,
+                                  limitedTo processObject: UInt32?) throws {
         // iOS lässt Apps nicht an den Ton anderer Apps — es gibt keine API dafür.
         throw MeetingRecorderError.systemAudioUnsupported
     }

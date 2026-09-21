@@ -11,6 +11,9 @@ struct DictionaryView: View {
     @State private var newWrong = ""
     @State private var newRight = ""
     @State private var importStatus = ""
+    @State private var termNote = ""
+    /// Aus manuellen Ausbesserungen von selbst lernen.
+    @AppStorage("autoLearnCorrections") private var autoLearn = true
 
     var body: some View {
         ScrollView {
@@ -30,6 +33,10 @@ struct DictionaryView: View {
                                 Text(importStatus).font(.system(size: 11)).foregroundStyle(Color.shoutLive)
                             }
                         }
+                        if !termNote.isEmpty {
+                            Text(termNote).font(.system(size: 11))
+                                .foregroundStyle(Color(red: 0.95, green: 0.7, blue: 0.2))
+                        }
                         if dictionary.contents.terms.isEmpty {
                             Text(Loc.t("Noch keine Begriffe.")).font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
                         } else {
@@ -41,6 +48,12 @@ struct DictionaryView: View {
 
                 ConsolePanel(title: Loc.t("Automatisch verbessert")) {
                     VStack(alignment: .leading, spacing: 12) {
+                        FieldRow(title: Loc.t("Ausbesserungen von selbst lernen"),
+                                 help: Loc.t("Verbesserst du nach dem Diktat ein Wort im Text, merkt sich shout. das Paar. Abgeschaltet bleibt das Wörterbuch unberührt — und kein fremdes Textfeld wird beobachtet.")) {
+                            Toggle("", isOn: $autoLearn).labelsHidden().toggleStyle(.switch).tint(Color.shoutLive)
+                        }
+                        .padding(.horizontal, -16).padding(.top, -4)
+                        ConsoleDivider().padding(.horizontal, -16)
                         HStack(spacing: 8) {
                             consoleField(Loc.t("falsch"), text: $newWrong) {}
                             Image(systemName: "arrow.right").font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
@@ -93,7 +106,13 @@ struct DictionaryView: View {
     }
 
     private func addTerm() {
-        dictionary.addTerm(newTerm); newTerm = ""
+        guard dictionary.addTerm(newTerm) else {
+            termNote = Loc.f("Höchstens %d Zeichen — das sieht nach einem versehentlich mitgelernten Link aus.",
+                             PersonalDictionary.maxLength)
+            return
+        }
+        newTerm = ""
+        termNote = ""
     }
     private func addCorrection() {
         dictionary.addCorrection(wrong: newWrong, right: newRight); newWrong = ""; newRight = ""
@@ -155,6 +174,8 @@ private struct FlowChips: View {
             ForEach(terms, id: \.self) { term in
                 HStack(spacing: 6) {
                     Text(term).font(.system(size: 13))
+                        .lineLimit(1).truncationMode(.middle)
+                        .help(term)
                     Button { onDelete(term) } label: {
                         Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
                     }.buttonStyle(.borderless).foregroundStyle(Color(white: 0.5))
@@ -169,15 +190,28 @@ private struct FlowChips: View {
 }
 
 /// Einfaches umbrechendes Layout für die Chips.
+///
+/// Die Breite jedes Chips wird auf die verfügbare Breite **geklemmt**. Ohne das
+/// bekam ein versehentlich gelernter Begriff — eine 582 Zeichen lange Google-URL
+/// etwa — seine volle Wunschbreite von mehreren tausend Punkten zugeteilt, und
+/// sein Löschen-Knopf lag weit außerhalb des Fensters: Der Eintrag war nicht mehr
+/// zu entfernen. Geklemmt kürzt der Text in der Mitte und das ✕ bleibt erreichbar.
 private struct FlexWrap: Layout {
     var spacing: CGFloat = 7
     var lineSpacing: CGFloat = 7
+
+    /// Wunschgröße, auf die Zeilenbreite begrenzt.
+    private func size(of subview: LayoutSubview, limit: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard ideal.width > limit, limit.isFinite else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: limit, height: nil))
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = size(of: v, limit: maxWidth)
             if x + s.width > maxWidth, x > 0 { x = 0; y += lineH + lineSpacing; lineH = 0 }
             x += s.width + spacing; lineH = max(lineH, s.height)
         }
@@ -187,7 +221,7 @@ private struct FlexWrap: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, lineH: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = size(of: v, limit: bounds.width)
             if x + s.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += lineH + lineSpacing; lineH = 0 }
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
             x += s.width + spacing; lineH = max(lineH, s.height)

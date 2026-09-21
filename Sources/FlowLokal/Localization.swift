@@ -217,6 +217,11 @@ final class Loc: ObservableObject {
         "%d Namen aus Kontakten.": "%d names from contacts.",
         "Kein Zugriff auf Kontakte.": "No access to contacts.",
         "Automatisch verbessert": "Corrected automatically",
+        "Ausbesserungen von selbst lernen": "Learn from my corrections",
+        "Verbesserst du nach dem Diktat ein Wort im Text, merkt sich shout. das Paar. Abgeschaltet bleibt das Wörterbuch unberührt — und kein fremdes Textfeld wird beobachtet.":
+            "If you fix a word in the text after dictating, shout. remembers the pair. Switched off, the dictionary stays untouched — and no text field of another app is watched.",
+        "Höchstens %d Zeichen — das sieht nach einem versehentlich mitgelernten Link aus.":
+            "At most %d characters — this looks like a link that was learned by accident.",
         "falsch": "wrong",
         "richtig": "right",
         "Noch keine Korrekturen — shout. lernt sie auch automatisch, wenn du ein Wort ausbesserst.":
@@ -635,6 +640,9 @@ final class Loc: ObservableObject {
         "%@ · %@ — einmalig, danach offline.": "%@ · %@ — once, then offline.",
         "Erlauben": "Allow",
         "Einstellungen öffnen": "Open Settings",
+        "Einfügen braucht die Bedienungshilfen.": "Inserting needs Accessibility access.",
+        "Der Text liegt in der Zwischenablage — ⌘V setzt ihn ein. Damit shout. das selbst kann, muss es unter „Bedienungshilfen“ freigegeben sein.":
+            "The text is on the clipboard — ⌘V inserts it. For shout. to do that itself, it needs to be allowed under “Accessibility”.",
         "App ansehen": "Explore the app",
         "Mikrofonzugriff wird erst benötigt, wenn du wirklich aufnimmst.":
             "Microphone access is only needed when you actually record.",
@@ -830,6 +838,26 @@ final class Loc: ObservableObject {
         "Aufnahme löschen?": "Delete the recording?",
         "Die Audiodatei wird vom Gerät entfernt. Das lässt sich nicht rückgängig machen.": "The audio file is removed from the device. This cannot be undone.",
         "Zu wenig Speicher für die Sprechertrennung — der Text ist trotzdem vollständig.": "Not enough memory to separate speakers — the text is complete nonetheless.",
+
+        // MARK: - Meeting-Erkennung
+
+        "Meeting erkennen": "Detect meetings",
+        "Wenn ein Meeting läuft": "When a meeting is running",
+        "Erkannt werden Zoom, Teams, Webex, Skype, FaceTime, Discord, Slack und Jitsi — daran, dass ihr Ton läuft. Dein Mikrofon spielt dabei keine Rolle, du kannst also stumm dabeisitzen.":
+            "Zoom, Teams, Webex, Skype, FaceTime, Discord, Slack and Jitsi are detected by their audio output. Your microphone plays no part in this, so you can sit in muted.",
+        "Nichts tun": "Do nothing",
+        "Fragen": "Ask",
+        "Nie fragen bei": "Never ask for",
+        "Wieder fragen": "Ask again",
+        "%@-Meeting läuft": "%@ meeting in progress",
+        "Mitschneiden und daraus ein Protokoll machen?": "Record it and turn it into minutes?",
+        "Mitschneiden": "Record it",
+        "Nicht jetzt": "Not now",
+        "Nie bei %@": "Never for %@",
+        "Bitte vorher die anderen Beteiligten fragen.": "Please ask the others first.",
+        "%@ wird mitgeschnitten": "Recording %@",
+        "Mitschnitt gesichert": "Recording saved",
+        "Wird unter „Meeting“ transkribiert.": "Being transcribed under “Meeting”.",
 
         // MARK: - Ergebnisfenster
 

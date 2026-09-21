@@ -51,12 +51,24 @@ final class PersonalDictionary: ObservableObject {
 
     // MARK: - Begriffe
 
-    func addTerm(_ term: String) {
+    /// Längste erlaubte Eingabe. Ein Begriff ist ein Name oder ein Fachwort —
+    /// alles darüber ist versehentlich hereingeraten (eine mitkorrigierte URL zum
+    /// Beispiel) und richtet doppelten Schaden an: Es bläht den Hinweis an das
+    /// Sprachmodell auf, und in der Liste wird die Zeile so breit, dass ihr
+    /// Löschen-Knopf neben dem Fenster liegt.
+    static let maxLength = 60
+
+    /// Gibt `false` zurück, wenn der Begriff leer, doppelt oder zu lang ist.
+    @discardableResult
+    func addTerm(_ term: String) -> Bool {
         let t = term.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty,
-              !contents.terms.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) else { return }
+        guard !t.isEmpty, t.count <= Self.maxLength else { return false }
+        guard !contents.terms.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) else {
+            return true   // steht schon drin — kein Fehler
+        }
         contents.terms.append(t)
         save()
+        return true
     }
 
     func removeTerm(_ term: String) {
@@ -68,18 +80,24 @@ final class PersonalDictionary: ObservableObject {
 
     /// Fügt eine Korrektur hinzu (bzw. aktualisiert sie) und hinterlegt die
     /// richtige Schreibweise gleich als Begriff.
-    func addCorrection(wrong: String, right: String) {
+    ///
+    /// Gibt `false` zurück, wenn das Paar unbrauchbar ist — leer, gleich oder
+    /// länger als ein Wort je sein kann (siehe `maxLength`).
+    @discardableResult
+    func addCorrection(wrong: String, right: String) -> Bool {
         let w = wrong.trimmingCharacters(in: .whitespacesAndNewlines)
         let r = right.trimmingCharacters(in: .whitespacesAndNewlines)
         // Nur exakt-gleiche Paare ablehnen — reine Casing-Fixes („imessage" → „iMessage",
         // „github" → „GitHub") sind ein Kern-Anwendungsfall und müssen erlaubt sein.
-        guard !w.isEmpty, !r.isEmpty, w != r else { return }
+        guard !w.isEmpty, !r.isEmpty, w != r,
+              w.count <= Self.maxLength, r.count <= Self.maxLength else { return false }
         contents.corrections.removeAll { $0.wrong.caseInsensitiveCompare(w) == .orderedSame }
         contents.corrections.append(Correction(wrong: w, right: r))
         addTerm(r)   // legt den richtigen Begriff an (und speichert, falls neu)
         // Explizit speichern: existiert `r` bereits als Begriff, bricht addTerm im
         // Guard ab OHNE save() — die neue Korrektur wäre sonst nach Neustart weg.
         save()
+        return true
     }
 
     func removeCorrection(_ correction: Correction) {

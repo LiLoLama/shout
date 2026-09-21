@@ -53,6 +53,12 @@ file**, so you can move them between devices (no cloud involved).
   as text, `.txt` or `.srt` subtitles, optionally as a set of minutes (summary, key
   points, structured text). On **all three platforms**; speaker separation is macOS
   only for now. Same local pipeline as dictation, nothing is uploaded.
+- **Meeting detection** (macOS) — when a call starts in Zoom, Teams, Webex,
+  Skype, FaceTime, Discord, Slack or Jitsi, a card offers to record it and turn
+  it into minutes; it disappears on its own after twenty seconds. Detection
+  needs no extra permission and watches the conferencing app's audio output, not
+  your microphone — so it also works while you sit in muted. Set to *ask* by
+  default, and switchable to off or automatic under *Meeting*.
 
 - **Onboarding assistant** on first launch — permissions or microphone check,
   hotkey, model download and a test dictation, on all three platforms.

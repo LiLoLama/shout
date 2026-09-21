@@ -40,16 +40,28 @@ final class SystemAudioTap {
     ///   als Sub-Gerät ins SELBE Aggregat — nur so teilen sich beide Quellen einen
     ///   Takt. Zwei getrennt laufende Geräte würden über eine Stunde auseinander
     ///   driften.
-    func start(includeMicrophone: Bool, onSamples: @escaping ([Float]) -> Void) throws {
+    /// - Parameter onlyProcesses: Prozessobjekte, die allein abgegriffen werden
+    ///   sollen. Leer = alles außer dem eigenen Ton. Die Meeting-Erkennung kennt
+    ///   den Prozess und reicht ihn durch: Sonst läge die Musik, die nebenher
+    ///   lief, mit im Mitschnitt — bei einem Mitschnitt, den man nicht selbst
+    ///   gestartet hat, ist das nicht zumutbar.
+    func start(includeMicrophone: Bool,
+               onlyProcesses: [AudioObjectID] = [],
+               onSamples: @escaping ([Float]) -> Void) throws {
         self.onSamples = onSamples
         self.includeSubDevices = includeMicrophone
 
         let output = try Self.defaultDevice(selector: kAudioHardwarePropertyDefaultOutputDevice)
         let outputUID = try Self.stringProperty(output, kAudioDevicePropertyDeviceUID)
 
-        // Eigene Klang-Signale ausschließen — sonst steht der Start-Ton im Mitschnitt.
-        let excluded: [AudioObjectID] = Self.ownProcessObject().map { [$0] } ?? []
-        let description = CATapDescription(monoGlobalTapButExcludeProcesses: excluded)
+        let description: CATapDescription
+        if onlyProcesses.isEmpty {
+            // Eigene Klang-Signale ausschließen — sonst steht der Start-Ton im Mitschnitt.
+            let excluded: [AudioObjectID] = Self.ownProcessObject().map { [$0] } ?? []
+            description = CATapDescription(monoGlobalTapButExcludeProcesses: excluded)
+        } else {
+            description = CATapDescription(monoMixdownOfProcesses: onlyProcesses)
+        }
         description.name = "shout"
         description.isPrivate = true
         description.muteBehavior = CATapMuteBehavior.unmuted   // Das Meeting soll hörbar bleiben.

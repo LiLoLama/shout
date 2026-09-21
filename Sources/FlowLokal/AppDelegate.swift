@@ -49,10 +49,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Dashboard-Fensters übersteht.
     private let meetingRecorder = MeetingRecorder()
 
+    /// Merkt von selbst, dass ein Meeting läuft, und die Karte, die dann fragt.
+    private let meetingDetector = MeetingDetector()
+    private let meetingPrompt = MeetingPrompt()
+    /// Das Meeting, das den laufenden Mitschnitt ausgelöst hat.
+    private var autoMeeting: MeetingDetector.Meeting?
+    /// Erkanntes Meeting, das wegen gesperrtem Bildschirm noch nicht gefragt wurde.
+    private var deferredMeeting: MeetingDetector.Meeting?
+    /// Speist Zeit und Pegel in die Karte — nur während eines solchen Mitschnitts.
+    private var meetingTicker: Timer?
+
     /// Datei-Transkription: eigene Warteschlange, teilt sich Modelle und Wörterbuch
     /// mit dem Diktat. Serialisiert wird über den Transcriber-actor.
     private lazy var fileQueue = FileTranscriptionQueue(
         transcriber: transcriber, formatter: formatter, dictionary: dictionary)
+
+    /// Wurde in dieser Sitzung schon auf die fehlende Bedienungshilfen-Freigabe
+    /// hingewiesen?
+    private var warnedAboutAccessibility = false
 
     /// Sparkle-Auto-Update: prüft beim Start (SUEnableAutomaticChecks) und per
     /// Menüpunkt gegen den Appcast; installiert EdDSA-signierte Updates per Klick.
@@ -192,6 +206,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             name: NSWorkspace.didActivateApplicationNotification, object: nil
         )
 
+        setupMeetingDetection()
+
         // Erststart: Onboarding-Assistent; danach das Hauptfenster.
         if !UserDefaults.standard.bool(forKey: "didCompleteOnboarding") {
             openOnboarding()
@@ -240,7 +256,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         openDashboard(tab)
     }
 
+    /// Automatisch gelernt — nur, wenn der Nutzer das will. Der Wächter wird
+    /// erst gar nicht gestartet (siehe `stopAndProcess`); diese Abfrage fängt den
+    /// Fall ab, dass der Schalter umgelegt wird, während einer noch läuft.
     private func handleLearnedCorrection(wrong: String, right: String) {
+        guard UserDefaults.standard.object(forKey: "autoLearnCorrections") as? Bool ?? true else { return }
         addLearned(wrong: wrong, right: right, showUndo: true)
     }
 
@@ -305,6 +325,140 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func externalAppActivated(_ note: Notification) {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         if app.bundleIdentifier != Bundle.main.bundleIdentifier { lastExternalApp = app }
+    }
+
+    // MARK: - Meeting-Erkennung
+
+    private func setupMeetingDetection() {
+        // Während eines Diktats oder eines schon laufenden Mitschnitts wird nicht
+        // gefragt. Der Detektor fragt selbst nach, statt dass jemand ihn umschaltet.
+        meetingDetector.isBusy = { [weak self] in
+            guard let self else { return true }
+            return self.state == .recording || self.state == .working
+                || self.meetingRecorder.isRecording || self.meetingPrompt.isVisible
+        }
+        meetingDetector.onDetected = { [weak self] meeting in self?.meetingDetected(meeting) }
+        meetingDetector.onEnded = { [weak self] in self?.meetingEnded() }
+
+        NotificationCenter.default.addObserver(
+            forName: .shoutMeetingDetectChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.meetingDetector.apply() }
+        }
+
+        // Bei gesperrtem Bildschirm wird die Frage zurückgehalten und beim
+        // Entsperren nachgeholt — sofern das Meeting dann noch läuft. Ohne das
+        // verstrichen die zwanzig Sekunden der Karte vor einem schwarzen Schirm.
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.showDeferredMeeting() }
+        }
+        meetingDetector.apply()
+    }
+
+    private func meetingDetected(_ meeting: MeetingDetector.Meeting) {
+        guard MeetingDetector.mode != .off else { return }
+
+        // Gesperrt: aufheben statt wegwerfen. Ein Mitschnitt darf trotzdem
+        // anlaufen, wenn die Einstellung ausdrücklich „aufnehmen" sagt.
+        if MeetingDetector.screenLocked(), MeetingDetector.mode == .ask {
+            deferredMeeting = meeting
+            return
+        }
+        offer(meeting)
+    }
+
+    /// Nach dem Entsperren: das zurückgehaltene Meeting anbieten, falls es noch läuft.
+    private func showDeferredMeeting() {
+        guard let meeting = deferredMeeting else { return }
+        deferredMeeting = nil
+        guard meetingDetector.current == meeting, !meetingRecorder.isRecording else { return }
+        offer(meeting)
+    }
+
+    private func offer(_ meeting: MeetingDetector.Meeting) {
+        let icon = MeetingDetector.hostApp(for: meeting)?.icon
+        switch MeetingDetector.mode {
+        case .off:
+            return
+        case .auto:
+            startMeetingRecording(meeting, icon: icon)
+        case .ask:
+            meetingPrompt.ask(
+                appName: meeting.name, icon: icon,
+                onAccept: { [weak self] in self?.startMeetingRecording(meeting, icon: icon) },
+                onDecline: { [weak self] in self?.meetingDetector.decline(meeting) },
+                onMute: { [weak self] in self?.meetingDetector.mute(meeting) }
+            )
+        }
+    }
+
+    /// Das erkannte Meeting ist vorbei. Läuft dazu ein Mitschnitt, wird er
+    /// gesichert — niemand soll nach dem Meeting merken, dass noch aufgenommen wird.
+    private func meetingEnded() {
+        if autoMeeting != nil, meetingRecorder.isRecording {
+            finishMeetingRecording()
+        } else if meetingPrompt.state == .ask {
+            meetingPrompt.dismiss()
+        }
+    }
+
+    /// Startet den Mitschnitt für ein erkanntes Meeting: Mikrofon **und** der Ton
+    /// genau dieses Programms — nicht der ganze Systemton, sonst läge die Musik
+    /// von nebenan mit in der Datei.
+    private func startMeetingRecording(_ meeting: MeetingDetector.Meeting, icon: NSImage?) {
+        do {
+            try meetingRecorder.start(source: .both, limitedTo: meeting.processObject)
+        } catch {
+            meetingPrompt.showDone(appName: meeting.name, icon: icon,
+                                   message: error.localizedDescription,
+                                   onOpen: { [weak self] in self?.openDashboard(.meeting) })
+            meetingDetector.decline(meeting)
+            return
+        }
+        autoMeeting = meeting
+        // Wer hier einmal aufgenommen hat, kennt den Hinweis — er steht auf der Karte.
+        UserDefaults.standard.set(true, forKey: "meetingLegalHintShown")
+        sounds.play(.start)
+        meetingPrompt.showRecording(appName: meeting.name, icon: icon) { [weak self] in
+            self?.finishMeetingRecording()
+        }
+        let ticker = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.meetingRecorder.isRecording else { return }
+                self.meetingPrompt.update(
+                    duration: self.meetingRecorder.duration,
+                    level: self.meetingRecorder.level,
+                    note: self.meetingRecorder.noSignal
+                        ? Loc.t("Es kommt kein Ton an. Beim Systemton fehlt dann meist die Erlaubnis: Systemeinstellungen → Datenschutz & Sicherheit → Tonaufnahme.")
+                        : nil)
+            }
+        }
+        RunLoop.main.add(ticker, forMode: .common)
+        meetingTicker = ticker
+    }
+
+    /// Stoppt, benennt nach dem Programm („Zoom 2026-09-18 19-23") und reicht die
+    /// Datei an dieselbe Warteschlange wie jeder andere Mitschnitt. Kein
+    /// Namensdialog: Wer die Karte benutzt, hat das Dashboard nicht offen.
+    private func finishMeetingRecording() {
+        meetingTicker?.invalidate()
+        meetingTicker = nil
+        let meeting = autoMeeting
+        autoMeeting = nil
+        meetingDetector.forgetCurrent()
+
+        guard let url = meetingRecorder.stop() else { meetingPrompt.dismiss(); return }
+        let named = MeetingRecorder.rename(
+            url, to: "\(meeting?.name ?? Loc.t("Meeting")) \(MeetingRecorder.timestamp())")
+        fileQueue.add([named])
+        sounds.play(.stop)
+        meetingPrompt.showDone(
+            appName: meeting?.name ?? Loc.t("Meeting"),
+            icon: meeting.flatMap { MeetingDetector.hostApp(for: $0)?.icon },
+            message: Loc.t("Wird unter „Meeting“ transkribiert."),
+            onOpen: { [weak self] in self?.openDashboard(.meeting) })
     }
 
     /// Fügt Text aus dem Verlauf am Cursor ein: zuletzt aktive App nach vorn holen,
@@ -776,6 +930,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationWillTerminate(_ notification: Notification) {
         fileQueue.cancelAll()
+        meetingTicker?.invalidate()
+        meetingTicker = nil
+        meetingDetector.stop()      // Core-Audio-Listener sauber abhängen
         correctionWatcher.stop()    // AXObserver + Timer sauber abbauen
         for m in eventMonitors { NSEvent.removeMonitor(m) }
         eventMonitors.removeAll()
@@ -787,6 +944,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    /// Einmal pro Start: erklärt, warum nichts eingefügt wurde, und führt in die
+    /// Systemeinstellungen. Bei jedem Diktat zu fragen wäre eine Plage — der Text
+    /// liegt ja in der Zwischenablage.
+    private func warnAboutMissingAccessibility() {
+        guard !warnedAboutAccessibility else { return }
+        warnedAboutAccessibility = true
+        let alert = NSAlert()
+        alert.messageText = Loc.t("Einfügen braucht die Bedienungshilfen.")
+        alert.informativeText = Loc.t("Der Text liegt in der Zwischenablage — ⌘V setzt ihn ein. Damit shout. das selbst kann, muss es unter „Bedienungshilfen“ freigegeben sein.")
+        alert.addButton(withTitle: Loc.t("Einstellungen öffnen"))
+        alert.addButton(withTitle: Loc.t("Später"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Modelle laden
@@ -1219,6 +1395,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }
+                // Ohne Bedienungshilfen-Freigabe kommt das synthetische ⌘V
+                // nirgends an — bis hierher war das Diktat danach spurlos weg.
+                // Stattdessen: in die Zwischenablage legen und einmal pro Start
+                // sagen, woran es liegt.
+                guard AXIsProcessTrusted() else {
+                    injector.copyConcealed(final)
+                    lastInsertedText = final
+                    history.add(final, raw: raw)
+                    sounds.play(.error)
+                    warnAboutMissingAccessibility()
+                    return
+                }
                 injector.paste(final, keepInClipboard: keepInClipboard)
                 sounds.play(.done)
                 lastInsertedText = final
@@ -1232,10 +1420,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
                 // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
                 // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.
-                let inserted = final
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 400_000_000)
-                    self.correctionWatcher.begin(inserted: inserted)
+                // Abgeschaltet heißt abgeschaltet: Dann entsteht auch kein
+                // AXObserver auf dem fremden Textfeld.
+                if UserDefaults.standard.object(forKey: "autoLearnCorrections") as? Bool ?? true {
+                    let inserted = final
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        self.correctionWatcher.begin(inserted: inserted)
+                    }
                 }
             } catch {
                 sounds.play(.error)

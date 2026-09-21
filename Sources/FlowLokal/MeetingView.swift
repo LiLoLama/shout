@@ -26,6 +26,10 @@ struct MeetingView: View {
     @State private var finished: URL?
     @State private var naming = false
     @State private var name = ""
+    @AppStorage("meetingDetect") private var detect = "ask"
+    /// Programme, bei denen nie gefragt wird. Steht als Liste in den
+    /// Voreinstellungen; „Nie bei Zoom" auf der Karte schreibt hierhin.
+    @State private var muted: [String] = MeetingDetector.mutedPrefixes
 
     /// Nur eigene Mitschnitte — eingeworfene Dateien stehen auf „Dateien".
     private var recordings: [FileTranscriptionJob] {
@@ -43,6 +47,7 @@ struct MeetingView: View {
                     stage
                     if !recorder.isRecording {
                         ProcessingOptionsPanel(formatterReady: formatterReady)
+                        detectionPanel
                     }
                     if !recordings.isEmpty { recordingsPanel }
                 } else {
@@ -166,6 +171,50 @@ struct MeetingView: View {
                 .font(.system(size: 11)).foregroundStyle(Color(white: 0.4))
         }
         .frame(maxWidth: .infinity).padding(.vertical, 30).padding(.horizontal, 20)
+    }
+
+    /// „Meeting erkennen" — ob und wie von selbst gefragt wird.
+    ///
+    /// Voreinstellung ist „fragen": Eine Frage ist keine Aufnahme. „Von selbst
+    /// aufnehmen" gibt es nur auf ausdrücklichen Wunsch, weil ein Mitschnitt ohne
+    /// Einverständnis der anderen strafbar ist — das darf eine App nicht von sich
+    /// aus tun.
+    private var detectionPanel: some View {
+        ConsolePanel(title: Loc.t("Meeting erkennen")) {
+            VStack(spacing: 0) {
+                FieldRow(title: Loc.t("Wenn ein Meeting läuft"),
+                         help: Loc.t("Erkannt werden Zoom, Teams, Webex, Skype, FaceTime, Discord, Slack und Jitsi — daran, dass ihr Ton läuft. Dein Mikrofon spielt dabei keine Rolle, du kannst also stumm dabeisitzen.")) {
+                    ConsoleSegmented(selection: $detect, options: [
+                        ("off", Loc.t("Nichts tun")),
+                        ("ask", Loc.t("Fragen")),
+                        ("auto", Loc.t("Aufnehmen")),
+                    ])
+                }
+                if !muted.isEmpty {
+                    ConsoleDivider()
+                    FieldRow(title: Loc.t("Nie fragen bei"), help: mutedNames) {
+                        Button(Loc.t("Wieder fragen")) {
+                            MeetingDetector.mutedPrefixes = []
+                            muted = []
+                            NotificationCenter.default.post(name: .shoutMeetingDetectChanged, object: nil)
+                        }
+                        .buttonStyle(ConsoleButtonStyle())
+                    }
+                }
+            }
+        }
+        .onChange(of: detect) { _, _ in
+            NotificationCenter.default.post(name: .shoutMeetingDetectChanged, object: nil)
+        }
+        .onAppear { muted = MeetingDetector.mutedPrefixes }
+    }
+
+    /// Aus den gemerkten Präfixen wieder lesbare Namen machen.
+    private var mutedNames: String {
+        let names = muted.compactMap { prefix in
+            MeetingDetector.known.first { $0.prefix == prefix }?.name
+        }
+        return names.isEmpty ? muted.joined(separator: ", ") : names.joined(separator: ", ")
     }
 
     private var recordingsPanel: some View {

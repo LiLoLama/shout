@@ -99,10 +99,20 @@ if [ -x "$GENAPPCAST" ]; then
     echo "▶ Erzeuge signierten Appcast …"
     mkdir -p dist
     cp -f "$DMG" dist/
+    # `--maximum-versions 0`: ALLE Einträge behalten. Mit der Voreinstellung (3)
+    # wirft das Werkzeug ältere Versionen aus dem Appcast und schiebt ihre DMGs
+    # nach dist/old_updates — beim Release 1.12.0 waren so aus 21 Einträgen
+    # plötzlich 3 geworden.
     "$GENAPPCAST" dist \
+        --maximum-versions 0 \
         --download-url-prefix "https://github.com/LiLoLama/shout/releases/download/v$VERSION/" \
         --link "https://github.com/LiLoLama/shout"
     cp -f dist/appcast.xml appcast.xml
+    # ACHTUNG: `--download-url-prefix` gilt für ALLE Einträge. Steht ein älteres
+    # DMG noch in dist/, bekommt es die URL DIESES Releases angehängt und zeigt
+    # damit ins Leere. Nach dem Lauf prüfen:
+    #   grep -o 'download/v[0-9.]*/shout-[0-9.]*\.dmg' appcast.xml | head
+    # Jede Zeile muss dieselbe Version zweimal nennen.
     echo "   appcast.xml aktualisiert."
 else
     echo "⚠︎  .sparkle-tools/bin/generate_appcast fehlt — Appcast nicht erzeugt."

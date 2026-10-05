@@ -46,6 +46,13 @@ final class LocalizationNotesTests: XCTestCase {
         // Scratchpad-Tasten
         "Mit ⌃ oder ⌥ kombinieren",
         "Schon belegt",
+        "Von einer anderen App belegt",
+        // Scratchpad: Hinweise beim Zustellen eines Diktats („Scratchpad“ selbst
+        // heißt auch englisch so und kann deshalb nicht in diese Liste)
+        "Die Notiz nimmt gerade nichts an. Der Text liegt in der Zwischenablage.",
+        "Im Eingang notiert",
+        "Der Eingang ist gerade nicht erreichbar. Der Text liegt in der Zwischenablage.",
+        "Öffnen",
         // schon vorhanden, hier mitgeprüft, weil die Seite sie benutzt
         "Löschen",
         "Rückgängig",

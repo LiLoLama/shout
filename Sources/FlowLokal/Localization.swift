@@ -958,5 +958,13 @@ final class Loc: ObservableObject {
         // Scratchpad-Tasten
         "Mit ⌃ oder ⌥ kombinieren": "Combine with ⌃ or ⌥",
         "Schon belegt": "Already in use",
+        "Von einer anderen App belegt": "Taken by another app",
+        // Scratchpad: Menüeintrag und Hinweise beim Zustellen eines Diktats
+        "Scratchpad": "Scratchpad",
+        "Die Notiz nimmt gerade nichts an. Der Text liegt in der Zwischenablage.":
+            "The note can’t take text right now. It’s on the clipboard.",
+        "Im Eingang notiert": "Added to Inbox",
+        "Der Eingang ist gerade nicht erreichbar. Der Text liegt in der Zwischenablage.":
+            "The inbox can’t be reached right now. The text is on the clipboard.",
     ]
 }

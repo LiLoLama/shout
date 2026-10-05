@@ -44,15 +44,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let recIndicator = RecordingIndicator()
     private let sounds = SoundCues()
 
-    /// Notizen. Erst beim ersten Öffnen des Dashboards angelegt; der Ordner in
-    /// „Dokumente“ entsteht sogar erst mit der ersten gesicherten Notiz.
+    // MARK: - Notizen und Scratchpad
+    //
+    // Alles entsteht erst beim ersten Zugriff. Der Ordner in „Dokumente“ entsteht
+    // sogar erst mit der ersten gesicherten Notiz.
+
+    private var notesStoreStorage: NoteStore?
+    private var noteStore: NoteStore {
+        if let store = notesStoreStorage { return store }
+        let store = NoteStore(folder: NotesFolder.current())
+        notesStoreStorage = store
+        return store
+    }
+
+    /// Eine Sitzung pro Notiz — Seite und Panel teilen sie.
+    private var noteRegistryStorage: NoteSessionRegistry?
+    private var noteRegistry: NoteSessionRegistry {
+        if let registry = noteRegistryStorage { return registry }
+        let registry = NoteSessionRegistry(store: noteStore)
+        noteRegistryStorage = registry
+        return registry
+    }
+
     private var notesPageStorage: NotesPageModel?
     private var notesPage: NotesPageModel {
         if let page = notesPageStorage { return page }
-        let page = NotesPageModel(store: NoteStore(folder: NotesFolder.current()))
+        let page = NotesPageModel(store: noteStore, registry: noteRegistry)
+        page.onFolderChanged = { [weak self] in self?.scratchpadStorage?.resetTabs() }
         notesPageStorage = page
         return page
     }
+
+    private var scratchpadStorage: ScratchpadModel?
+    private var scratchpad: ScratchpadModel {
+        if let model = scratchpadStorage { return model }
+        let model = ScratchpadModel(store: noteStore, registry: noteRegistry)
+        scratchpadStorage = model
+        return model
+    }
+
+    private var scratchpadPanelStorage: ScratchpadPanelController?
+    private var scratchpadPanel: ScratchpadPanelController {
+        if let controller = scratchpadPanelStorage { return controller }
+        let controller = ScratchpadPanelController(model: scratchpad, settings: scratchpadSettings, mic: scratchpadMic,
+                                                   onMic: { [weak self] in self?.toggleScratchpadMic() })
+        scratchpadPanelStorage = controller
+        return controller
+    }
+
+    let scratchpadSettings = ScratchpadSettings()
+    private let scratchpadMic = ScratchpadMicState()
+    private let scratchpadKey = GlobalHotkey()
+    private let inboxKey = GlobalHotkey()
+    private var scratchpadPress = HotkeyPressClassifier()
+    private var scratchpadHoldTimer: Timer?
+    private var scratchpadMenuItem: NSMenuItem?
+    /// Wohin das laufende Diktat geht — festgelegt beim Start der Aufnahme.
+    private var dictationTarget: DictationTarget = .frontApp(bundleID: nil)
+
+    /// Reine Modifier-Diktiertaste (Vorgabe: rechte ⌥): seit wann sie gedrückt ist
+    /// (`nil` = nicht gedrückt), ob genau dieser Druck eine Aufnahme gestartet hat
+    /// und ob eine Scratchpad- oder Eingangs-Taste den Druck für sich beansprucht hat.
+    /// Siehe `claimDictationModifierPress()`.
+    private var dictationModifierDownAt: TimeInterval?
+    private var recordingStartedByModifierPress = false
+    private var dictationModifierClaimed = false
 
     /// Mitschnitt einer Besprechung über das Mikrofon. Gehört dem Delegate und
     /// nicht der Ansicht, damit eine laufende Aufnahme das Schließen des
@@ -183,6 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         setupStatusItem()
         requestPermissions()
         installHotkeyMonitors()
+        setupScratchpad()
         loadModel()
         loadFormatter()
 
@@ -546,6 +603,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         pasteLastItem.target = self
         menu.addItem(pasteLastItem)
 
+        let padItem = NSMenuItem(title: Loc.t("Scratchpad"), action: #selector(toggleScratchpadFromMenu), keyEquivalent: "")
+        padItem.target = self
+        menu.addItem(padItem)
+        scratchpadMenuItem = padItem
+        updateScratchpadMenuItem()
+
         let openItem = NSMenuItem(title: Loc.t("shout. öffnen …"), action: #selector(openMainWindow), keyEquivalent: ",")
         openItem.target = self
         menu.addItem(openItem)
@@ -892,6 +955,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func windowWillClose(_ notification: Notification) {
         // Falls die Hotkey-Aufnahme noch lief, abbrechen.
         if isCapturingHotkey { endHotkeyCapture() }
+        // Ebenso eine Scratchpad-Taste — sonst blieben beide Tasten abgemeldet.
+        if scratchpadSettings.capturing != nil { endScratchpadCapture() }
 
         let closing = notification.object as? NSWindow
         if closing === correctionWindow { correctionWindow = nil }   // Retention lösen
@@ -915,17 +980,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Läuft noch ein Datei-Auftrag, wird nachgefragt — sonst ist die Arbeit von
     /// vielleicht einer halben Stunde stillschweigend weg.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // Notizen zuerst: Ungesicherter Text (höchstens eine Sekunde alt) wird jetzt
-        // gesichert. Scheitert das (Platte voll, fremde Änderung nicht lesbar), geht er
-        // als Rettungskopie in den App-Support (die Seite zeigt sie danach an). Scheitert
-        // auch das, fragt die App nach, statt den Text still zu verlieren. Wird das
-        // Beenden abgebrochen und erneut versucht, entsteht für denselben Text keine
-        // zweite Kopie.
-        if let notes = notesPageStorage {
-            notes.flush()
-            if notes.session?.hasUnsavedText == true,
-               notes.writeRescueCopyIfNeeded(in: notes.rescueDirectory) == nil,
-               notes.session?.hasUnsavedText == true {
+        // Notizen zuerst: Ungesicherter Text aller offenen Notizen (Seite und Panel,
+        // höchstens eine Sekunde alt) wird jetzt gesichert. Scheitert das (Platte voll,
+        // fremde Änderung nicht lesbar), geht er als Rettungskopie in den App-Support
+        // (die Seite zeigt sie danach an). Scheitert auch das, fragt die App nach, statt
+        // den Text still zu verlieren. Wird das Beenden abgebrochen und erneut versucht,
+        // entsteht für denselben Text keine zweite Kopie.
+        if let registry = noteRegistryStorage {
+            registry.flushAll()
+            let rettung = notesPageStorage?.rescueDirectory
+                ?? StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)
+            let ergebnis = registry.writeRescueCopies(in: rettung)
+            // Neue Kopien sofort im Hinweis der Seite — falls das Beenden abgebrochen wird.
+            if !ergebnis.written.isEmpty { notesPageStorage?.refreshRescuedFiles() }
+            if !ergebnis.failed.isEmpty {
                 let alert = NSAlert()
                 alert.messageText = Loc.t("Eine Notiz konnte nicht gesichert werden.")
                 alert.informativeText = Loc.t("Weder im Notizordner noch als Rettungskopie war Platz. Der Text geht beim Beenden verloren.")
@@ -935,7 +1003,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 NSApp.activate(ignoringOtherApps: true)
                 guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(notes.session?.note.body ?? "", forType: .string)
+                NSPasteboard.general.setString(ergebnis.failed.map(\.note.body).joined(separator: "\n\n---\n\n"),
+                                               forType: .string)
             }
         }
         // Ein laufender Mitschnitt zuerst: Die Datei liegt zwar auf der Platte, aber
@@ -966,7 +1035,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func applicationWillTerminate(_ notification: Notification) {
         // Zweite Absicherung: Die Rettung läuft schon in applicationShouldTerminate,
         // hier würde sie nur eine zweite Kopie schreiben.
-        notesPageStorage?.flush()
+        noteRegistryStorage?.flushAll()    // Seite und Panel, höchstens eine Sekunde alt
+        scratchpadKey.unregister()
+        inboxKey.unregister()
         fileQueue.cancelAll()
         meetingTicker?.invalidate()
         meetingTicker = nil
@@ -1230,6 +1301,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // im Sekundentakt und feste Shortcuts feuern mehrfach).
         guard !event.isARepeat else { return }
 
+        if let rolle = scratchpadSettings.capturing {
+            captureScratchpadKey(event, rolle: rolle)
+            return
+        }
+
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
         if isCapturingHotkey {
@@ -1269,6 +1345,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if mods == [.command, .option], keyCode == 8 { return true }    // ⌥⌘C
         if mods == [.command, .control], keyCode == 9 { return true }   // ⌃⌘V
         if mods == [.command], keyCode == 9 { return true }             // ⌘V (synthetisches Paste)
+        let echte = mods.intersection([.command, .option, .control, .shift])
+        for rolle in ScratchpadSettings.Role.allCases {
+            if let kombi = scratchpadSettings.combo(for: rolle), kombi.keyCode == keyCode, kombi.flags == echte {
+                return true
+            }
+        }
         return false
     }
 
@@ -1286,10 +1368,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             handleCaptureFlagsChanged(event)
             return
         }
-        if let pressed = settings.modifierPressed(in: event) {
-            handleTrigger(down: pressed)
+        guard let pressed = settings.modifierPressed(in: event) else { return }
+        if pressed {
+            // Während eine Scratchpad-Taste aufgenommen wird, gehört die ⌥ zur neuen
+            // Kombination und startet kein Diktat.
+            guard scratchpadSettings.capturing == nil else { return }
+            dictationModifierDownAt = ProcessInfo.processInfo.systemUptime
+            dictationModifierClaimed = false
+            let vorher = state
+            handleTrigger(down: true)
+            recordingStartedByModifierPress = vorher != .recording && state == .recording
+        } else {
+            let beansprucht = dictationModifierClaimed
+            dictationModifierDownAt = nil
+            dictationModifierClaimed = false
+            recordingStartedByModifierPress = false
+            // Gehörte der Druck zu einer Scratchpad- oder Eingangs-Taste, beendet das
+            // Loslassen nichts — sonst stoppte es deren Diktat vorzeitig.
+            if !beansprucht { handleTrigger(down: false) }
         }
     }
+
+    /// Ist die Diktiertaste eine reine Modifier-Taste, die auch in einer
+    /// Scratchpad-Kombination vorkommt (rechte ⌥ in ⌃⌥N), meldet `flagsChanged`
+    /// sie schon vor dem N — im Halten- und Umschalten-Modus läuft dann bereits
+    /// eine Aufnahme in die App davor, und das Halten der Scratchpad-Taste fände
+    /// `state != .idle` vor. Kommt die Carbon-Taste im selben Druck an, gehört der
+    /// Druck ihr: Eine eben erst (vor weniger als `claimWindow`) von genau diesem
+    /// Druck gestartete Aufnahme wird ohne Ton verworfen — gesprochen wurde in
+    /// diesem Bruchteil noch nichts —, ein wartender Doppeltipp zurückgesetzt, und
+    /// das Loslassen der ⌥ beendet danach nichts. Eine länger laufende Aufnahme
+    /// bleibt unberührt: Dann diktiert der Nutzer schon, und nichts wird verworfen.
+    private func claimDictationModifierPress() {
+        guard settings.isModifierOnly, let seit = dictationModifierDownAt, !dictationModifierClaimed else { return }
+        let jetzt = ProcessInfo.processInfo.systemUptime
+        guard jetzt - seit < Self.claimWindow else { return }
+        dictationModifierClaimed = true
+        if recordingStartedByModifierPress, state == .recording, dictationTarget.isFrontApp {
+            _ = recorder.stop()
+            state = .idle
+            recIndicator.finish()
+        }
+        recordingStartedByModifierPress = false
+        if armedTimer != nil {
+            disarmPill()
+            if state == .idle { recIndicator.finish() }
+        }
+        if settings.mode == .doubleTap { doubleTap = DoubleTapDetector() }
+    }
+
+    /// Wie lange nach dem Druck der Modifier-Diktiertaste eine Scratchpad-Taste
+    /// ihn noch für sich beanspruchen darf.
+    private static let claimWindow: TimeInterval = 1.0
 
     /// Setzt Start/Stopp je nach Modus.
     private func handleTrigger(down: Bool) {
@@ -1371,23 +1501,180 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    // MARK: - Scratchpad-Tasten
+
+    private func setupScratchpad() {
+        scratchpadKey.onPress = { [weak self] in self?.scratchpadKeyDown() }
+        scratchpadKey.onRelease = { [weak self] in self?.scratchpadKeyUp() }
+        inboxKey.onPress = { [weak self] in self?.inboxKeyDown() }
+        inboxKey.onRelease = { [weak self] in self?.inboxKeyUp() }
+        scratchpadSettings.onChange = { [weak self] in self?.applyScratchpadHotkeys() }
+        applyScratchpadHotkeys()
+    }
+
+    /// Meldet beide Tasten neu an. Während eine aufgenommen wird, bleiben sie
+    /// abgemeldet — sonst finge Carbon die alte Kombination ab.
+    private func applyScratchpadHotkeys() {
+        scratchpadKey.unregister()
+        inboxKey.unregister()
+        var probleme: [ScratchpadSettings.Role: String] = [:]
+        if scratchpadSettings.isEnabled, scratchpadSettings.capturing == nil {
+            for (rolle, taste) in [(ScratchpadSettings.Role.scratchpad, scratchpadKey), (.inbox, inboxKey)] {
+                guard let kombi = scratchpadSettings.combo(for: rolle) else { continue }
+                do {
+                    try taste.register(kombi)
+                } catch {
+                    probleme[rolle] = Loc.t("Von einer anderen App belegt")
+                }
+            }
+        }
+        if !scratchpadSettings.isEnabled { scratchpadPanelStorage?.hide() }
+        scratchpadSettings.registrationProblems = probleme
+        updateScratchpadMenuItem()
+    }
+
+    private func scratchpadKeyDown() {
+        claimDictationModifierPress()
+        scratchpadPress.press(at: ProcessInfo.processInfo.systemUptime)
+        scratchpadHoldTimer?.invalidate()
+        scratchpadHoldTimer = Timer.scheduledTimer(withTimeInterval: HotkeyPressClassifier.holdThreshold,
+                                                   repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.scratchpadPress.tick(at: ProcessInfo.processInfo.systemUptime) == .holdBegan {
+                    self.beginScratchpadDictation()
+                }
+            }
+        }
+    }
+
+    private func scratchpadKeyUp() {
+        scratchpadHoldTimer?.invalidate()
+        scratchpadHoldTimer = nil
+        switch scratchpadPress.release(at: ProcessInfo.processInfo.systemUptime) {
+        case .tap:
+            scratchpadPanel.toggle()
+        case .holdEnded:
+            if state == .recording, case .scratchpad = dictationTarget { stopAndProcess() }
+        case .holdBegan, nil:
+            break
+        }
+    }
+
+    /// Halten der Scratchpad-Taste: Panel auf, Diktat in den vorderen Tab — oder
+    /// in einen neuen, wenn der vordere schon Text hat.
+    private func beginScratchpadDictation() {
+        guard state == .idle else { return }
+        scratchpadPanel.show(focus: false)
+        guard let tab = scratchpad.tabForDictation(newIfActiveHasText: true) else { return }
+        // Gehalten: Das Loslassen stoppt, nicht eine Pause (wie im Halten-Modus).
+        startRecording(target: .scratchpad(noteID: tab.id), held: true)
+    }
+
+    /// Mikrofon-Knopf im Panel: in den vorderen Tab diktieren bzw. das Diktat beenden.
+    private func toggleScratchpadMic() {
+        if state == .recording, case .scratchpad = dictationTarget {
+            stopAndProcess()
+            return
+        }
+        guard state == .idle, let tab = scratchpad.tabForDictation(newIfActiveHasText: false) else { return }
+        startRecording(target: .scratchpad(noteID: tab.id))
+    }
+
+    /// Eingangs-Taste: folgt dem Modus der Diktiertaste. Doppeltipp gibt es für
+    /// Carbon-Tasten nicht; dort gilt wie bei „Umschalten“: Tippen startet, erneutes Tippen stoppt.
+    private func inboxKeyDown() {
+        claimDictationModifierPress()
+        switch settings.mode {
+        case .hold:
+            if state == .idle { startRecording(target: .inbox) }
+        case .toggle, .doubleTap:
+            if state == .idle {
+                startRecording(target: .inbox)
+            } else if state == .recording, dictationTarget == .inbox {
+                stopAndProcess()
+            }
+        }
+    }
+
+    private func inboxKeyUp() {
+        guard settings.mode == .hold, state == .recording, dictationTarget == .inbox else { return }
+        stopAndProcess()
+    }
+
+    // MARK: - Scratchpad-Tasten aufnehmen (aus den Einstellungen)
+
+    func beginScratchpadCapture(_ rolle: ScratchpadSettings.Role) {
+        scratchpadSettings.capturing = rolle
+        scratchpadSettings.captureHint = nil
+        applyScratchpadHotkeys()
+    }
+
+    private func endScratchpadCapture() {
+        scratchpadSettings.capturing = nil
+        scratchpadSettings.captureHint = nil
+        applyScratchpadHotkeys()
+    }
+
+    private func captureScratchpadKey(_ event: NSEvent, rolle: ScratchpadSettings.Role) {
+        let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if event.keyCode == 53, mods.isEmpty {    // Esc bricht ab
+            endScratchpadCapture()
+            return
+        }
+        let kombi = HotkeyCombo(keyCode: event.keyCode, flags: mods)
+        let diktat = (keyCode: settings.keyCode, modifiers: settings.modifiers, isModifierOnly: settings.isModifierOnly)
+        if let grund = scratchpadSettings.rejection(for: kombi, role: rolle, dictationKey: diktat) {
+            scratchpadSettings.captureHint = grund
+            return
+        }
+        scratchpadSettings.capturing = nil
+        scratchpadSettings.captureHint = nil
+        scratchpadSettings.setCombo(kombi, for: rolle)     // meldet über onChange neu an
+    }
+
+    // MARK: - Menüeintrag
+
+    @objc private func toggleScratchpadFromMenu() { scratchpadPanel.toggle() }
+
+    private func updateScratchpadMenuItem() {
+        guard let eintrag = scratchpadMenuItem else { return }
+        eintrag.isHidden = !scratchpadSettings.isEnabled
+        let name = scratchpadSettings.combo(for: .scratchpad).map { RecordingSettings.keyName(forKeyCode: $0.keyCode) } ?? ""
+        if let kombi = scratchpadSettings.combo(for: .scratchpad), name.count == 1 {
+            eintrag.keyEquivalent = name.lowercased()
+            eintrag.keyEquivalentModifierMask = kombi.flags
+        } else {
+            eintrag.keyEquivalent = ""
+        }
+    }
+
     // MARK: - Aufnahme-Steuerung
 
-    private func startRecording() {
+    /// `held`: Die auslösende Taste wird gehalten (Scratchpad-Taste halten) — dann
+    /// stoppt ihr Loslassen, nie der Auto-Stopp, unabhängig vom Modus der Diktiertaste.
+    private func startRecording(target explizit: DictationTarget? = nil, held: Bool = false) {
         disarmPill()
-        // Ziel-App merken, solange sie noch im Vordergrund ist.
-        targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        // Ziel-App merken, solange sie noch im Vordergrund ist. Das Panel ist
+        // nicht aktivierend — hat es den Fokus, ist die App davor trotzdem vorne.
+        let vorne = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        targetBundleID = vorne
+        dictationTarget = explizit ?? DictationTarget.forDictationKey(
+            panelIsKey: scratchpadPanelStorage?.isKey == true,
+            activeNote: scratchpadStorage?.active?.id,
+            frontBundleID: vorne)
         // Aktuelles Mikrofon aus den Einstellungen (Menü oder Dashboard) übernehmen.
         let micUID = UserDefaults.standard.string(forKey: micUIDKey)
         recorder.preferredDeviceUID = (micUID?.isEmpty == false) ? micUID : nil
         // Auto-Stopp nur sinnvoll, wenn die Taste nicht gehalten wird — im
         // Halten-Modus stoppt ja das Loslassen.
-        recorder.autoStopEnabled = (settings.mode != .hold && settings.autoStop)
+        recorder.autoStopEnabled = (settings.mode != .hold && !held && settings.autoStop)
         recorder.silenceSeconds = settings.silenceSeconds
         do {
             try recorder.start()
             state = .recording
             recIndicator.show()
+            if case .scratchpad = dictationTarget { scratchpadMic.isRecording = true }
             sounds.play(.start)
         } catch {
             sounds.play(.error)
@@ -1398,19 +1685,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Bricht eine laufende Aufnahme ab: Samples verwerfen, nichts transkribieren.
     private func cancelRecording() {
         _ = recorder.stop()      // Aufnahme beenden, Samples verwerfen
+        scratchpadMic.isRecording = false
         state = .idle
         recIndicator.finish()    // zurück zur Idle-Pille bzw. ausblenden
         sounds.play(.error)      // dezenter „verworfen"-Ton
     }
 
     private func stopAndProcess() {
+        scratchpadMic.isRecording = false
         let samples = recorder.stop()
         // Pille bleibt sichtbar und wechselt in die „Verarbeiten"-Animation,
         // bis der fertige Text eingefügt ist.
         recIndicator.showProcessing()
         sounds.play(.stop)
         state = .working
-        let bundleID = targetBundleID
+        let ziel = dictationTarget
+        // Notizen bekommen den neutralen Ton der Aufbereitung.
+        let bundleID = ziel.formatterBundleID
         let useFormatting = formattingEnabled
         let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled")
 
@@ -1433,46 +1724,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
                 let final = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !final.isEmpty else { return }
-                // Ohne Bedienungshilfen-Freigabe kommt das synthetische ⌘V
-                // nirgends an — bis hierher war das Diktat danach spurlos weg.
-                // Stattdessen: in die Zwischenablage legen und einmal pro Start
-                // sagen, woran es liegt.
-                guard AXIsProcessTrusted() else {
-                    injector.copyConcealed(final)
-                    lastInsertedText = final
-                    history.add(final, raw: raw)
-                    sounds.play(.error)
-                    warnAboutMissingAccessibility()
-                    return
-                }
-                injector.paste(final, keepInClipboard: keepInClipboard)
-                sounds.play(.done)
-                lastInsertedText = final
-                // Rohtext mitgeben: Im Verlauf lässt sich so nachsehen, was die
-                // Spracherkennung WIRKLICH geliefert hat — unverzichtbar, um
-                // fehlenden Inhalt der richtigen Stufe zuzuordnen (Whisper vs.
-                // Aufbereitung).
-                history.add(final, raw: raw)
-                let words = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
-                stats.record(words: words, seconds: Double(samples.count) / 16_000.0)
-
-                // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
-                // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.
-                // Abgeschaltet heißt abgeschaltet: Dann entsteht auch kein
-                // AXObserver auf dem fremden Textfeld.
-                if UserDefaults.standard.object(forKey: "autoLearnCorrections") as? Bool ?? true {
-                    let inserted = final
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 400_000_000)
-                        self.correctionWatcher.begin(inserted: inserted)
-                    }
-                }
+                deliver(final, raw: raw, to: ziel, seconds: Double(samples.count) / 16_000.0)
             } catch {
                 sounds.play(.error)
                 NSLog("Verarbeitung fehlgeschlagen: \(error)")
                 rescueRecording(samples, after: error)
             }
         }
+    }
+
+    /// Bringt ein fertiges Diktat an sein Ziel. Verlauf und Statistik zählen jedes.
+    ///
+    /// Kein Text geht still verloren: Nimmt die Notiz oder der Eingang ihn nicht an,
+    /// liegt er in der Zwischenablage, ein Hinweis sagt das, und der Verlauf hat ihn auch.
+    private func deliver(_ final: String, raw: String, to ziel: DictationTarget, seconds: Double) {
+        switch ziel {
+        case .frontApp:
+            // Ohne Bedienungshilfen-Freigabe kommt das synthetische ⌘V
+            // nirgends an — bis hierher war das Diktat danach spurlos weg.
+            // Stattdessen: in die Zwischenablage legen und einmal pro Start
+            // sagen, woran es liegt.
+            guard AXIsProcessTrusted() else {
+                injector.copyConcealed(final)
+                lastInsertedText = final
+                history.add(final, raw: raw)
+                sounds.play(.error)
+                warnAboutMissingAccessibility()
+                return
+            }
+            injector.paste(final, keepInClipboard: keepInClipboard)
+            sounds.play(.done)
+            lastInsertedText = final
+            // Rohtext mitgeben: Im Verlauf lässt sich so nachsehen, was die
+            // Spracherkennung WIRKLICH geliefert hat — unverzichtbar, um
+            // fehlenden Inhalt der richtigen Stufe zuzuordnen (Whisper vs.
+            // Aufbereitung).
+            history.add(final, raw: raw)
+            let words = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
+            stats.record(words: words, seconds: seconds)
+
+            // Kurz warten, bis das Einfügen im Zielfeld angekommen ist, dann das
+            // Feld beobachten, um manuelle Korrekturen automatisch zu lernen.
+            // Abgeschaltet heißt abgeschaltet: Dann entsteht auch kein
+            // AXObserver auf dem fremden Textfeld.
+            if UserDefaults.standard.object(forKey: "autoLearnCorrections") as? Bool ?? true {
+                let inserted = final
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    self.correctionWatcher.begin(inserted: inserted)
+                }
+            }
+        case .scratchpad(let id):
+            if scratchpad.insertDictation(final, into: id) {
+                sounds.play(.done)
+            } else {
+                injector.copyConcealed(final)
+                sounds.play(.error)
+                toast.showInfo(Loc.t("Die Notiz nimmt gerade nichts an. Der Text liegt in der Zwischenablage."))
+            }
+            recordDelivered(final, raw: raw, seconds: seconds)
+        case .inbox:
+            if scratchpad.appendToInbox(final) {
+                sounds.play(.done)
+                toast.showInfo(Loc.t("Im Eingang notiert"), actionTitle: Loc.t("Öffnen")) { [weak self] in
+                    guard let self else { return }
+                    self.scratchpadPanel.show(focus: true)
+                    self.scratchpad.openInbox()
+                }
+            } else {
+                injector.copyConcealed(final)
+                sounds.play(.error)
+                toast.showInfo(Loc.t("Der Eingang ist gerade nicht erreichbar. Der Text liegt in der Zwischenablage."))
+            }
+            recordDelivered(final, raw: raw, seconds: seconds)
+        }
+    }
+
+    private func recordDelivered(_ final: String, raw: String, seconds: Double) {
+        lastInsertedText = final
+        history.add(final, raw: raw)
+        let woerter = final.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
+        stats.record(words: woerter, seconds: seconds)
     }
 
     /// Rettet eine Aufnahme, deren Erkennung gescheitert ist, in die

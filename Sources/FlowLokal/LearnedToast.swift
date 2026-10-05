@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 /// Kleines, kurz eingeblendetes Panel oben rechts: „Gelernt: falsch → richtig"
-/// mit einem Rückgängig-Button. Verschwindet nach ein paar Sekunden von selbst.
+/// mit Rückgängig, oder ein schlichter Hinweis mit einer Aktion. Verschwindet
+/// nach ein paar Sekunden von selbst.
 @MainActor
 final class LearnedToast {
 
@@ -11,15 +12,32 @@ final class LearnedToast {
 
     func show(wrong: String, right: String, onUndo: @escaping () -> Void) {
         dismiss()
-
-        let view = LearnedToastView(
+        present(NSHostingView(rootView: LearnedToastView(
             wrong: wrong,
             right: right,
             onUndo: { [weak self] in onUndo(); self?.dismiss() }
-        )
-        let hosting = NSHostingView(rootView: view)
-        let size = hosting.fittingSize
+        )))
+    }
 
+    /// Ein Hinweis (z. B. „Im Eingang notiert“), optional mit einem Knopf.
+    func showInfo(_ message: String, actionTitle: String? = nil, action: (() -> Void)? = nil) {
+        dismiss()
+        present(NSHostingView(rootView: InfoToastView(
+            message: message,
+            actionTitle: actionTitle,
+            onAction: { [weak self] in action?(); self?.dismiss() }
+        )))
+    }
+
+    func dismiss() {
+        dismissTimer?.invalidate()
+        dismissTimer = nil
+        panel?.orderOut(nil)
+        panel = nil
+    }
+
+    private func present<V: View>(_ hosting: NSHostingView<V>) {
+        let size = hosting.fittingSize
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -44,13 +62,6 @@ final class LearnedToast {
             Task { @MainActor in self?.dismiss() }
         }
     }
-
-    func dismiss() {
-        dismissTimer?.invalidate()
-        dismissTimer = nil
-        panel?.orderOut(nil)
-        panel = nil
-    }
 }
 
 private struct LearnedToastView: View {
@@ -73,6 +84,32 @@ private struct LearnedToastView: View {
             Button(Loc.t("Rückgängig"), action: onUndo)
                 .buttonStyle(.borderless)
                 .foregroundStyle(.blue)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 360)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct InfoToastView: View {
+    let message: String
+    let actionTitle: String?
+    let onAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "note.text")
+                .foregroundStyle(Color.shoutLive)
+                .font(.title3)
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            if let actionTitle {
+                Button(actionTitle, action: onAction)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.blue)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

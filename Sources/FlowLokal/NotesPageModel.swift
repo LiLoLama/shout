@@ -89,7 +89,10 @@ final class NotesPageModel: ObservableObject {
     }
 
     func select(_ id: UUID) {
-        guard session?.id != id, let note = store.note(id: id), leaveSession() else { return }
+        guard session?.id != id, store.note(id: id) != nil, leaveSession() else { return }
+        // Erst nach dem Sichern holen: Das kann neu eingelesen haben (Konflikt),
+        // eine vorher geholte Fassung wäre dann veraltet.
+        guard let note = store.note(id: id) else { return }
         session = NoteEditorSession(note: note, store: store)
     }
 

@@ -124,6 +124,20 @@ final class NotesPageModelTests: XCTestCase {
         return m
     }
 
+    /// Das Sichern beim Wechsel kann neu einlesen (Konflikt). Die neue Sitzung
+    /// bekommt dann die frische Fassung der Zielnotiz, keine vorher geholte.
+    func testAuswahlwechselHoltZielErstNachDemSichern() throws {
+        let m = try dreiNotizen()
+        m.select(id(m, "A"))
+        m.session?.edit("meins")
+        try u.schreibe("A.md", "fremd", zeit: Date())
+        try u.schreibe("B.md", "zwei, anderswo geändert", zeit: Date())
+
+        m.select(id(m, "B"))
+        XCTAssertEqual(m.session?.note.body, "zwei, anderswo geändert")
+        XCTAssertEqual(u.text("A (Konflikt).md"), "meins")
+    }
+
     func testAuswahlwechselBleibtStehen() throws {
         let m = try sitzungMitScheiterndemSichern()
         let a = id(m, "A")

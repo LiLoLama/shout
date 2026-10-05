@@ -383,6 +383,9 @@ targets:
       - path: Sources/FlowLokal/NoteEditorSession.swift
       - path: Sources/FlowLokal/NotesPageModel.swift
       - path: Sources/FlowLokal/MarkdownHighlighter.swift
+      # Scratchpad, Teil 2
+      - path: Sources/FlowLokal/DictationInsertion.swift
+      - path: Sources/FlowLokal/NoteInbox.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

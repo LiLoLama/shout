@@ -72,6 +72,44 @@ final class MarkdownHighlighterIncrementalTests: XCTestCase {
         XCTAssertFalse(s.string.contains("```"))
     }
 
+    /// Lädt `anfang` über den Delegate, ersetzt `laenge` Zeichen ab `ort` und
+    /// vergleicht das Ergebnis mit dem ganz gestalteten Text.
+    private func pruefeBearbeitung(_ anfang: String, ort: Int, laenge: Int = 0, ersatz: String,
+                                   file: StaticString = #filePath, line: UInt = #line) {
+        let s = NSTextStorage()
+        s.delegate = MarkdownHighlighter()
+        s.replaceCharacters(in: NSRange(location: 0, length: 0), with: anfang)
+        s.replaceCharacters(in: NSRange(location: ort, length: laenge), with: ersatz)
+        pruefe(s, "Bearbeitung von \(anfang.debugDescription)", file: file, line: line)
+    }
+
+    func testZeilenumbruchInUeberschrift() {
+        pruefeBearbeitung("# abcd", ort: 4, ersatz: "\n")
+    }
+
+    func testZeilenumbruchInFettemListenpunkt() {
+        pruefeBearbeitung("- **ab cd**", ort: 7, ersatz: "\n")
+    }
+
+    func testZeilenumbruchInZitat() {
+        pruefeBearbeitung("> abcd", ort: 4, ersatz: "\n")
+    }
+
+    func testMehrzeiligesEinfuegenMitNachlaufendemZeilenumbruch() {
+        pruefeBearbeitung("Text **fett** Ende", ort: 5, ersatz: "x\ny\n")
+    }
+
+    func testZeilenumbruchLoeschenVerbindetAbsaetze() {
+        pruefeBearbeitung("# Titel\n**fett** Text\nEnde", ort: 7, laenge: 1, ersatz: "")
+        pruefeBearbeitung("*a\nb*", ort: 2, laenge: 1, ersatz: "")
+    }
+
+    func testAlleinstehendesCRImText() {
+        pruefeBearbeitung("*a\rb*", ort: 1, laenge: 0, ersatz: "a")
+        pruefeBearbeitung("*a\r", ort: 3, laenge: 0, ersatz: "b*")
+        pruefeBearbeitung("# Titel\r\n**fett** a\r\nEnde", ort: 3, laenge: 0, ersatz: "x")
+    }
+
     func testBereichGestaltetNurDiesenAbsatz() {
         let s = NSTextStorage(string: "**eins**\n**zwei**")
         let zweite = (s.string as NSString).range(of: "**zwei**")

@@ -50,10 +50,24 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             Self.apply(to: textStorage)
             return
         }
+        // Ein einzelnes \r trennt für `paragraphRange` Absätze, Kursiv (`[^\n]`)
+        // greift aber über es hinweg. Nur ein \r ohne folgendes \n löst den ganzen
+        // Text aus, damit CRLF-Text (ein Zeilenumbruch aus \r\n) absatzweise bleibt.
+        if ns.length > 0, alleinstehendesCR.firstMatch(in: textStorage.string, range: NSRange(location: 0, length: ns.length)) != nil {
+            Self.apply(to: textStorage)
+            return
+        }
         let start = min(editedRange.location, ns.length)
         let ende = min(NSMaxRange(editedRange), ns.length)
-        Self.apply(to: textStorage, in: ns.paragraphRange(for: NSRange(location: start, length: ende - start)))
+        // Der Absatz am Ende der Änderung gehört dazu: Endet sie auf einem
+        // Zeilenumbruch (Enter mitten in einer Zeile), liegt der Rest der Zeile
+        // sonst außerhalb von `paragraphRange(for: editedRange)`.
+        let vorn = ns.paragraphRange(for: NSRange(location: start, length: ende - start))
+        let hinten = ns.paragraphRange(for: NSRange(location: ende, length: 0))
+        Self.apply(to: textStorage, in: NSUnionRange(vorn, hinten))
     }
+
+    private let alleinstehendesCR = try! NSRegularExpression(pattern: "\\r(?!\\n)")
 
     // MARK: - Regeln
 

@@ -4167,3 +4167,5 @@ Nach dem nächsten Release (aus `/Applications`) prüft der Mensch:
 - [ ] Rechte ⌥ als Diktiertaste: ⌃⌥N bzw. ⌃⌥I mit der **rechten** ⌥ drücken (Fokus in einer App **und** im Panel, Modus Halten/Umschalten/Doppeltipp): es startet keine zusätzliche Aufnahme, das Mikrofon bleibt nicht offen.
 - [ ] Ins Panel klicken, dann in TextEdit klicken, Diktiertaste: der Text landet in TextEdit, nicht in der Notiz.
 - [ ] Tastenaufnahme in den Einstellungen starten, dann Einstellungen zuklappen bzw. Seite wechseln: ⌃⌥N und ⌃⌥I wirken danach wieder.
+- [ ] ⌘Q, während ein Diktat ins Panel oder in den Eingang noch verarbeitet wird: shout. wartet, der Text landet am Ziel, erst dann endet die App. Ein zweites ⌘Q während des Wartens bringt keinen Absturz und keine zweite Abfrage.
+- [ ] Update über Sparkle, während ein Diktat läuft: der Text geht nicht verloren.

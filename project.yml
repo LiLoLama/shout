@@ -376,6 +376,7 @@ targets:
       # Scratchpad / Notizen: nur Foundation, AppKit und CoreServices.
       - path: Sources/FlowLokal/Note.swift
       - path: Sources/FlowLokal/NoteFile.swift
+      - path: Sources/FlowLokal/NoteSearch.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

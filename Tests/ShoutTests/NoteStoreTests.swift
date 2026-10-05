@@ -294,6 +294,20 @@ final class NoteStoreTests: XCTestCase {
         XCTAssertEqual(u.text("A (Konflikt).md"), "aus dem Puffer")
     }
 
+    /// Ist die gepufferte Fassung schon im Ordner angekommen (Entfernen der
+    /// Pufferdatei war gescheitert), entsteht keine doppelte Konfliktkopie.
+    func testIdentischePufferDateiErzeugtKeineKonfliktkopie() throws {
+        let inhalt = "---\ncreated: 2026-10-05\n---\ngleicher Text"
+        try FileManager.default.createDirectory(at: u.puffer, withIntermediateDirectories: true)
+        try Data(inhalt.utf8).write(to: u.puffer.appendingPathComponent("A.md"))
+        try u.schreibe("A.md", inhalt)
+        let s = u.store()
+        XCTAssertEqual(u.dateien(), ["A.md"])
+        XCTAssertEqual(u.text("A.md"), "gleicher Text")
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: u.puffer.path)) ?? [], [])
+        XCTAssertEqual(s.notes.count, 1)
+    }
+
     /// Notizordner auf einem anderen Volume als der Puffer: neue Notiz.
     func testPufferWandertUeberLaufwerksgrenzeNeueNotiz() throws {
         let stick = try u.laufwerk()

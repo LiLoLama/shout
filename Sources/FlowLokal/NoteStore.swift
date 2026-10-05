@@ -284,7 +284,8 @@ final class NoteStore: ObservableObject {
     /// Der Puffer liegt oft auf einem anderen Volume als der Ordner (USB-Stick,
     /// Netzlaufwerk) — dort scheitern `moveItem`/`replaceItemAt` mit „Cross-device
     /// link". Deshalb wird gelesen und atomar neu geschrieben; die Pufferdatei
-    /// wird erst nach erfolgreichem Schreiben entfernt.
+    /// wird erst entfernt, wenn die Zieldatei und ihr Ordner auf der Platte
+    /// angekommen sind (`F_FULLFSYNC`). Scheitert das, bleibt der Puffer liegen.
     private func flushBuffer() {
         guard let namen = try? fileManager.contentsOfDirectory(atPath: bufferFolder.path) else { return }
         for name in namen where isNoteFile(name, in: bufferFolder) {
@@ -298,6 +299,15 @@ final class NoteStore: ObservableObject {
                 if fileManager.fileExists(atPath: ziel.path) {
                     let basis = bufferedBase[name]
                     if basis == nil || modificationDate(of: ziel) != basis {
+                        if (try? Data(contentsOf: ziel)) == daten {
+                            // Schon angekommen (z. B. scheiterte das Entfernen der
+                            // Pufferdatei beim letzten Mal): keine Kopie, nur aufräumen.
+                            try makeDurable(ziel)
+                            try fileManager.removeItem(at: quelle)
+                            bufferedIDs[name] = nil
+                            bufferedBase[name] = nil
+                            continue
+                        }
                         zielName = conflictFileName(for: name)
                         zurueck = false
                     }
@@ -310,6 +320,7 @@ final class NoteStore: ObservableObject {
                 try daten.write(to: zielURL, options: .atomic)
                 // mtime der Pufferdatei übernehmen: so passt `Note.modified` der Sitzung.
                 adoptModificationTime(of: quelle, onto: zielURL)
+                try makeDurable(zielURL)
                 if !zurueck {
                     NSLog("shout: Gepufferte Notiz \(name) kollidiert — gesichert als \(zielName)")
                 } else if let id = bufferedIDs[name] {
@@ -321,6 +332,23 @@ final class NoteStore: ObservableObject {
             } catch {
                 NSLog("shout: Gepufferte Notiz \(name) konnte nicht zurück: \(error)")
             }
+        }
+    }
+
+    /// Zwingt Datei und Ordner auf die Platte. `F_FULLFSYNC` leert auch den
+    /// Schreibcache des Laufwerks; wo es nicht geht (z. B. Netzlaufwerke), bleibt
+    /// `fsync`. Wirft, wenn beides scheitert — dann darf der Puffer nicht weg.
+    private func makeDurable(_ datei: URL) throws {
+        try sync(path: datei.path)
+        try sync(path: datei.deletingLastPathComponent().path)
+    }
+
+    private func sync(path: String) throws {
+        let fd = open(path, O_RDONLY)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(fd) }
+        if fcntl(fd, F_FULLFSYNC) == -1 && fsync(fd) == -1 {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 

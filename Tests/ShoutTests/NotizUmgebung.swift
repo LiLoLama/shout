@@ -25,7 +25,13 @@ final class NotizUmgebung {
 
     func aufraeumen() {
         if let eingehaengt {
-            _ = try? Self.hdiutil(["detach", "-force", eingehaengt.path])
+            do {
+                try Self.hdiutil(["detach", "-force", eingehaengt.path])
+            } catch {
+                // Nie in ein noch eingehängtes Volume hineinlöschen.
+                NSLog("shout-Test: Disk-Image bleibt eingehängt (\(error)) — \(wurzel.path) wird nicht gelöscht")
+                return
+            }
         }
         try? FileManager.default.removeItem(at: wurzel)
     }
@@ -48,15 +54,29 @@ final class NotizUmgebung {
         return punkt
     }
 
-    private static func hdiutil(_ argumente: [String]) throws {
+    private struct HdiutilFehler: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    /// Führt `hdiutil` aus; nach `timeout` Sekunden wird es beendet und geworfen.
+    private static func hdiutil(_ argumente: [String], timeout: TimeInterval = 30) throws {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         p.arguments = argumente
+        let fehler = Pipe()
         p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
+        p.standardError = fehler
+        let fertig = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in fertig.signal() }
         try p.run()
-        p.waitUntilExit()
-        if p.terminationStatus != 0 { throw CocoaError(.fileWriteUnknown) }
+        if fertig.wait(timeout: .now() + timeout) == .timedOut {
+            p.terminate()
+            throw HdiutilFehler(description: "hdiutil \(argumente.first ?? "") nach \(Int(timeout)) s abgebrochen")
+        }
+        if p.terminationStatus != 0 {
+            let text = String(data: fehler.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            throw HdiutilFehler(description: "hdiutil \(argumente.first ?? "") Status \(p.terminationStatus): \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
     }
 
     func store(ordner anderer: URL? = nil, puffer anderer2: URL? = nil,

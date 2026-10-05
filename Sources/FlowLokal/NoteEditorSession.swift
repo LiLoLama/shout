@@ -1,6 +1,14 @@
 import Foundation
 import Combine
 
+/// Ein Editor, in den die Sitzung Text einfügen kann — so landet ein Diktat am
+/// Cursor und lässt sich mit ⌘Z in einem Schritt zurücknehmen.
+@MainActor
+protocol NoteTextEditing: AnyObject {
+    /// `false`, wenn der Editor gerade nichts annehmen kann; dann fügt die Sitzung selbst ein.
+    func insertText(_ text: String, at point: NoteEditorSession.InsertionPoint) -> Bool
+}
+
 /// Eine geöffnete Notiz: nimmt Eingaben an, sichert eine Sekunde nach der
 /// letzten und entscheidet, was bei Änderungen von außen passiert. Die Seite
 /// „Notizen“ hat eine Sitzung, das Panel (Plan 2) eine pro Tab.
@@ -16,6 +24,12 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         case placeholder
     }
 
+    /// Wo eingefügter Text landet.
+    enum InsertionPoint: Equatable {
+        case cursor
+        case end
+    }
+
     let id: UUID
     @Published private(set) var note: Note
     @Published private(set) var status: Status
@@ -28,6 +42,15 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     /// lesbar …). Der Text bleibt ungesichert (`status == .dirty`); die nächste
     /// Eingabe oder `flush()` versucht es erneut. Die Oberfläche warnt, solange das steht.
     @Published private(set) var saveFailed = false
+    /// Steigt bei jeder Eingabe. Zeigen zwei Editoren dieselbe Notiz (Seite und
+    /// Panel), lädt der jeweils andere daran neu.
+    @Published private(set) var editRevision = 0
+    /// Der Editor, von dem die letzte Eingabe kam; `nil`, wenn ohne Editor eingefügt wurde.
+    private(set) weak var lastEditSource: AnyObject?
+    /// Der zuletzt benutzte Editor — dorthin geht ein Diktat.
+    private(set) weak var editor: NoteTextEditing?
+    /// Cursor bzw. Auswahl, zuletzt vom Editor gemeldet (UTF-16, wie `NSTextView`).
+    private(set) var lastSelection = NSRange(location: 0, length: 0)
 
     private let store: NoteStore
     private let saveDelay: TimeInterval
@@ -61,10 +84,12 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     /// Es gibt Text (oder ein Anheften), der nicht in der Datei steht.
     var hasUnsavedText: Bool { status == .dirty || unsavedWhileMissing }
 
-    /// Vom Editor bei jeder Eingabe.
-    func edit(_ text: String) {
+    /// Vom Editor bei jeder Eingabe; `source` ist der meldende Editor.
+    func edit(_ text: String, from source: AnyObject? = nil) {
         guard status != .placeholder, text != note.body else { return }
         note.body = text
+        lastEditSource = source
+        editRevision += 1
         // Fehlt die Datei, wird nicht ins Leere gesichert; „Wieder sichern“
         // nimmt dann den aktuellen Text.
         if status == .missing {
@@ -73,6 +98,39 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         }
         status = .dirty
         scheduleSave()
+    }
+
+    func attach(editor: NoteTextEditing) { self.editor = editor }
+
+    func detach(editor: NoteTextEditing) {
+        if self.editor === editor { self.editor = nil }
+    }
+
+    func selectionChanged(_ range: NSRange) { lastSelection = range }
+
+    /// Fügt Text ein — über den angehängten Editor (ein Rückgängig-Schritt) oder,
+    /// ohne Editor, direkt in den Text. `.cursor` setzt bei Bedarf ein Leerzeichen
+    /// davor (`DictationInsertion`), `.end` hängt wörtlich an. `false` nur bei
+    /// einem iCloud-Platzhalter oder leerem Text.
+    @discardableResult
+    func insert(_ text: String, at point: InsertionPoint) -> Bool {
+        guard status != .placeholder, !text.isEmpty else { return false }
+        if let editor, editor.insertText(text, at: point) { return true }
+        let ns = note.body as NSString
+        var ort = point == .end ? ns.length : min(max(lastSelection.location, 0), ns.length)
+        // Ein veralteter Cursor kann mitten in einem Zeichen (Emoji, Kombination)
+        // liegen; dort einzufügen risse es auseinander.
+        if ort < ns.length { ort = ns.rangeOfComposedCharacterSequence(at: ort).location }
+        let vorher: Character? = ort > 0
+            ? ns.substring(with: ns.rangeOfComposedCharacterSequence(at: ort - 1)).last
+            : nil
+        let einfuegen = point == .end ? text : DictationInsertion.text(text, after: vorher)
+        let neu = ns.replacingCharacters(in: NSRange(location: ort, length: 0), with: einfuegen)
+        if point == .cursor {
+            lastSelection = NSRange(location: ort + (einfuegen as NSString).length, length: 0)
+        }
+        edit(neu)
+        return true
     }
 
     /// Für Aufrufer von außen, wenn die Sitzung endet oder wechselt (Schließen,

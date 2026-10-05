@@ -149,6 +149,8 @@ struct NotesView: View {
             return .handled
         }
         .onKeyPress(characters: CharacterSet(charactersIn: "jkc/f")) { press in
+            // ⌘C, ⌘J, ⌘K … gehören dem Menü (⌘C legte sonst eine Notiz an); nur ⌘F sucht.
+            if press.modifiers.contains(.command), press.characters != "f" { return .ignored }
             switch press.characters {
             case "j": model.moveSelection(by: 1)
             case "k": model.moveSelection(by: -1)
@@ -263,6 +265,8 @@ struct NotesView: View {
             .padding(.bottom, 26)
             .task(id: geloescht) {
                 try? await Task.sleep(for: .seconds(8))
+                // Abgebrochen (Seite verlassen): Der Balken bleibt für die Rückkehr stehen.
+                guard !Task.isCancelled else { return }
                 if model.lastDeleted == geloescht { model.dismissUndo() }
             }
         }
@@ -345,8 +349,16 @@ private struct NoteEditorPane: View {
                    button: Loc.t("OK"), action: session.dismissNotice)
         }
         if session.status == .missing {
-            notice(Loc.t("Diese Notiz ist nicht mehr im Ordner."),
-                   button: Loc.t("Wieder sichern"), action: session.restoreMissing)
+            // Mit ungesichertem Text ist die Seite gesperrt — dann auch hier der
+            // Ausweg. Steht schon der Hinweis „Konnte nicht gesichert …“, hat der
+            // ihn bereits; die Knöpfe erscheinen nicht doppelt.
+            if session.hasUnsavedText, !session.saveFailed {
+                escapeNotice(Loc.t("Diese Notiz ist nicht mehr im Ordner."),
+                             retry: Loc.t("Wieder sichern"), action: session.restoreMissing)
+            } else {
+                notice(Loc.t("Diese Notiz ist nicht mehr im Ordner."),
+                       button: Loc.t("Wieder sichern"), action: session.restoreMissing)
+            }
         }
         if session.status == .placeholder {
             notice(Loc.t("Wird aus iCloud geladen …"), button: nil, action: {})
@@ -357,22 +369,34 @@ private struct NoteEditorPane: View {
     /// (kein Wechsel, kein Löschen, kein Ordnerwechsel); hier geht es weiter:
     /// noch einmal versuchen, den Text mitnehmen oder ihn bewusst verwerfen.
     private var saveFailedNotice: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.shoutLive).font(.system(size: 11))
-            Text(Loc.t("Konnte nicht gesichert werden. Wechseln, Löschen und Ordnerwechsel sind gesperrt, bis gesichert ist."))
-                .font(.system(size: 12)).foregroundStyle(Color(white: 0.85))
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
-            Button(Loc.t("Erneut sichern")) { session.flush() }
-                .buttonStyle(ConsoleButtonStyle())
-            Button(Loc.t("Text kopieren")) {
-                let ablage = NSPasteboard.general
-                ablage.clearContents()
-                ablage.setString(session.note.body, forType: .string)
+        escapeNotice(Loc.t("Konnte nicht gesichert werden. Wechseln, Löschen und Ordnerwechsel sind gesperrt, bis gesichert ist."),
+                     retry: Loc.t("Erneut sichern"), action: session.flush)
+    }
+
+    /// Hinweis mit Ausweg: erneut versuchen, den Text mitnehmen oder ihn nach
+    /// Rückfrage verwerfen. Die Knöpfe stehen in einer zweiten Zeile.
+    private func escapeNotice(_ text: String, retry: String, action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.shoutLive).font(.system(size: 11))
+                Text(text).font(.system(size: 12)).foregroundStyle(Color(white: 0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
             }
-            .buttonStyle(ConsoleButtonStyle())
-            Button(Loc.t("Verwerfen …")) { confirmDiscard = true }
+            HStack(spacing: 8) {
+                Button(retry, action: action)
+                    .buttonStyle(ConsoleButtonStyle())
+                Button(Loc.t("Text kopieren")) {
+                    let ablage = NSPasteboard.general
+                    ablage.clearContents()
+                    ablage.setString(session.note.body, forType: .string)
+                }
                 .buttonStyle(ConsoleButtonStyle())
+                Button(Loc.t("Verwerfen …")) { confirmDiscard = true }
+                    .buttonStyle(ConsoleButtonStyle())
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 21)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(Color.shoutLive.opacity(0.10))

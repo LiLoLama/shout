@@ -910,5 +910,44 @@ final class Loc: ObservableObject {
         "Wird durchsucht …": "Searching…",
         "Wo die Modelle liegen": "Where the models live",
         "Wählen": "Choose",
+
+        // MARK: - Notizen (Scratchpad)
+
+        "Notizen": "Notes",
+        "Neue Notiz": "New Note",
+        "Ordner": "Folder",
+        "Jede Notiz ist eine Markdown-Datei in diesem Ordner. Liegt er in iCloud Drive oder einem Obsidian-Vault, findest du die Notizen auch dort.":
+            "Every note is a Markdown file in this folder. If it lives in iCloud Drive or an Obsidian vault, your notes show up there too.",
+        "Im Finder zeigen": "Show in Finder",
+        "Wählen …": "Choose…",
+        "Der Ordner ist nicht erreichbar. Änderungen werden zwischengespeichert und landen dort, sobald er wieder da ist.":
+            "The folder can’t be reached. Changes are kept aside and move there as soon as it’s back.",
+        "Notizen durchsuchen": "Search notes",
+        "Noch keine Notizen": "No notes yet",
+        "Keine Treffer": "No matches",
+        "Wähle links eine Notiz oder lege eine neue an.": "Pick a note on the left or create a new one.",
+        "Diktiere oder tippe eine neue Notiz — sie landet als Datei in deinem Ordner.":
+            "Dictate or type a new note — it’s saved as a file in your folder.",
+        "Anheften": "Pin",
+        "Lösen": "Unpin",
+        "Umbenennen …": "Rename…",
+        "Notiz umbenennen": "Rename Note",
+        "Titel": "Title",
+        "„%@“ gelöscht": "“%@” deleted",
+        "Diese Notiz wurde auch anderswo geändert. Deine Fassung liegt als „%@“ daneben.":
+            "This note was also changed elsewhere. Your version is saved next to it as “%@”.",
+        "Diese Notiz ist nicht mehr im Ordner.": "This note is no longer in the folder.",
+        "Wieder sichern": "Save again",
+        "Wird aus iCloud geladen …": "Downloading from iCloud…",
+        "Unbenannt": "Untitled",
+        "(Konflikt)": "(Conflict)",
+        "Konnte nicht gesichert werden. Wechseln, Löschen und Ordnerwechsel sind gesperrt, bis gesichert ist.":
+            "Couldn’t save. Switching, deleting and changing the folder are blocked until it’s saved.",
+        "Erneut sichern": "Try again",
+        "Text kopieren": "Copy text",
+        "Verwerfen …": "Discard…",
+        "Ungesicherten Text verwerfen?": "Discard unsaved text?",
+        "Der Text dieser Notiz ist nirgends gesichert. Kopiere ihn vorher, wenn du ihn behalten willst.":
+            "This note’s text isn’t saved anywhere. Copy it first if you want to keep it.",
     ]
 }

@@ -120,5 +120,12 @@ final class NotesPageModel: ObservableObject {
         return true
     }
 
+    /// Ausweg, wenn das Sichern dauerhaft scheitert: schließt die Sitzung, ohne
+    /// zu sichern. Ihr ungesicherter Text ist danach weg — die Oberfläche fragt
+    /// vorher nach und bietet an, ihn zu kopieren.
+    func discardSession() {
+        session = nil
+    }
+
     func flush() { session?.flush() }
 }

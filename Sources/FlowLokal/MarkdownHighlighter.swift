@@ -29,9 +29,15 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         }
     }
 
+    /// Gibt `true` zurück, solange nicht neu gestaltet werden darf — im Editor,
+    /// während markierter Text entsteht (Option+U für Umlaute). Das Neugestalten
+    /// löschte sonst dessen Attribute. Das Übernehmen ist wieder eine
+    /// Zeichenänderung, danach wird von selbst neu gestaltet.
+    var shouldSkip: (() -> Bool)?
+
     func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
                      range editedRange: NSRange, changeInLength delta: Int) {
-        guard editedMask.contains(.editedCharacters) else { return }
+        guard editedMask.contains(.editedCharacters), shouldSkip?() != true else { return }
         Self.apply(to: textStorage)
     }
 

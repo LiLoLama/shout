@@ -185,6 +185,23 @@ final class NotesPageModelTests: XCTestCase {
         XCTAssertEqual(m.session?.note.body, "Gedanke")
     }
 
+    /// Ausweg bei dauerhaft gescheitertem Sichern: Verwerfen gibt die Seite frei,
+    /// ohne zu sichern — die fremde Datei bleibt Byte für Byte, wie sie war.
+    func testVerwerfenGibtDieSeiteFreiOhneZuSichern() throws {
+        let m = try sitzungMitScheiterndemSichern()
+        let a = id(m, "A")
+        let b = id(m, "B")
+        m.select(b)
+        XCTAssertEqual(m.session?.id, a, "gesperrt, solange der Text ungesichert ist")
+        XCTAssertEqual(m.session?.saveFailed, true)
+
+        m.discardSession()
+        XCTAssertNil(m.session)
+        m.select(b)
+        XCTAssertEqual(m.session?.id, b)
+        XCTAssertEqual(try Data(contentsOf: u.ordner.appendingPathComponent("A.md")), Data([0x47, 0xFC, 0x6E]))
+    }
+
     func testOrdnerwechselGibtTrueZurueck() throws {
         let m = try dreiNotizen()
         let anderer = u.wurzel.appendingPathComponent("Anderer", isDirectory: true)

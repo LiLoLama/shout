@@ -99,6 +99,28 @@ final class MarkdownHighlighterTests: XCTestCase {
         withExtendedLifetime(hervorhebung) {}
     }
 
+    /// Während einer Eingabe mit markiertem Text (Option+U für Umlaute) darf die
+    /// Hervorhebung nichts anfassen — sonst verlöre die Markierung ihre Attribute.
+    func testShouldSkipLaesstAttributeUnberuehrt() {
+        let hervorhebung = MarkdownHighlighter()
+        var ueberspringen = true
+        hervorhebung.shouldSkip = { ueberspringen }
+        let rot = NSColor.red
+        let s = NSTextStorage(string: "x", attributes: [.foregroundColor: rot])
+        s.delegate = hervorhebung
+        s.replaceCharacters(in: NSRange(location: 0, length: 0), with: "# Titel ")
+        XCTAssertEqual(s.string, "# Titel x")
+        XCTAssertEqual(farbe(s, 0), rot, "nicht neu gestaltet")
+        XCTAssertNotEqual(s.attribute(.font, at: 3, effectiveRange: nil) as? NSFont,
+                          NSFont.boldSystemFont(ofSize: Style.headingSizes[0]))
+
+        ueberspringen = false
+        s.replaceCharacters(in: NSRange(location: 8, length: 1), with: "y")
+        XCTAssertEqual(farbe(s, 0), Style.dim, "die nächste Zeichenänderung gestaltet wieder")
+        XCTAssertEqual(schrift(s, 3).pointSize, 22)
+        withExtendedLifetime(hervorhebung) {}
+    }
+
     func testFettInUeberschriftBleibtGross() {
         let s = gestaltet("## a **b** c")
         XCTAssertTrue(fett(schrift(s, 6)))

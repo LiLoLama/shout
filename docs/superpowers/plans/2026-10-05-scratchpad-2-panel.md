@@ -4164,3 +4164,6 @@ Nach dem nächsten Release (aus `/Applications`) prüft der Mensch:
 - [ ] Beenden mit ⌘Q direkt nach dem Tippen im Panel → Text ist in der Datei.
 - [ ] Eine lange `Eingang.md` (mehrere tausend Zeilen): Tippen bleibt flüssig.
 - [ ] Englische Oberfläche: Panel, Einstellungen, Toasts sind englisch; die Eingangs-Notiz heißt `Inbox.md`.
+- [ ] Rechte ⌥ als Diktiertaste: ⌃⌥N bzw. ⌃⌥I mit der **rechten** ⌥ drücken (Fokus in einer App **und** im Panel, Modus Halten/Umschalten/Doppeltipp): es startet keine zusätzliche Aufnahme, das Mikrofon bleibt nicht offen.
+- [ ] Ins Panel klicken, dann in TextEdit klicken, Diktiertaste: der Text landet in TextEdit, nicht in der Notiz.
+- [ ] Tastenaufnahme in den Einstellungen starten, dann Einstellungen zuklappen bzw. Seite wechseln: ⌃⌥N und ⌃⌥I wirken danach wieder.

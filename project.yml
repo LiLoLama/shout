@@ -382,6 +382,7 @@ targets:
       - path: Sources/FlowLokal/NoteStore.swift
       - path: Sources/FlowLokal/NoteEditorSession.swift
       - path: Sources/FlowLokal/NotesPageModel.swift
+      - path: Sources/FlowLokal/MarkdownHighlighter.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

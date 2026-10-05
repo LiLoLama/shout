@@ -29,6 +29,11 @@ final class NoteStore: ObservableObject {
 
     @Published private(set) var notes: [Note] = []
     @Published private(set) var folderState: FolderState = .ok
+    /// Nach jedem Umbenennen über `rename(_:to:)`: alter und neuer Dateiname.
+    /// Das Panel folgt so der umbenannten Eingangs-Notiz.
+    var onRename: ((String, String) -> Void)?
+    /// Für diese Platzhalter wurde der iCloud-Download schon angestoßen.
+    private var angestosseneDownloads = Set<String>()
     /// Gepufferter Text einer vorhandenen Notiz, der als Konfliktdatei in den
     /// Ordner zurückkam (Notiz-ID → Name der Konfliktdatei). Die Sitzung der
     /// Notiz zeigt den Hinweis und quittiert mit `acknowledgeReturnedConflict`.
@@ -263,9 +268,12 @@ final class NoteStore: ObservableObject {
 
     private func startWatchingIfNeeded() {
         guard watch, watcher == nil else { return }
-        watcher = NoteFolderWatcher(url: folder) { [weak self] in
-            MainActor.assumeIsolated { self?.reload() }
-        }
+        watcher = NoteFolderWatcher(url: folder, onPaths: { [weak self] pfade in
+            MainActor.assumeIsolated {
+                guard let self, NoteFolderWatcher.concernsFolder(pfade, folder: self.folder) else { return }
+                self.reload()
+            }
+        })
     }
 
     /// Fehlt der Ordner, wird alle fünf Sekunden nachgesehen, ob er wieder da ist.
@@ -496,17 +504,60 @@ final class NoteStore: ObservableObject {
     /// Ausgelagert von iCloud: Eintrag ohne Inhalt, der Download wird angestoßen.
     private func placeholder(fileName: String) -> Note {
         let url = folder.appendingPathComponent(fileName)
-        try? fileManager.startDownloadingUbiquitousItem(at: url)
+        if angestosseneDownloads.insert(fileName).inserted {
+            try? fileManager.startDownloadingUbiquitousItem(at: url)
+        }
         let platzhalter = folder.appendingPathComponent("." + fileName + ".icloud")
         return Note(id: cache[fileName]?.id ?? UUID(), fileName: fileName, body: "",
                     created: Date(), modified: modificationDate(of: platzhalter),
                     pinned: false, extraFrontmatter: [], titleIsFixed: true, isPlaceholder: true)
     }
 
+    private func serialized(_ note: Note) -> String {
+        NoteFile.serialize(body: note.body, created: note.created, createdRaw: note.createdRaw,
+                           pinned: note.pinned, extraFrontmatter: note.extraFrontmatter)
+    }
+
+    enum ExclusiveWrite: Equatable {
+        case written(Date)
+        /// Unter diesem Namen liegt schon etwas — es wurde nichts angefasst.
+        case exists
+        case failed
+    }
+
+    /// Legt eine neue Datei an und überschreibt nie eine vorhandene: Der Text
+    /// geht erst in eine versteckte Zwischendatei im selben Ordner und wird dann
+    /// mit `RENAME_EXCL` an seinen Platz gebracht. Wo das Dateisystem das nicht
+    /// kennt (manche Netzlaufwerke), bleibt die Prüfung unmittelbar davor.
+    func writeExclusively(_ note: Note, to url: URL) -> ExclusiveWrite {
+        let zwischen = url.deletingLastPathComponent()
+            .appendingPathComponent(".shout-neu-\(UUID().uuidString).tmp")
+        do {
+            try Data(serialized(note).utf8).write(to: zwischen)
+        } catch {
+            NSLog("shout: Notiz \(url.lastPathComponent) konnte nicht gesichert werden: \(error)")
+            return .failed
+        }
+        var fehler = renamex_np(zwischen.path, url.path, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
+        if fehler == ENOTSUP || fehler == EINVAL {
+            if fileManager.fileExists(atPath: url.path) {
+                fehler = EEXIST
+            } else {
+                fehler = Darwin.rename(zwischen.path, url.path) == 0 ? 0 : errno
+            }
+        }
+        guard fehler == 0 else {
+            try? fileManager.removeItem(at: zwischen)
+            if fehler == EEXIST { return .exists }
+            NSLog("shout: Notiz \(url.lastPathComponent) konnte nicht angelegt werden: \(String(cString: strerror(fehler)))")
+            return .failed
+        }
+        return .written(modificationDate(of: url))
+    }
+
     /// Schreibt atomar und gibt das neue mtime zurück (nil bei Fehler).
     func write(_ note: Note, to url: URL) -> Date? {
-        let text = NoteFile.serialize(body: note.body, created: note.created, createdRaw: note.createdRaw,
-                                      pinned: note.pinned, extraFrontmatter: note.extraFrontmatter)
+        let text = serialized(note)
         do {
             try Data(text.utf8).write(to: url, options: .atomic)
         } catch {
@@ -578,6 +629,7 @@ extension NoteStore {
             note = frisch
             cache[note.fileName] = note
         }
+        let alterName = note.fileName
         let neu = NoteFile.freeFileName(for: titel, in: folder, current: note.fileName)
         if neu != note.fileName {
             guard move(note.fileName, to: neu) else { return nil }
@@ -588,7 +640,41 @@ extension NoteStore {
         note.titleIsFixed = true
         cache[note.fileName] = note
         publish()
+        if alterName != note.fileName { onRename?(alterName, note.fileName) }
         return note
+    }
+
+    /// Legt eine Notiz unter einem festen Titel an (die Eingangs-Notiz). Ist der
+    /// Name belegt, wird es „Titel 2“. Ein leerer Text ist hier erlaubt.
+    /// `.failed`, wenn der Ordner fehlt oder das Schreiben scheitert. Eine
+    /// vorhandene Datei wird nie überschrieben: Taucht der Name zwischen Wahl und
+    /// Schreiben doch noch auf, wird ein neuer gewählt.
+    func create(title raw: String, body: String, pinned: Bool) -> SaveResult {
+        guard let titel = NoteFile.safeTitle(raw) else { return .failed }
+        guard checkFolder(create: true) == .ready else {
+            folderState = .unreachable
+            return .failed
+        }
+        folderState = .ok
+        var note = Note.blank()
+        note.body = body
+        note.pinned = pinned
+        note.titleIsFixed = true
+        for _ in 0..<20 {
+            note.fileName = NoteFile.freeFileName(for: titel, in: folder, fileManager: fileManager)
+            switch writeExclusively(note, to: folder.appendingPathComponent(note.fileName)) {
+            case .written(let mtime):
+                note.modified = mtime
+                cache[note.fileName] = note
+                publish()
+                return .saved(note)
+            case .exists:
+                continue
+            case .failed:
+                return .failed
+            }
+        }
+        return .failed
     }
 
     /// Ändert nur `pinned` und sichert. Offene Sitzungen gehen über

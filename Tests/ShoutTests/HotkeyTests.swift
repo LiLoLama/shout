@@ -22,6 +22,20 @@ final class HotkeyTests: XCTestCase {
         XCTAssertEqual(k.release(at: 2), .holdEnded)
     }
 
+    /// Ein zweites Drücken bei schon gedrückter Taste (Auto-Repeat, verlorenes Loslassen)
+    /// darf `.holdBegan` nicht ein zweites Mal auslösen.
+    func testZweitesDrueckenWaehrendHaltenIgnoriert() {
+        var k = HotkeyPressClassifier()
+        k.press(at: 0)
+        XCTAssertEqual(k.tick(at: 0.4), .holdBegan)
+        k.press(at: 0.5)
+        XCTAssertNil(k.tick(at: 1.0))
+        XCTAssertEqual(k.release(at: 1.5), .holdEnded)
+        // Nach dem Loslassen zählt ein neues Drücken wieder.
+        k.press(at: 2)
+        XCTAssertEqual(k.tick(at: 2.4), .holdBegan)
+    }
+
     func testLoslassenOhneDrueckenIstNichts() {
         var k = HotkeyPressClassifier()
         XCTAssertNil(k.release(at: 1))
@@ -93,6 +107,17 @@ final class HotkeyTests: XCTestCase {
         let wieder = ScratchpadSettings(defaults: d)
         XCTAssertEqual(wieder.combo(for: .scratchpad), neu)
         XCTAssertNil(wieder.combo(for: .inbox))      // bewusst „Keine“, nicht die Vorgabe
+    }
+
+    func testBeschaedigteBelegungFaelltAufVorgabeZurueck() {
+        let (s, d, suite) = einstellungen()
+        defer { d.removePersistentDomain(forName: suite) }
+        _ = s
+        d.set(Data("kaputt".utf8), forKey: "scratchpad.combo.scratchpad")
+        d.set(Data("kaputt".utf8), forKey: "scratchpad.combo.inbox")
+        let wieder = ScratchpadSettings(defaults: d)
+        XCTAssertEqual(wieder.combo(for: .scratchpad), .scratchpadDefault)
+        XCTAssertEqual(wieder.combo(for: .inbox), .inboxDefault)
     }
 
     func testAenderungWirdGemeldet() {

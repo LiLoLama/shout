@@ -5,6 +5,9 @@ import Carbon.HIToolbox
 /// `NSEvent`-Monitor fängt sie die Taste ab — in der App darunter landet kein
 /// Zeichen — und braucht keine Bedienungshilfen-Berechtigung. Drücken und
 /// Loslassen kommen beide, damit ist Halten erkennbar.
+///
+/// Eine Instanz bleibt registriert (und am Leben), bis `unregister()` gerufen
+/// wird: Das statische Verzeichnis hält sie stark.
 @MainActor
 final class GlobalHotkey {
 
@@ -33,7 +36,9 @@ final class GlobalHotkey {
 
     func register(_ kombi: HotkeyCombo) throws {
         unregister()
-        Self.installiereHandler()
+        let handlerStatus = Self.installiereHandler()
+        // Ohne Handler käme nie ein Ereignis an — dann nicht so tun, als wäre die Taste registriert.
+        guard handlerStatus == noErr else { throw RegistrationError.failed(handlerStatus) }
         var neu: EventHotKeyRef?
         let status = RegisterEventHotKey(UInt32(kombi.keyCode), kombi.carbonModifiers,
                                          EventHotKeyID(signature: Self.signatur, id: kennung),
@@ -50,8 +55,8 @@ final class GlobalHotkey {
         Self.registriert[kennung] = nil
     }
 
-    private static func installiereHandler() {
-        guard !handlerInstalliert else { return }
+    private static func installiereHandler() -> OSStatus {
+        guard !handlerInstalliert else { return noErr }
         var typen = [
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
@@ -59,16 +64,20 @@ final class GlobalHotkey {
         let status = InstallEventHandler(GetApplicationEventTarget(), { _, ereignis, _ in
             guard let ereignis else { return OSStatus(eventNotHandledErr) }
             var id = EventHotKeyID()
-            GetEventParameter(ereignis, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
-                              nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
+            let parameterStatus = GetEventParameter(ereignis, EventParamName(kEventParamDirectObject),
+                                                    EventParamType(typeEventHotKeyID),
+                                                    nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
+            guard parameterStatus == noErr else { return OSStatus(eventNotHandledErr) }
             let gedrueckt = GetEventKind(ereignis) == UInt32(kEventHotKeyPressed)
             // Carbon liefert auf dem Hauptstrang.
-            MainActor.assumeIsolated {
-                guard let taste = GlobalHotkey.registriert[id.id] else { return }
+            let behandelt = MainActor.assumeIsolated { () -> Bool in
+                guard let taste = GlobalHotkey.registriert[id.id] else { return false }
                 if gedrueckt { taste.onPress() } else { taste.onRelease() }
+                return true
             }
-            return noErr
+            return behandelt ? noErr : OSStatus(eventNotHandledErr)
         }, typen.count, &typen, nil, nil)
         handlerInstalliert = status == noErr
+        return status
     }
 }

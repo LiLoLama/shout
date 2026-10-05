@@ -39,8 +39,14 @@ final class ScratchpadSettings: ObservableObject {
         openBehavior = ScratchpadModel.OpenBehavior(rawValue: defaults.string(forKey: K.oeffnen) ?? "") ?? .resume
         for rolle in Role.allCases {
             if let daten = defaults.data(forKey: K.kombi(rolle)) {
-                // Leere Daten: bewusst „Keine“.
-                combos[rolle] = try? JSONDecoder().decode(HotkeyCombo.self, from: daten)
+                if daten.isEmpty {
+                    // Leere Daten: bewusst „Keine“.
+                    combos[rolle] = nil
+                } else {
+                    // Beschädigt: die Vorgabe, nicht still „Keine“.
+                    combos[rolle] = (try? JSONDecoder().decode(HotkeyCombo.self, from: daten))
+                        ?? (rolle == .scratchpad ? .scratchpadDefault : .inboxDefault)
+                }
             } else {
                 combos[rolle] = rolle == .scratchpad ? .scratchpadDefault : .inboxDefault
             }

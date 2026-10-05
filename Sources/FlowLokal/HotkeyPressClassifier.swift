@@ -16,6 +16,8 @@ struct HotkeyPressClassifier {
     private var haelt = false
 
     mutating func press(at zeit: TimeInterval) {
+        // Schon gedrückt (Auto-Repeat, verlorenes Loslassen): ignorieren, sonst käme `.holdBegan` zweimal.
+        guard gedruecktSeit == nil else { return }
         gedruecktSeit = zeit
         haelt = false
     }

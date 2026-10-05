@@ -474,4 +474,37 @@ final class NoteEditorSessionTests: XCTestCase {
         XCTAssertEqual(u.lies("X.md").map { NoteFile.parse($0).pinned }, true)
         XCTAssertNil(sitzung.conflictNotice)
     }
+
+    // MARK: - iCloud lagert aus, während Text ungesichert ist
+
+    /// Die Datei wird ausgelagert, während getippter Text noch nicht gesichert
+    /// ist. Der Platzhalter (leerer Text) darf ihn nicht ersetzen; beim Schließen
+    /// landet er unter einem freien Namen neben der ausgelagerten Fassung.
+    func testPlatzhalterLoeschtUngesichertenTextNicht() async throws {
+        try u.schreibe("X.md", "Text", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 0.05)
+        sitzung.edit("Text, eins")
+        sitzung.flush()
+        XCTAssertEqual(sitzung.status, .clean)
+
+        sitzung.edit("Text, zwei")
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("X.md"))
+        try u.schreibe(".X.md.icloud", "")
+        s.reload()
+        // Der Zeitgeber sichert ins Leere: Die Datei fehlt, der Text bleibt hier.
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(sitzung.status, .missing)
+
+        // Nächstes Einlesen (z. B. FSEvent), der Platzhalter steht in der Liste.
+        try u.schreibe("Y.md", "andere Notiz")
+        s.reload()
+        XCTAssertEqual(sitzung.note.body, "Text, zwei")
+        XCTAssertTrue(sitzung.hasUnsavedText)
+        XCTAssertNotEqual(sitzung.status, .placeholder)
+
+        sitzung.flush()
+        XCTAssertFalse(sitzung.hasUnsavedText)
+        XCTAssertEqual(u.text("X 2.md"), "Text, zwei")
+    }
 }

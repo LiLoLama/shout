@@ -228,6 +228,11 @@ final class NoteEditorSession: ObservableObject, Identifiable {
             return
         }
         if status == .dirty { return }
+        // Von iCloud ausgelagert, während hier Text ungesichert ist: Der Platzhalter
+        // hat keinen Inhalt und darf ihn nicht ersetzen. Der Text bleibt ungesichert;
+        // kommt die Datei zurück, entscheidet die Konfliktprüfung, `flush()` legt
+        // ihn sonst unter einem freien Namen daneben an.
+        if hasUnsavedText, frisch.isPlaceholder { return }
         if status == .missing, unsavedWhileMissing, !frisch.isPlaceholder, frisch.body != note.body {
             // Die Datei ist wieder da, hier wurde aber ohne sie weitergeschrieben.
             // Unser Text bleibt ungesichert; das veraltete mtime erzwingt beim

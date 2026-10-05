@@ -22,7 +22,7 @@ struct NoteNoticesView: View {
 }
 
 private extension NoteNoticesView {
-    @ViewBuilder private var notices: some View {
+    @ViewBuilder var notices: some View {
         if session.saveFailed {
             saveFailedNotice
         }
@@ -51,14 +51,14 @@ private extension NoteNoticesView {
     /// Bleibt stehen, solange das Sichern scheitert. Die Seite ist dann gesperrt
     /// (kein Wechsel, kein Löschen, kein Ordnerwechsel); hier geht es weiter:
     /// noch einmal versuchen, den Text mitnehmen oder ihn bewusst verwerfen.
-    private var saveFailedNotice: some View {
+    var saveFailedNotice: some View {
         escapeNotice(Loc.t("Konnte nicht gesichert werden. Wechseln, Löschen und Ordnerwechsel sind gesperrt, bis gesichert ist."),
                      retry: Loc.t("Erneut sichern"), action: session.flush)
     }
 
     /// Hinweis mit Ausweg: erneut versuchen, den Text mitnehmen oder ihn nach
     /// Rückfrage verwerfen. Die Knöpfe stehen in einer zweiten Zeile.
-    private func escapeNotice(_ text: String, retry: String, action: @escaping () -> Void) -> some View {
+    func escapeNotice(_ text: String, retry: String, action: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.shoutLive).font(.system(size: 11))
@@ -85,7 +85,7 @@ private extension NoteNoticesView {
         .background(Color.shoutLive.opacity(0.10))
     }
 
-    private func notice(_ text: String, button: String?, action: @escaping () -> Void) -> some View {
+    func notice(_ text: String, button: String?, action: @escaping () -> Void) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.shoutLive).font(.system(size: 11))
             Text(text).font(.system(size: 12)).foregroundStyle(Color(white: 0.85))

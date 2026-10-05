@@ -104,6 +104,77 @@ final class NoteEditorCoordinatorTests: XCTestCase {
         withExtendedLifetime(erster) {}
     }
 
+    /// Tippt jemand in einen Editor, der noch nicht angeglichen ist, wird der
+    /// Anschlag abgelehnt und der Editor gleicht an. Sonst meldete er seinen
+    /// alten Text plus Anschlag, und die Eingabe des anderen Editors wäre weg.
+    func testTippenInVeraltetenEditorUeberschreibtNichts() throws {
+        let s = try sitzung("a")
+        let (a, aTV) = editor(s)
+        let (b, bTV) = editor(s)
+        aTV.setSelectedRange(NSRange(location: 1, length: 0))
+        aTV.insertText("b", replacementRange: aTV.selectedRange())
+        XCTAssertEqual(s.note.body, "ab")
+        // B tippt, ohne dazwischen angeglichen worden zu sein.
+        bTV.setSelectedRange(NSRange(location: 1, length: 0))
+        bTV.insertText("x", replacementRange: bTV.selectedRange())
+        XCTAssertTrue(s.note.body.contains("b"), "die Eingabe von A muss bleiben")
+        XCTAssertEqual(bTV.string, s.note.body)
+        withExtendedLifetime((a, b)) {}
+    }
+
+    /// Ein Diktat schreibt eine offene Komposition (Option+U …) erst fest.
+    func testDiktatSchreibtOffeneKompositionFest() throws {
+        let s = try sitzung("a")
+        let (c, tv) = editor(s)
+        tv.setSelectedRange(NSRange(location: 1, length: 0))
+        tv.setMarkedText("¨", selectedRange: NSRange(location: 1, length: 0),
+                         replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(tv.hasMarkedText())
+        // NSTextView meldet eine offene Komposition erst, wenn sie festgeschrieben ist.
+        XCTAssertEqual(s.note.body, "a")
+        XCTAssertTrue(s.insert("b", at: .end))
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(tv.string, s.note.body)
+        XCTAssertTrue(s.note.body.hasSuffix("b"))
+        withExtendedLifetime(c) {}
+    }
+
+    /// Angleichen schreibt eine offene Komposition erst fest und verliert dabei
+    /// nichts aus der Sitzung.
+    func testAngleichenSchreibtOffeneKompositionFest() throws {
+        let s = try sitzung("a")
+        let (a, aTV) = editor(s)
+        let (b, bTV) = editor(s)
+        bTV.setSelectedRange(NSRange(location: 1, length: 0))
+        bTV.setMarkedText("¨", selectedRange: NSRange(location: 1, length: 0),
+                          replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(bTV.hasMarkedText())
+        a.mirror(s.note.body)
+        XCTAssertEqual(aTV.string, s.note.body)
+        aTV.setSelectedRange(NSRange(location: (aTV.string as NSString).length, length: 0))
+        aTV.insertText("b", replacementRange: aTV.selectedRange())
+        let erwartet = s.note.body
+        XCTAssertTrue(erwartet.hasSuffix("b"))
+        b.mirror(s.note.body)
+        XCTAssertFalse(bTV.hasMarkedText())
+        XCTAssertEqual(bTV.string, erwartet)
+        XCTAssertEqual(s.note.body, erwartet)
+    }
+
+    /// Option+U, dann u: Die offene Komposition zählt nicht als veralteter Text.
+    /// Sonst lehnte der Editor jeden Umlaut ab.
+    func testKompositionGiltNichtAlsVeraltet() throws {
+        let s = try sitzung("a")
+        let (c, tv) = editor(s)
+        tv.setSelectedRange(NSRange(location: 1, length: 0))
+        tv.setMarkedText("¨", selectedRange: NSRange(location: 1, length: 0),
+                         replacementRange: NSRange(location: NSNotFound, length: 0))
+        tv.insertText("ü", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(tv.string, "aü")
+        XCTAssertEqual(s.note.body, "aü")
+        withExtendedLifetime(c) {}
+    }
+
     func testJederEditorHatEigenesRueckgaengig() throws {
         let s = try sitzung("a")
         let (eins, tv1) = editor(s)

@@ -117,15 +117,40 @@ struct NoteEditorView: NSViewRepresentable {
         /// Während der Editor selbst Text oder Auswahl setzt (Angleichen, Ersetzen),
         /// ist eine Auswahländerung keine Handlung des Nutzers.
         var setztSelbst = false
+        /// Während des Angleichens meldet der Editor keinen Text an die Sitzung:
+        /// Was er dabei festschreibt (eine offene Komposition), ist veraltet.
+        private var gleichtAn = false
 
         init(session: NoteEditorSession) { self.session = session }
+
+        /// Der Text ohne offene Komposition (Option+U, Eingabemethoden). Die
+        /// meldet `NSTextView` erst, wenn sie festgeschrieben ist; bis dahin
+        /// kennt die Sitzung sie nicht.
+        private func gemeldeterText(_ tv: NSTextView) -> String {
+            guard tv.hasMarkedText() else { return tv.string }
+            let ns = tv.string as NSString
+            let markiert = tv.markedRange()
+            guard markiert.location != NSNotFound, NSMaxRange(markiert) <= ns.length else { return tv.string }
+            return ns.replacingCharacters(in: markiert, with: "")
+        }
 
         func undoManager(for view: NSTextView) -> UndoManager? { undo }
 
         func textDidChange(_ notification: Notification) {
-            guard let tv = notification.object as? NSTextView else { return }
+            guard !gleichtAn, let tv = notification.object as? NSTextView else { return }
             session.edit(tv.string, from: self)
             editRevision = session.editRevision
+        }
+
+        /// Zeigt der Editor eine ältere Fassung als die Sitzung (ein anderer Editor
+        /// hat geschrieben, SwiftUI hat noch nicht angeglichen), meldete die
+        /// Änderung seinen alten Text als neuen — die neuere Fassung wäre still
+        /// weg. Dann gleicht er erst an und lehnt diesen Anschlag sichtbar ab.
+        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
+                      replacementString: String?) -> Bool {
+            guard !setztSelbst, gemeldeterText(textView) != session.note.body else { return true }
+            mirror(session.note.body)
+            return false
         }
 
         /// Ein Klick oder Pfeil im Editor: Dorthin geht das nächste Diktat.
@@ -154,7 +179,9 @@ struct NoteEditorView: NSViewRepresentable {
             // angeglichen), meldete er beim Einfügen seinen alten Text als neuen —
             // und überschriebe damit die neuere Fassung. Dann lieber ablehnen: Die
             // Sitzung fügt selbst ein und lädt den Editor neu.
-            guard tv.string == session.note.body else { return false }
+            guard gemeldeterText(tv) == session.note.body else { return false }
+            // Eine offene Komposition zuerst festschreiben; sie wird dabei gemeldet.
+            if tv.hasMarkedText() { tv.unmarkText() }
             let ns = tv.string as NSString
             let ziel = point == .end ? NSRange(location: ns.length, length: 0) : tv.selectedRange()
             let vorher: Character? = ziel.location > 0
@@ -205,11 +232,20 @@ struct NoteEditorView: NSViewRepresentable {
         /// Gleicht an einen anderen Editor derselben Notiz an: ohne Rückgängig-
         /// Schritt, und die eigenen Schritte passen danach nicht mehr zum Text.
         func mirror(_ text: String) {
-            guard let tv = textView, tv.string != text else { return }
-            let auswahl = tv.selectedRange()
+            // Unterscheidet sich nur die offene Komposition, ist nichts anzugleichen.
+            guard let tv = textView, gemeldeterText(tv) != text else { return }
             setztSelbst = true
             defer { setztSelbst = false }
+            // Eine offene Komposition festschreiben, ohne sie zu melden: Sie hängt
+            // am veralteten Text und wird gleich mit ersetzt.
+            if tv.hasMarkedText() {
+                gleichtAn = true
+                tv.unmarkText()
+                gleichtAn = false
+            }
+            let auswahl = tv.selectedRange()
             tv.textStorage?.replaceCharacters(in: NSRange(location: 0, length: (tv.string as NSString).length), with: text)
+            tv.breakUndoCoalescing()
             undo.removeAllActions()
             let laenge = (text as NSString).length
             tv.setSelectedRange(NSRange(location: min(auswahl.location, laenge), length: 0))

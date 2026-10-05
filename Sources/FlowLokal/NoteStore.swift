@@ -337,10 +337,17 @@ final class NoteStore: ObservableObject {
 
     /// Zwingt Datei und Ordner auf die Platte. `F_FULLFSYNC` leert auch den
     /// Schreibcache des Laufwerks; wo es nicht geht (z. B. Netzlaufwerke), bleibt
-    /// `fsync`. Wirft, wenn beides scheitert — dann darf der Puffer nicht weg.
+    /// `fsync`. Wirft, wenn das für die Datei scheitert — dann darf der Puffer nicht weg.
     private func makeDurable(_ datei: URL) throws {
         try sync(path: datei.path)
-        try sync(path: datei.deletingLastPathComponent().path)
+        // Der Ordner-Sync ist nur Bemühen: Manche Netzlaufwerke lehnen fsync auf
+        // Verzeichnissen ab. Dort bliebe sonst der Puffer für immer liegen, obwohl
+        // die Datei selbst schon sicher geschrieben ist.
+        do {
+            try sync(path: datei.deletingLastPathComponent().path)
+        } catch {
+            NSLog("shout: Ordner-Sync für \(datei.lastPathComponent) nicht möglich: \(error)")
+        }
     }
 
     private func sync(path: String) throws {

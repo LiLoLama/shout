@@ -3,7 +3,7 @@ import SwiftUI
 /// Hält die ausgewählte Dashboard-Seite (von Menüpunkten steuerbar).
 @MainActor
 final class DashboardModel: ObservableObject {
-    enum Tab: Hashable { case aufnahme, meeting, dateien, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
+    enum Tab: Hashable { case aufnahme, meeting, dateien, notizen, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
     @Published var tab: Tab = .aufnahme
 
     // Modell-Zustand zentral (überlebt Tab-Wechsel, damit Spinner/Auswahl
@@ -49,6 +49,9 @@ struct DashboardView: View {
     /// Warteschlange der Datei-Transkriptionen (vom AppDelegate durchgereicht).
     @ObservedObject var files: FileTranscriptionQueue
     @ObservedObject var meetingRecorder: MeetingRecorder
+    /// Seite „Notizen“. Modell und Store leben beim AppDelegate, damit beim
+    /// Schließen und Beenden gesichert wird.
+    @ObservedObject var notes: NotesPageModel
     /// Öffnet bzw. schließt das Ergebnisfenster eines Auftrags. Die Fenster liegen
     /// beim AppDelegate, weil sie das Dashboard überdauern können.
     var onOpenResult: (FileTranscriptionJob) -> Void = { _ in }
@@ -116,6 +119,7 @@ struct DashboardView: View {
             navRow(.aufnahme, Loc.t("Aufnahme & Text"), "mic.fill")
             navRow(.meeting, Loc.t("Meeting"), "record.circle")
             navRow(.dateien, Loc.t("Dateien"), "doc.text.below.ecg")
+            navRow(.notizen, Loc.t("Notizen"), "note.text")
             navRow(.woerterbuch, Loc.t("Wörterbuch"), "text.book.closed.fill")
             navRow(.verlauf, Loc.t("Verlauf"), "clock.arrow.circlepath")
             navRow(.statistik, Loc.t("Statistiken"), "chart.bar.xaxis")
@@ -170,6 +174,8 @@ struct DashboardView: View {
                       modelReady: model.transcriberReady,
                       formatterReady: model.formatterReady,
                       onOpenResult: onOpenResult, onCloseResult: onCloseResult)
+        case .notizen:
+            NotesView(model: notes, store: notes.store)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:

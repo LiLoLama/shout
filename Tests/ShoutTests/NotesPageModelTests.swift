@@ -208,4 +208,37 @@ final class NotesPageModelTests: XCTestCase {
         try FileManager.default.createDirectory(at: anderer, withIntermediateDirectories: true)
         XCTAssertTrue(m.changeFolder(to: anderer))
     }
+
+    // MARK: - Rettungskopie beim Beenden
+
+    /// Scheitert das Sichern beim Beenden, landet der Text in einer eigenen Datei
+    /// im Rettungsordner — die fremde Datei im Notizordner bleibt unberührt.
+    func testRettungskopieSchreibtUngesichertenText() throws {
+        let m = try sitzungMitScheiterndemSichern()
+        m.flush()
+        let rettung = u.wurzel.appendingPathComponent("Rettung", isDirectory: true)
+
+        let url = m.writeRescueCopyIfNeeded(in: rettung)
+
+        let datei = try XCTUnwrap(url)
+        XCTAssertEqual(datei.deletingLastPathComponent().standardizedFileURL, rettung.standardizedFileURL)
+        XCTAssertTrue(datei.lastPathComponent.hasPrefix("A "), datei.lastPathComponent)
+        XCTAssertEqual(datei.pathExtension, "md")
+        XCTAssertEqual(try String(contentsOf: datei, encoding: .utf8), "meins")
+        let inhalt = try FileManager.default.contentsOfDirectory(atPath: rettung.path)
+        XCTAssertEqual(inhalt.count, 1)
+        XCTAssertEqual(try Data(contentsOf: u.ordner.appendingPathComponent("A.md")), Data([0x47, 0xFC, 0x6E]))
+    }
+
+    func testRettungskopieOhneUngesichertenTextSchreibtNichts() throws {
+        let m = try dreiNotizen()
+        let rettung = u.wurzel.appendingPathComponent("Rettung", isDirectory: true)
+        XCTAssertNil(m.writeRescueCopyIfNeeded(in: rettung), "keine Sitzung")
+
+        m.select(id(m, "A"))
+        m.session?.edit("eins, geändert")
+        m.flush()
+        XCTAssertNil(m.writeRescueCopyIfNeeded(in: rettung), "alles gesichert")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rettung.path))
+    }
 }

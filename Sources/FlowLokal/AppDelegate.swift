@@ -44,6 +44,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let recIndicator = RecordingIndicator()
     private let sounds = SoundCues()
 
+    /// Notizen. Erst beim ersten Öffnen des Dashboards angelegt; der Ordner in
+    /// „Dokumente“ entsteht sogar erst mit der ersten gesicherten Notiz.
+    private var notesPageStorage: NotesPageModel?
+    private var notesPage: NotesPageModel {
+        if let page = notesPageStorage { return page }
+        let page = NotesPageModel(store: NoteStore(folder: NotesFolder.current()))
+        notesPageStorage = page
+        return page
+    }
+
     /// Mitschnitt einer Besprechung über das Mikrofon. Gehört dem Delegate und
     /// nicht der Ansicht, damit eine laufende Aufnahme das Schließen des
     /// Dashboard-Fensters übersteht.
@@ -734,6 +744,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onPillPositionChanged: { [weak self] in self?.recIndicator.reposition() },
                 files: fileQueue,
                 meetingRecorder: meetingRecorder,
+                notes: notesPage,
                 onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
                 onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
                 updates: updateBridge
@@ -885,6 +896,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let closing = notification.object as? NSWindow
         if closing === correctionWindow { correctionWindow = nil }   // Retention lösen
         if closing === onboardingWindow { onboardingWindow = nil }
+        if closing === dashboardWindow { notesPageStorage?.flush() }
         if let id = transcriptWindows.first(where: { $0.value === closing })?.key {
             transcriptWindows.removeValue(forKey: id)
         }
@@ -929,6 +941,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        notesPageStorage?.flush()    // ungesicherter Notiztext, höchstens eine Sekunde alt
+        // Scheitert das Sichern (Platte voll, fremde Änderung nicht lesbar), bleibt
+        // der Text sonst nur im Speicher und ginge mit dem Beenden verloren.
+        notesPageStorage?.writeRescueCopyIfNeeded(
+            in: StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true))
         fileQueue.cancelAll()
         meetingTicker?.invalidate()
         meetingTicker = nil

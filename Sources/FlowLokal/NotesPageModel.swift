@@ -128,4 +128,34 @@ final class NotesPageModel: ObservableObject {
     }
 
     func flush() { session?.flush() }
+
+    /// Letzte Sicherung beim Beenden: Steht nach `flush()` noch Text nur im
+    /// Speicher (Platte voll, fremde Änderung nicht lesbar), geht er als eigene
+    /// Datei in `directory`, damit er nicht mit der App verschwindet. Die Datei
+    /// heißt „Titel yyyy-MM-dd HH-mm-ss.md“. Gibt ihre URL zurück, oder `nil`,
+    /// wenn nichts zu retten war oder das Schreiben scheiterte.
+    @discardableResult
+    func writeRescueCopyIfNeeded(in directory: URL) -> URL? {
+        guard let session, session.hasUnsavedText else { return nil }
+        let note = session.note
+        let titel = (note.isNew ? nil : NoteFile.safeTitle(note.title))
+            ?? NoteFile.deriveTitle(from: note.body)
+            ?? Loc.t("Unbenannt")
+
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd HH-mm-ss"
+        let zeit = format.string(from: Date())
+
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let name = NoteFile.freeFileName(for: "\(titel) \(zeit)", in: directory)
+            let url = directory.appendingPathComponent(name)
+            try Data(note.body.utf8).write(to: url, options: .atomic)
+            return url
+        } catch {
+            NSLog("shout: Rettungskopie der Notiz konnte nicht geschrieben werden: \(error)")
+            return nil
+        }
+    }
 }

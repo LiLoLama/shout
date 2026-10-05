@@ -15,6 +15,7 @@ struct NotesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            if !model.rescuedFiles.isEmpty { rescueBanner }
             folderPanel
             if store.folderState == .unreachable {
                 banner(Loc.t("Der Ordner ist nicht erreichbar. Änderungen werden zwischengespeichert und landen dort, sobald er wieder da ist."))
@@ -40,6 +41,7 @@ struct NotesView: View {
             }
             Button(Loc.t("Abbrechen"), role: .cancel) { renaming = nil }
         }
+        .onAppear { model.refreshRescuedFiles() }
         .onDisappear { model.flush() }
     }
 
@@ -247,6 +249,25 @@ struct NotesView: View {
             Text(text).font(.system(size: 12)).foregroundStyle(Color(white: 0.85))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.shoutLive.opacity(0.10)))
+    }
+
+    /// Beim Beenden gerettete Notizen liegen im App-Support, nicht im Ordner.
+    /// Ohne diesen Hinweis fände sie niemand.
+    private var rescueBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lifepreserver").foregroundStyle(Color.shoutLive)
+            Text(Loc.t("Beim letzten Beenden wurden ungesicherte Notizen gerettet."))
+                .font(.system(size: 12)).foregroundStyle(Color(white: 0.85))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button(Loc.t("Im Finder zeigen")) { NSWorkspace.shared.open(model.rescueDirectory) }
+                .buttonStyle(ConsoleButtonStyle())
+            Button(Loc.t("In den Notizordner holen")) { model.adoptRescuedNotes() }
+                .buttonStyle(ConsoleButtonStyle())
+                .disabled(store.folderState == .unreachable)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.shoutLive.opacity(0.10)))

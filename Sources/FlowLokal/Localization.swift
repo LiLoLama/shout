@@ -953,5 +953,7 @@ final class Loc: ObservableObject {
         "Weder im Notizordner noch als Rettungskopie war Platz. Der Text geht beim Beenden verloren.":
             "There was no room in the notes folder or for a rescue copy. The text will be lost when you quit.",
         "Text kopieren und beenden": "Copy text and quit",
+        "Beim letzten Beenden wurden ungesicherte Notizen gerettet.": "Unsaved notes were rescued when shout. last quit.",
+        "In den Notizordner holen": "Move to notes folder",
     ]
 }

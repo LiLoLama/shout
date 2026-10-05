@@ -241,4 +241,78 @@ final class NotesPageModelTests: XCTestCase {
         XCTAssertNil(m.writeRescueCopyIfNeeded(in: rettung), "alles gesichert")
         XCTAssertFalse(FileManager.default.fileExists(atPath: rettung.path))
     }
+
+    /// Beenden abgebrochen, dann erneut beendet: Derselbe Text wird nicht noch
+    /// einmal gerettet. Erst geänderter Text bekommt eine neue Kopie.
+    func testZweitesBeendenSchreibtKeineGleicheRettungskopie() throws {
+        let m = try sitzungMitScheiterndemSichern()
+        let rettung = u.wurzel.appendingPathComponent("Rettung", isDirectory: true)
+        m.flush()
+        let erste = try XCTUnwrap(m.writeRescueCopyIfNeeded(in: rettung))
+
+        m.flush()
+        XCTAssertEqual(m.writeRescueCopyIfNeeded(in: rettung), erste)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: rettung.path).count, 1)
+
+        m.session?.edit("meins, mehr")
+        m.flush()
+        let zweite = try XCTUnwrap(m.writeRescueCopyIfNeeded(in: rettung))
+        XCTAssertNotEqual(zweite, erste)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: rettung.path).count, 2)
+    }
+
+    // MARK: - Gerettete Notizen zurückholen
+
+    /// Die Seite zeigt gerettete Notizen an und holt sie unter freien Namen in
+    /// den Notizordner. Die Rettungsdatei verschwindet erst nach dem Schreiben.
+    func testGeretteteNotizenWerdenInDenOrdnerGeholt() throws {
+        let rettung = u.wurzel.appendingPathComponent("Rettung", isDirectory: true)
+        try FileManager.default.createDirectory(at: rettung, withIntermediateDirectories: true)
+        try Data("gerettet eins".utf8).write(to: rettung.appendingPathComponent("A 2026-10-05 14-32-11.md"))
+        try Data("gerettet zwei".utf8).write(to: rettung.appendingPathComponent("Unbenannt 2026-10-05 14-32-12.md"))
+        try Data("keine Notiz".utf8).write(to: rettung.appendingPathComponent("liesmich.txt"))
+        try u.schreibe("A 2026-10-05 14-32-11.md", "schon da")
+        let m = NotesPageModel(store: u.store(), defaults: defaults, rescueDirectory: rettung)
+        XCTAssertEqual(m.rescuedFiles.map(\.lastPathComponent).sorted(),
+                       ["A 2026-10-05 14-32-11.md", "Unbenannt 2026-10-05 14-32-12.md"])
+
+        XCTAssertEqual(m.adoptRescuedNotes(), 2)
+        XCTAssertEqual(m.rescuedFiles, [])
+        XCTAssertEqual(u.text("A 2026-10-05 14-32-11.md"), "schon da")
+        XCTAssertEqual(u.text("A 2026-10-05 14-32-11 2.md"), "gerettet eins")
+        XCTAssertEqual(u.text("Unbenannt 2026-10-05 14-32-12.md"), "gerettet zwei")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: rettung.path), ["liesmich.txt"])
+        XCTAssertEqual(m.store.notes.count, 3)
+    }
+
+    /// Ist der Notizordner nicht erreichbar, bleibt die Rettungsdatei liegen.
+    func testGeretteteNotizBleibtWennDerOrdnerFehlt() throws {
+        let rettung = u.wurzel.appendingPathComponent("Rettung", isDirectory: true)
+        try FileManager.default.createDirectory(at: rettung, withIntermediateDirectories: true)
+        let datei = rettung.appendingPathComponent("A 2026-10-05 14-32-11.md")
+        try Data("gerettet".utf8).write(to: datei)
+        let fehlt = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        let m = NotesPageModel(store: u.store(ordner: fehlt), defaults: defaults, rescueDirectory: rettung)
+        XCTAssertEqual(m.rescuedFiles.count, 1)
+
+        XCTAssertEqual(m.adoptRescuedNotes(), 0)
+        XCTAssertEqual(m.rescuedFiles.count, 1)
+        XCTAssertEqual(try String(contentsOf: datei, encoding: .utf8), "gerettet")
+    }
+
+    /// Eine Rettungskopie, die während der Sitzung entsteht (Beenden abgebrochen),
+    /// erscheint sofort im Hinweis.
+    func testRettungskopieErscheintImHinweis() throws {
+        let rettung = u.wurzel.appendingPathComponent("Rettung", isDirectory: true)
+        try u.schreibe("A.md", "eins")
+        let m = NotesPageModel(store: u.store(), defaults: defaults, rescueDirectory: rettung)
+        m.select(id(m, "A"))
+        m.session?.edit("meins")
+        try Data([0x47, 0xFC, 0x6E]).write(to: u.ordner.appendingPathComponent("A.md"))
+        m.flush()
+        XCTAssertEqual(m.rescuedFiles, [])
+
+        XCTAssertNotNil(m.writeRescueCopyIfNeeded(in: m.rescueDirectory))
+        XCTAssertEqual(m.rescuedFiles.count, 1)
+    }
 }

@@ -917,13 +917,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Notizen zuerst: Ungesicherter Text (höchstens eine Sekunde alt) wird jetzt
         // gesichert. Scheitert das (Platte voll, fremde Änderung nicht lesbar), geht er
-        // als Rettungskopie in den App-Support. Scheitert auch das, fragt die App nach,
-        // statt den Text still zu verlieren.
+        // als Rettungskopie in den App-Support (die Seite zeigt sie danach an). Scheitert
+        // auch das, fragt die App nach, statt den Text still zu verlieren. Wird das
+        // Beenden abgebrochen und erneut versucht, entsteht für denselben Text keine
+        // zweite Kopie.
         if let notes = notesPageStorage {
             notes.flush()
             if notes.session?.hasUnsavedText == true,
-               notes.writeRescueCopyIfNeeded(
-                   in: StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)) == nil,
+               notes.writeRescueCopyIfNeeded(in: notes.rescueDirectory) == nil,
                notes.session?.hasUnsavedText == true {
                 let alert = NSAlert()
                 alert.messageText = Loc.t("Eine Notiz konnte nicht gesichert werden.")

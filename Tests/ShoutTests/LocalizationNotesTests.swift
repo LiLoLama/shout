@@ -40,6 +40,9 @@ final class LocalizationNotesTests: XCTestCase {
         "Eine Notiz konnte nicht gesichert werden.",
         "Weder im Notizordner noch als Rettungskopie war Platz. Der Text geht beim Beenden verloren.",
         "Text kopieren und beenden",
+        // Hinweis auf gerettete Notizen
+        "Beim letzten Beenden wurden ungesicherte Notizen gerettet.",
+        "In den Notizordner holen",
         // schon vorhanden, hier mitgeprüft, weil die Seite sie benutzt
         "Löschen",
         "Rückgängig",

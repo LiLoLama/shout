@@ -15,10 +15,65 @@ final class NotesPageModel: ObservableObject {
     @Published private(set) var session: NoteEditorSession?
     @Published private(set) var lastDeleted: UndoDelete?
     private let defaults: UserDefaults
+    /// Hierhin rettet `writeRescueCopyIfNeeded` beim Beenden ungesicherten Text.
+    let rescueDirectory: URL
+    /// Gerettete Notizen (`.md` im Rettungsordner). Solange welche da sind, zeigt
+    /// die Seite einen Hinweis — sonst lägen sie unbemerkt im App-Support.
+    @Published private(set) var rescuedFiles: [URL] = []
+    /// Text und Datei der letzten Rettungskopie. Wird das Beenden abgebrochen und
+    /// erneut versucht, entsteht für denselben Text keine zweite Kopie.
+    private var lastRescue: (body: String, url: URL)?
 
-    init(store: NoteStore, defaults: UserDefaults = .standard) {
+    init(store: NoteStore, defaults: UserDefaults = .standard,
+         rescueDirectory: URL = StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)) {
         self.store = store
         self.defaults = defaults
+        self.rescueDirectory = rescueDirectory
+        refreshRescuedFiles()
+    }
+
+    /// Liest den Rettungsordner neu ein.
+    func refreshRescuedFiles() {
+        let inhalt = (try? FileManager.default.contentsOfDirectory(at: rescueDirectory,
+                                                                   includingPropertiesForKeys: nil)) ?? []
+        let dateien = inhalt
+            .filter { !$0.lastPathComponent.hasPrefix(".") && $0.pathExtension.lowercased() == NoteFile.fileExtension }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        if dateien != rescuedFiles { rescuedFiles = dateien }
+    }
+
+    /// Holt die geretteten Notizen in den Notizordner, jede unter einem freien
+    /// Namen. Die Rettungsdatei wird erst entfernt, wenn die Notiz geschrieben
+    /// ist; scheitert etwas, bleibt sie liegen. Gibt die Zahl der geholten zurück.
+    @discardableResult
+    func adoptRescuedNotes() -> Int {
+        refreshRescuedFiles()
+        guard !rescuedFiles.isEmpty, store.checkFolder(create: true) == .ready else { return 0 }
+        var geholt = 0
+        for datei in rescuedFiles {
+            guard let daten = try? Data(contentsOf: datei), let text = String(data: daten, encoding: .utf8) else {
+                NSLog("shout: Gerettete Notiz \(datei.lastPathComponent) ist nicht lesbar — bleibt liegen.")
+                continue
+            }
+            let parsed = NoteFile.parse(text)
+            let titel = NoteFile.safeTitle(datei.deletingPathExtension().lastPathComponent)
+                ?? NoteFile.deriveTitle(from: parsed.body)
+                ?? Loc.t("Unbenannt")
+            let name = NoteFile.freeFileName(for: titel, in: store.folder)
+            let note = Note(id: UUID(), fileName: name, body: parsed.body, created: parsed.created ?? Date(),
+                            modified: Date(), pinned: parsed.pinned, extraFrontmatter: parsed.extraFrontmatter,
+                            titleIsFixed: true, createdRaw: parsed.createdRaw)
+            guard store.write(note, to: store.folder.appendingPathComponent(name)) != nil else { continue }
+            geholt += 1
+            do {
+                try FileManager.default.removeItem(at: datei)
+            } catch {
+                NSLog("shout: Gerettete Notiz \(datei.lastPathComponent) konnte nicht entfernt werden: \(error)")
+            }
+        }
+        store.reload()
+        refreshRescuedFiles()
+        return geholt
     }
 
     var results: [NoteSearch.Result] { NoteSearch.filter(store.notes, query: query) }
@@ -138,6 +193,12 @@ final class NotesPageModel: ObservableObject {
     func writeRescueCopyIfNeeded(in directory: URL) -> URL? {
         guard let session, session.hasUnsavedText else { return nil }
         let note = session.note
+        // Beenden abgebrochen und erneut versucht: Derselbe Text liegt schon gerettet da.
+        if let letzte = lastRescue, letzte.body == note.body,
+           letzte.url.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL,
+           FileManager.default.fileExists(atPath: letzte.url.path) {
+            return letzte.url
+        }
         let titel = (note.isNew ? nil : NoteFile.safeTitle(note.title))
             ?? NoteFile.deriveTitle(from: note.body)
             ?? Loc.t("Unbenannt")
@@ -152,6 +213,8 @@ final class NotesPageModel: ObservableObject {
             let name = NoteFile.freeFileName(for: "\(titel) \(zeit)", in: directory)
             let url = directory.appendingPathComponent(name)
             try Data(note.body.utf8).write(to: url, options: .atomic)
+            lastRescue = (note.body, url)
+            refreshRescuedFiles()
             return url
         } catch {
             NSLog("shout: Rettungskopie der Notiz konnte nicht geschrieben werden: \(error)")

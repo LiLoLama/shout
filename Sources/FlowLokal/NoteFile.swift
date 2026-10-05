@@ -102,4 +102,96 @@ enum NoteFile {
         formatter.timeZone = timeZone
         return formatter.string(from: date)
     }
+
+    // MARK: - Titel und Dateinamen
+
+    static let maxTitleLength = 60
+    static let titleWordLimit = 5
+    /// Ab so vielen Wörtern steht der Dateiname einer neuen Notiz fest.
+    static let fixedTitleWordCount = 3
+
+    /// Titel aus den ersten Wörtern der ersten Zeile mit Inhalt. Bildzeilen
+    /// zählen nicht — ein Dateiname „![](Anhänge-…" hilft niemandem.
+    static func deriveTitle(from body: String) -> String? {
+        let erste = body.split(separator: "\n")
+            .map(cleanLine)
+            .first { !$0.isEmpty && !$0.hasPrefix("![") }
+        guard let erste else { return nil }
+        let woerter = erste.split(whereSeparator: \.isWhitespace).prefix(titleWordLimit)
+        return safeTitle(woerter.joined(separator: " "))
+    }
+
+    /// Markdown-Zeichen am Zeilenanfang und Hervorhebungen fallen weg: Aus
+    /// „## **Wichtig**: Termin" wird „Wichtig: Termin".
+    static func cleanLine(_ line: Substring) -> String {
+        var text = line.trimmingCharacters(in: .whitespaces)
+        let marker = ["[ ]", "[x]", "[X]", "#", "-", "*", "+", ">"]
+        var weiter = true
+        while weiter {
+            weiter = false
+            for zeichen in marker where text.hasPrefix(zeichen) {
+                text = String(text.dropFirst(zeichen.count)).trimmingCharacters(in: .whitespaces)
+                weiter = true
+            }
+        }
+        text.removeAll { "*_`".contains($0) }
+        return text
+    }
+
+    /// Ein Dateiname, der überall taugt: keine Pfadzeichen, nichts, was Windows
+    /// oder Obsidian-Links ablehnen, kein führender Punkt (versteckte Datei),
+    /// kein Punkt am Ende, höchstens 60 Zeichen.
+    static func safeTitle(_ raw: String) -> String? {
+        var text = raw.replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+        text.removeAll { ":*\"<>|?#^[]".contains($0) }
+        text = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        while text.hasPrefix(".") { text.removeFirst() }
+        text = String(text.prefix(maxTitleLength)).trimmingCharacters(in: .whitespaces)
+        while text.hasSuffix(".") { text.removeLast() }
+        return text.isEmpty ? nil : text
+    }
+
+    /// Wörter mit mindestens einem Buchstaben oder einer Ziffer. „- [ ]" zählt nicht.
+    static func wordCount(_ body: String) -> Int {
+        body.split(whereSeparator: \.isWhitespace)
+            .filter { $0.contains { $0.isLetter || $0.isNumber } }
+            .count
+    }
+
+    /// „Titel (Konflikt)" — gekürzt so, dass der Zusatz immer ganz dasteht.
+    static func conflictTitle(_ title: String, suffix: String) -> String {
+        let platz = max(maxTitleLength - suffix.count - 1, 1)
+        return String(title.prefix(platz)).trimmingCharacters(in: .whitespaces) + " " + suffix
+    }
+
+    /// iCloud lagert „Idee.md" als „.Idee.md.icloud" aus. Gibt den echten Namen
+    /// zurück, wenn es ein ausgelagerter Notizname ist.
+    static func placeholderTarget(_ name: String) -> String? {
+        guard name.hasPrefix("."), name.hasSuffix(".icloud") else { return nil }
+        let innen = String(name.dropFirst().dropLast(".icloud".count))
+        return (innen as NSString).pathExtension.lowercased() == fileExtension ? innen : nil
+    }
+
+    /// Freier Dateiname: „Titel.md", sonst „Titel 2.md", „Titel 3.md" …
+    /// `current` ist die eigene Datei und zählt nicht als belegt. Verglichen wird
+    /// ohne Groß-/Kleinschreibung, wie APFS es standardmäßig tut.
+    static func freeFileName(for title: String, in folder: URL, current: String? = nil,
+                             fileManager: FileManager = .default) -> String {
+        let namen = (try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? []
+        var belegt = Set<String>()
+        for name in namen {
+            belegt.insert(name.lowercased())
+            if let echt = placeholderTarget(name) { belegt.insert(echt.lowercased()) }
+        }
+        if let current { belegt.remove(current.lowercased()) }
+
+        var kandidat = "\(title).\(fileExtension)"
+        var zahl = 2
+        while belegt.contains(kandidat.lowercased()) {
+            kandidat = "\(title) \(zahl).\(fileExtension)"
+            zahl += 1
+        }
+        return kandidat
+    }
 }

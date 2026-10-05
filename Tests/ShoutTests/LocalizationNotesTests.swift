@@ -37,6 +37,9 @@ final class LocalizationNotesTests: XCTestCase {
         "Verwerfen …",
         "Ungesicherten Text verwerfen?",
         "Der Text dieser Notiz ist nirgends gesichert. Kopiere ihn vorher, wenn du ihn behalten willst.",
+        "Eine Notiz konnte nicht gesichert werden.",
+        "Weder im Notizordner noch als Rettungskopie war Platz. Der Text geht beim Beenden verloren.",
+        "Text kopieren und beenden",
         // schon vorhanden, hier mitgeprüft, weil die Seite sie benutzt
         "Löschen",
         "Rückgängig",

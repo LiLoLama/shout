@@ -949,5 +949,9 @@ final class Loc: ObservableObject {
         "Ungesicherten Text verwerfen?": "Discard unsaved text?",
         "Der Text dieser Notiz ist nirgends gesichert. Kopiere ihn vorher, wenn du ihn behalten willst.":
             "This note’s text isn’t saved anywhere. Copy it first if you want to keep it.",
+        "Eine Notiz konnte nicht gesichert werden.": "A note couldn’t be saved.",
+        "Weder im Notizordner noch als Rettungskopie war Platz. Der Text geht beim Beenden verloren.":
+            "There was no room in the notes folder or for a rescue copy. The text will be lost when you quit.",
+        "Text kopieren und beenden": "Copy text and quit",
     ]
 }

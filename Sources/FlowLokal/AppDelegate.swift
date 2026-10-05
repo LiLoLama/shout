@@ -915,6 +915,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Läuft noch ein Datei-Auftrag, wird nachgefragt — sonst ist die Arbeit von
     /// vielleicht einer halben Stunde stillschweigend weg.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Notizen zuerst: Ungesicherter Text (höchstens eine Sekunde alt) wird jetzt
+        // gesichert. Scheitert das (Platte voll, fremde Änderung nicht lesbar), geht er
+        // als Rettungskopie in den App-Support. Scheitert auch das, fragt die App nach,
+        // statt den Text still zu verlieren.
+        if let notes = notesPageStorage {
+            notes.flush()
+            if notes.session?.hasUnsavedText == true,
+               notes.writeRescueCopyIfNeeded(
+                   in: StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)) == nil,
+               notes.session?.hasUnsavedText == true {
+                let alert = NSAlert()
+                alert.messageText = Loc.t("Eine Notiz konnte nicht gesichert werden.")
+                alert.informativeText = Loc.t("Weder im Notizordner noch als Rettungskopie war Platz. Der Text geht beim Beenden verloren.")
+                alert.addButton(withTitle: Loc.t("Text kopieren und beenden"))
+                alert.addButton(withTitle: Loc.t("Abbrechen"))
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
+                guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(notes.session?.note.body ?? "", forType: .string)
+            }
+        }
         // Ein laufender Mitschnitt zuerst: Die Datei liegt zwar auf der Platte, aber
         // ohne das Stoppen bekäme sie weder Namen noch Auftrag — eine Stunde Meeting
         // wäre praktisch verloren.
@@ -941,11 +963,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        notesPageStorage?.flush()    // ungesicherter Notiztext, höchstens eine Sekunde alt
-        // Scheitert das Sichern (Platte voll, fremde Änderung nicht lesbar), bleibt
-        // der Text sonst nur im Speicher und ginge mit dem Beenden verloren.
-        notesPageStorage?.writeRescueCopyIfNeeded(
-            in: StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true))
+        // Zweite Absicherung: Die Rettung läuft schon in applicationShouldTerminate,
+        // hier würde sie nur eine zweite Kopie schreiben.
+        notesPageStorage?.flush()
         fileQueue.cancelAll()
         meetingTicker?.invalidate()
         meetingTicker = nil

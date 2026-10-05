@@ -30,4 +30,20 @@ final class DictationInsertionTests: XCTestCase {
     func testLeererTextBleibtLeer() {
         XCTAssertEqual(DictationInsertion.text("", after: "o"), "")
     }
+
+    func testNachSchliessenderAnfuehrungMitLeerzeichen() {
+        XCTAssertEqual(DictationInsertion.text("sagte", after: "“"), " sagte")
+        XCTAssertEqual(DictationInsertion.text("sagte", after: "\""), " sagte")
+        XCTAssertEqual(DictationInsertion.text("sagte", after: "'"), " sagte")
+    }
+
+    func testNachOeffnenderFranzoesischerAnfuehrungOhneLeerzeichen() {
+        XCTAssertEqual(DictationInsertion.text("Welt", after: "«"), "Welt")
+        XCTAssertEqual(DictationInsertion.text("Welt", after: "‚"), "Welt")
+    }
+
+    func testDiktatMitfuehrendemLeerraumBekommtKeinZweitesLeerzeichen() {
+        XCTAssertEqual(DictationInsertion.text(" Welt", after: "o"), " Welt")
+        XCTAssertEqual(DictationInsertion.text("\nWelt", after: "o"), "\nWelt")
+    }
 }

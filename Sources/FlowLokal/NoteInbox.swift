@@ -5,7 +5,7 @@ import Foundation
 enum NoteInbox {
 
     /// „## Montag, 5. Oktober 2026“ bzw. „## Monday, October 5, 2026“.
-    static func dayHeading(for date: Date, locale: Locale, timeZone: TimeZone = .current) -> String {
+    static func dayHeading(for date: Date, locale: Locale, timeZone: TimeZone = .autoupdatingCurrent) -> String {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.timeZone = timeZone
@@ -17,24 +17,26 @@ enum NoteInbox {
     /// Tagesüberschrift, dann „- **14:32** Diktat“. Weitere Zeilen eines
     /// Diktats stehen eingerückt unter dem Spiegelstrich.
     static func appendix(to body: String, text: String, date: Date, locale: Locale,
-                         timeZone: TimeZone = .current) -> String {
+                         timeZone: TimeZone = .autoupdatingCurrent) -> String {
+        let gesprochen = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !gesprochen.isEmpty else { return "" }
         let ueberschrift = dayHeading(for: date, locale: locale, timeZone: timeZone)
         let uhr = DateFormatter()
         uhr.locale = Locale(identifier: "en_US_POSIX")
         uhr.timeZone = timeZone
         uhr.dateFormat = "HH:mm"
 
-        let zeilen = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let zeilen = gesprochen
             .split(whereSeparator: \.isNewline)
             .map(String.init)
         var eintrag = "- **\(uhr.string(from: date))** " + (zeilen.first ?? "")
         for zeile in zeilen.dropFirst() { eintrag += "\n  " + zeile }
 
-        let leer = body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let anfang = body.isEmpty
         var ergebnis = ""
-        if !leer && !body.hasSuffix("\n") { ergebnis += "\n" }
+        if !anfang && body.last?.isNewline != true { ergebnis += "\n" }
         if lastHeading(in: body) != ueberschrift {
-            if !leer { ergebnis += "\n" }
+            if !anfang { ergebnis += "\n" }
             ergebnis += ueberschrift + "\n"
         }
         return ergebnis + eintrag + "\n"

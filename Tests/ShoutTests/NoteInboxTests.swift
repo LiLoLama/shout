@@ -56,4 +56,29 @@ final class NoteInboxTests: XCTestCase {
         XCTAssertEqual(NoteInbox.lastHeading(in: "# Titel\n## A\ntext\n## B\n"), "## B")
         XCTAssertNil(NoteInbox.lastHeading(in: "nur Text"))
     }
+
+    func testLeeresDiktatErgibtNichts() {
+        for text in ["", "   ", "\n \n"] {
+            XCTAssertEqual(NoteInbox.appendix(to: "", text: text, date: utc("2026-10-05T12:32:00Z"),
+                                              locale: de, timeZone: berlin), "")
+            XCTAssertEqual(NoteInbox.appendix(to: "Notiz\n", text: text, date: utc("2026-10-05T12:32:00Z"),
+                                              locale: de, timeZone: berlin), "")
+        }
+    }
+
+    func testNurLeerraumAlsBodyBekommtZeilenumbruchVorDerUeberschrift() {
+        let anhang = NoteInbox.appendix(to: "  ", text: "x", date: utc("2026-10-05T12:32:00Z"),
+                                        locale: de, timeZone: berlin)
+        XCTAssertEqual(anhang, "\n\n## Montag, 5. Oktober 2026\n- **14:32** x\n")
+    }
+
+    func testCRLFAmSchlussErzeugtKeineZusaetzlicheLeerzeile() {
+        let body = "## Montag, 5. Oktober 2026\r\n- **14:32** Milch kaufen\r\n"
+        let gleicherTag = NoteInbox.appendix(to: body, text: "Brot", date: utc("2026-10-05T13:10:00Z"),
+                                             locale: de, timeZone: berlin)
+        XCTAssertEqual(gleicherTag, "- **15:10** Brot\n")
+        let neuerTag = NoteInbox.appendix(to: body, text: "Termin", date: utc("2026-10-06T07:00:00Z"),
+                                          locale: de, timeZone: berlin)
+        XCTAssertEqual(neuerTag, "\n## Dienstag, 6. Oktober 2026\n- **09:00** Termin\n")
+    }
 }

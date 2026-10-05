@@ -66,6 +66,9 @@ Trial-Code und Stripe-Worker sind entfernt (Git-Historie hat alles).
 - [ ] **Streaming-Transkription** (#13) — Live-Text während des Sprechens (großer „Wow"-Faktor, L-Aufwand).
 - [ ] **Übersetzungs-Modus** (#14) — deutsch sprechen, englisch einfügen.
 - [ ] **Barrierefreiheit** (#15) — VoiceOver-Labels, Menüleisten-Template-Icons (Sound-Feedback ist erledigt).
+- [ ] **Scratchpad am Mac** — schwebender Notizblock, Notizen als Markdown-Dateien in einem wählbaren Ordner (iCloud Drive/Obsidian-tauglich), Diktat an den Cursor, Eingangs-Notiz per eigener Taste, Tabs, Ablegen in die vorige App, lokale Transforms, Versionen. Spec: `docs/superpowers/specs/2026-10-05-scratchpad-design.md`, Umsetzung in drei Plänen.
+- [ ] **Scratchpad auf iOS** — eigene Spec: derselbe Ordner über ein Security-scoped Bookmark, App-Intent „In Notiz diktieren“ für den Action Button, Widget.
+- [ ] **Scratchpad unter Windows** — eigene Spec, C#-Port (`TrayContext.ProcessAsync`, `RecordingOverlay`, `DashboardForm`).
 
 ## 🖥️ Mac — Gleichstand mit Windows
 - [x] **„Über shout."** — Klick auf die Wortmarke in der Seitenleiste öffnet ein Popover mit App-Icon, Version + Build (per Klick kopierbar), Aktualisierungs-Prüfung (Sparkle), Schalter für die automatische Prüfung, Zeitpunkt der letzten Prüfung und Verweisen auf Quellcode, Issues, Lizenz und Unterstützen. Auch über das Programm-Menü und das Menü der Menüleiste erreichbar (`AboutView.swift`).

@@ -3,9 +3,9 @@ import AppKit
 /// Hebt Markdown im Editor hervor, ohne den Text zu verändern: Die Datei bleibt
 /// Klartext, nur die Darstellung bekommt Größen, Fett, Kursiv und gedimmte
 /// Markierungszeichen. Als Delegate eines `NSTextStorage` gestaltet es nach
-/// jeder Zeichenänderung den ganzen Text neu — bei Notizen von einigen tausend
-/// Zeichen schneller als jede Buchführung über geänderte Bereiche, und
-/// Codeblöcke über mehrere Zeilen werden nie halb erkannt.
+/// jeder Zeichenänderung den Absatz um die Änderung neu — mit einem Codeblock-Zaun im
+/// Text (oder wenn gerade einer verschwand) den ganzen Text, damit
+/// Codeblöcke über mehrere Zeilen nie halb erkannt werden.
 final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
 
     enum Style {
@@ -35,10 +35,24 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     /// Zeichenänderung, danach wird von selbst neu gestaltet.
     var shouldSkip: (() -> Bool)?
 
+    /// Stand vor der letzten Änderung: Gab es einen Codeblock-Zaun? Verschwindet
+    /// er, muss der ganze Text neu, sonst blieben frühere Blockzeilen monospace.
+    private var hatteZaun = false
+
     func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
                      range editedRange: NSRange, changeInLength delta: Int) {
         guard editedMask.contains(.editedCharacters), shouldSkip?() != true else { return }
-        Self.apply(to: textStorage)
+        let ns = textStorage.string as NSString
+        let hatZaun = ns.range(of: "```").location != NSNotFound
+        defer { hatteZaun = hatZaun }
+        // Ein Zaun verändert die Darstellung bis zum nächsten — dann alles.
+        if hatZaun || hatteZaun {
+            Self.apply(to: textStorage)
+            return
+        }
+        let start = min(editedRange.location, ns.length)
+        let ende = min(NSMaxRange(editedRange), ns.length)
+        Self.apply(to: textStorage, in: ns.paragraphRange(for: NSRange(location: start, length: ende - start)))
     }
 
     // MARK: - Regeln
@@ -57,11 +71,18 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private static let quote = muster("^>[ \\t]?.*$")
     private static let link = muster("!?\\[([^\\]\\n]*)\\]\\(([^)\\n]*)\\)")
 
+    /// Gestaltet den ganzen Text.
     static func apply(to storage: NSTextStorage) {
+        apply(to: storage, in: NSRange(location: 0, length: (storage.string as NSString).length))
+    }
+
+    /// Gestaltet nur `bereich`. Der Bereich muss an Absatzgrenzen beginnen und
+    /// enden — alle Regeln außer dem Zaun sind zeilengebunden.
+    static func apply(to storage: NSTextStorage, in bereich: NSRange) {
         let ns = storage.string as NSString
-        let ganz = NSRange(location: 0, length: ns.length)
+        let ganz = NSIntersectionRange(bereich, NSRange(location: 0, length: ns.length))
         storage.setAttributes(Style.baseAttributes, range: ganz)
-        guard ns.length > 0 else { return }
+        guard ganz.length > 0 else { return }
         let text = storage.string
 
         let bloecke = fence.matches(in: text, range: ganz).map(\.range)

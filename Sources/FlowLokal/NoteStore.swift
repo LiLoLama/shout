@@ -34,6 +34,8 @@ final class NoteStore: ObservableObject {
     var onRename: ((String, String) -> Void)?
     /// Für diese Platzhalter wurde der iCloud-Download schon angestoßen.
     private var angestosseneDownloads = Set<String>()
+    /// Für Tests: Platzhalter, deren Download angefordert ist und die noch ausgelagert sind.
+    var requestedDownloads: Set<String> { angestosseneDownloads }
     /// Gepufferter Text einer vorhandenen Notiz, der als Konfliktdatei in den
     /// Ordner zurückkam (Notiz-ID → Name der Konfliktdatei). Die Sitzung der
     /// Notiz zeigt den Hinweis und quittiert mit `acknowledgeReturnedConflict`.
@@ -120,6 +122,7 @@ final class NoteStore: ObservableObject {
         case .notYetCreated:
             folderState = .ok
             cache = [:]
+            angestosseneDownloads = []
             publish()
             return
         case .ready:
@@ -148,6 +151,9 @@ final class NoteStore: ObservableObject {
             }
         }
         cache = frisch
+        // Wer geladen ist, verlässt den Merker: Wird er später erneut ausgelagert,
+        // wird der Download wieder angefordert.
+        angestosseneDownloads.formIntersection(frisch.filter { $0.value.isPlaceholder }.keys)
         publish()
     }
 
@@ -537,6 +543,7 @@ final class NoteStore: ObservableObject {
             try Data(serialized(note).utf8).write(to: zwischen)
         } catch {
             NSLog("shout: Notiz \(url.lastPathComponent) konnte nicht gesichert werden: \(error)")
+            try? fileManager.removeItem(at: zwischen)
             return .failed
         }
         var fehler = renamex_np(zwischen.path, url.path, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
@@ -654,9 +661,11 @@ extension NoteStore {
         guard let titel = NoteFile.safeTitle(raw) else { return .failed }
         guard checkFolder(create: true) == .ready else {
             folderState = .unreachable
+            scheduleRetry()
             return .failed
         }
         folderState = .ok
+        startWatchingIfNeeded()
         var note = Note.blank()
         note.body = body
         note.pinned = pinned

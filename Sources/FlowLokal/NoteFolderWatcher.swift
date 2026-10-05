@@ -43,10 +43,14 @@ final class NoteFolderWatcher {
                 Unmanaged<Kasten>.fromOpaque(info).release()
             },
             copyDescription: nil)
-        let callback: FSEventStreamCallback = { _, info, _, eventPaths, _, _ in
+        let callback: FSEventStreamCallback = { _, info, anzahl, eventPaths, eventFlags, _ in
             guard let info else { return }
             // Mit `UseCFTypes` kommen die Pfade als `CFArray` von `CFString`.
-            let pfade = (Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue() as NSArray) as? [String] ?? []
+            var pfade = (Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue() as NSArray) as? [String] ?? []
+            // Gingen Ereignisse verloren oder sind Unterordner nicht mehr einzeln
+            // gemeldet: keine Pfade, damit der Store sicherheitshalber neu einliest.
+            let flaggen = Array(UnsafeBufferPointer(start: eventFlags, count: anzahl))
+            if NoteFolderWatcher.needsFullRescan(flags: flaggen) { pfade = [] }
             Unmanaged<Kasten>.fromOpaque(info).takeUnretainedValue().watcher?.onChange(pfade)
         }
         // Echte Pfade: Temp-Ordner liegen hinter dem Symlink /var → /private/var.
@@ -76,14 +80,33 @@ final class NoteFolderWatcher {
     /// schon. Ohne Pfade sicherheitshalber ja.
     static func concernsFolder(_ paths: [String], folder: URL) -> Bool {
         guard !paths.isEmpty else { return true }
-        let ordner = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        var echt = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let aufgeloest = realpath(folder.path, &echt) != nil
+            ? String(cString: echt)
+            : folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let ordner = ohnePrivate(aufgeloest)
         return paths.contains { pfad in
-            let datei = URL(fileURLWithPath: pfad).standardizedFileURL
+            let datei = URL(fileURLWithPath: ohnePrivate(URL(fileURLWithPath: pfad).standardizedFileURL.path))
             if datei.path == ordner { return true }
             guard datei.deletingLastPathComponent().path == ordner else { return false }
             let name = datei.lastPathComponent
             return !name.hasPrefix(".") || NoteFile.placeholderTarget(name) != nil
         }
+    }
+
+    /// Verlorene oder zusammengefasste Ereignisse: Die Pfade sind dann nicht
+    /// vollständig, also muss neu eingelesen werden.
+    static func needsFullRescan(flags: [FSEventStreamEventFlags]) -> Bool {
+        let mask = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs
+            | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped)
+        return flags.contains { $0 & mask != 0 }
+    }
+
+    /// Kanonische Form für den Vergleich: ohne führendes `/private`. FSEvents
+    /// meldet echte Pfade (`/private/var/…`); `standardizedFileURL` entfernt das
+    /// Präfix aber nur bei vorhandenen Pfaden — eine gelöschte Datei behielte es.
+    private static func ohnePrivate(_ pfad: String) -> String {
+        pfad.hasPrefix("/private/") ? String(pfad.dropFirst("/private".count)) : pfad
     }
 
     deinit {

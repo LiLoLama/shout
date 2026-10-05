@@ -63,4 +63,53 @@ final class NoteFolderWatcherFilterTests: XCTestCase {
         XCTAssertTrue(NoteFolderWatcher.concernsFolder(pfade.filter { $0.hasSuffix("/B.md") }, folder: echt))
         XCTAssertFalse(NoteFolderWatcher.concernsFolder(pfade.filter { $0.hasSuffix("/a.json") }, folder: echt))
     }
+
+    // MARK: - /private und gelöschte Dateien
+
+    /// `standardizedFileURL` entfernt `/private` nur bei vorhandenen Pfaden — eine
+    /// gelöschte Datei unter `/private/var/…` muss trotzdem treffen.
+    func testGeloeschteDateiUnterPrivateTrifft() {
+        let var_ = URL(fileURLWithPath: "/var/folders/x/Notizen", isDirectory: true)
+        XCTAssertTrue(NoteFolderWatcher.concernsFolder(["/private/var/folders/x/Notizen/A.md"], folder: var_))
+        let privat = URL(fileURLWithPath: "/private/var/folders/x/Notizen", isDirectory: true)
+        XCTAssertTrue(NoteFolderWatcher.concernsFolder(["/var/folders/x/Notizen/A.md"], folder: privat))
+        XCTAssertFalse(NoteFolderWatcher.concernsFolder(["/private/var/folders/x/Notizen/.obsidian/a.json"], folder: var_))
+    }
+
+    func testVerlorenegEreignisseErzwingenNeueinlesen() {
+        let still = FSEventStreamEventFlags(kFSEventStreamEventFlagItemModified)
+        XCTAssertFalse(NoteFolderWatcher.needsFullRescan(flags: [still]))
+        for flag in [kFSEventStreamEventFlagMustScanSubDirs, kFSEventStreamEventFlagUserDropped,
+                     kFSEventStreamEventFlagKernelDropped] {
+            XCTAssertTrue(NoteFolderWatcher.needsFullRescan(flags: [still, FSEventStreamEventFlags(flag)]))
+        }
+    }
+
+    /// Mit dem echten Strom: Auch eine gelöschte Datei wird mit einem Pfad
+    /// gemeldet, den `concernsFolder` annimmt.
+    func testEchterStromMeldetLoeschung() throws {
+        let echt = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shout-watcher-loeschen-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: echt, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: echt) }
+        let datei = echt.appendingPathComponent("B.md")
+        try Data("x".utf8).write(to: datei)
+        let abgewartet = expectation(description: "Startdatei abgeklungen")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { abgewartet.fulfill() }
+        wait(for: [abgewartet], timeout: 5)
+
+        var pfade: [String] = []
+        let gemeldet = expectation(description: "Löschung gemeldet")
+        gemeldet.assertForOverFulfill = false
+        let watcher = try XCTUnwrap(NoteFolderWatcher(url: echt, latency: 0.1, onPaths: { neu in
+            pfade += neu
+            if neu.isEmpty || neu.contains(where: { $0.hasSuffix("/B.md") }) { gemeldet.fulfill() }
+        }))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            try? FileManager.default.removeItem(at: datei)
+        }
+        wait(for: [gemeldet], timeout: 5)
+        withExtendedLifetime(watcher) {}
+        XCTAssertTrue(NoteFolderWatcher.concernsFolder(pfade, folder: echt), "gemeldet: \(pfade)")
+    }
 }

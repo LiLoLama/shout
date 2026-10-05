@@ -237,6 +237,104 @@ final class NoteEditorSessionTests: XCTestCase {
         XCTAssertEqual(u.dateien(), ["X.md"])
     }
 
+    // MARK: - Gepuffert
+
+    /// Nach `.buffered` steht im Store noch der alte Text. Anheften darf darauf
+    /// nicht aufsetzen: Der Puffer bekäme die alte Fassung, die Sitzung auch.
+    func testAnheftenNachPufferNimmtNeuenTextMit() throws {
+        try u.schreibe("X.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        let weg = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: u.ordner, to: weg)
+
+        sitzung.edit("neu unterwegs")
+        sitzung.flush()
+        XCTAssertEqual(sitzung.status, .clean)
+        XCTAssertEqual(s.folderState, .unreachable)
+
+        sitzung.setPinned(true)
+        let roh = try String(contentsOf: u.puffer.appendingPathComponent("X.md"), encoding: .utf8)
+        XCTAssertEqual(NoteFile.parse(roh).body, "neu unterwegs")
+        XCTAssertTrue(NoteFile.parse(roh).pinned)
+        XCTAssertEqual(sitzung.note.body, "neu unterwegs")
+        XCTAssertTrue(sitzung.note.pinned)
+    }
+
+    func testUmbenennenNachPufferVerliertKeinenText() throws {
+        try u.schreibe("X.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        let weg = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: u.ordner, to: weg)
+        sitzung.edit("neu unterwegs")
+        sitzung.flush()
+
+        sitzung.rename(to: "Anders")
+        let roh = try String(contentsOf: u.puffer.appendingPathComponent("X.md"), encoding: .utf8)
+        XCTAssertEqual(NoteFile.parse(roh).body, "neu unterwegs")
+        XCTAssertEqual(sitzung.note.body, "neu unterwegs")
+    }
+
+    // MARK: - Fehlend: Text geht beim Schließen nicht verloren
+
+    func testFlushLegtFehlendeNotizMitGetipptemTextNeuAn() throws {
+        try u.schreibe("X.md", "Text")
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("X.md"))
+        s.reload()
+        XCTAssertFalse(sitzung.hasUnsavedText)
+
+        sitzung.edit("Text, weiter bearbeitet")
+        XCTAssertTrue(sitzung.hasUnsavedText)
+        sitzung.flush()
+        XCTAssertEqual(sitzung.status, .clean)
+        XCTAssertFalse(sitzung.hasUnsavedText)
+        XCTAssertEqual(u.text("X.md"), "Text, weiter bearbeitet")
+    }
+
+    func testFlushOhneGetipptenTextLegtFehlendeNotizNichtNeuAn() throws {
+        try u.schreibe("X.md", "Text")
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("X.md"))
+        s.reload()
+        sitzung.flush()
+        XCTAssertEqual(sitzung.status, .missing)
+        XCTAssertEqual(u.dateien(), [])
+    }
+
+    func testAnheftenEinerFehlendenNotizZaehltAlsUngesichert() throws {
+        try u.schreibe("X.md", "Text")
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("X.md"))
+        s.reload()
+
+        sitzung.setPinned(true)
+        XCTAssertTrue(sitzung.hasUnsavedText)
+        sitzung.flush()
+        XCTAssertEqual(u.lies("X.md").map { NoteFile.parse($0).pinned }, true)
+    }
+
+    // MARK: - Wiederholung
+
+    func testNachFehlschlagVersuchtDieSitzungEsVonAlleinErneut() async throws {
+        try u.schreibe("X.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60, retryDelay: 0.05)
+        sitzung.edit("meins")
+        try Data([0x47, 0xFC, 0x6E]).write(to: u.ordner.appendingPathComponent("X.md"))
+        sitzung.flush()
+        XCTAssertTrue(sitzung.saveFailed)
+
+        try u.schreibe("X.md", "meins", zeit: Date().addingTimeInterval(5))
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(sitzung.status, .clean)
+        XCTAssertFalse(sitzung.saveFailed)
+    }
+
     // MARK: - Fehlend, dann wieder da
 
     /// Kommt eine gelöschte Notiz aus dem Papierkorb zurück (mit derselben ID),

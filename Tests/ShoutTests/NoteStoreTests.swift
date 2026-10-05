@@ -1,0 +1,195 @@
+import XCTest
+
+@MainActor
+final class NoteStoreTests: XCTestCase {
+
+    private var u: NotizUmgebung!
+
+    override func setUpWithError() throws {
+        Loc.shared.apply("de")      // „Unbenannt“, „(Konflikt)“ auf Deutsch
+        u = try NotizUmgebung()
+    }
+
+    override func tearDown() {
+        u.aufraeumen()
+        Loc.shared.apply("system")
+        super.tearDown()
+    }
+
+    private func gesichert(_ ergebnis: NoteStore.SaveResult,
+                           file: StaticString = #filePath, line: UInt = #line) throws -> Note {
+        guard case .saved(let notiz) = ergebnis else {
+            XCTFail("erwartet .saved, war \(ergebnis)", file: file, line: line)
+            throw XCTSkip()
+        }
+        return notiz
+    }
+
+    // MARK: - Sichern und Titel
+
+    func testLeereNeueNotizLegtNichtsAn() {
+        let s = u.store()
+        var n = Note.blank()
+        n.body = "  \n "
+        XCTAssertEqual(s.save(n), .skippedEmpty)
+        XCTAssertEqual(u.dateien(), [])
+    }
+
+    func testNeueNotizBekommtTitelAusDemText() throws {
+        let s = u.store()
+        var n = Note.blank()
+        n.body = "Milch und Kaffee kaufen"
+        let notiz = try gesichert(s.save(n))
+        XCTAssertEqual(notiz.fileName, "Milch und Kaffee kaufen.md")
+        XCTAssertTrue(notiz.titleIsFixed)
+        XCTAssertEqual(u.text("Milch und Kaffee kaufen.md"), "Milch und Kaffee kaufen")
+        XCTAssertEqual(s.notes.map(\.id), [n.id])
+    }
+
+    /// Unter drei Wörtern wandert der Name mit, danach steht er fest.
+    func testKurzerTitelWandertMitDannFest() throws {
+        let s = u.store()
+        var n = Note.blank()
+        n.body = "Milch"
+        var a = try gesichert(s.save(n))
+        XCTAssertEqual(a.fileName, "Milch.md")
+        XCTAssertFalse(a.titleIsFixed)
+
+        a.body = "Milch und Brot"
+        var b = try gesichert(s.save(a))
+        XCTAssertEqual(b.fileName, "Milch und Brot.md")
+        XCTAssertTrue(b.titleIsFixed)
+        XCTAssertEqual(u.dateien(), ["Milch und Brot.md"])
+
+        b.body = "Ganz anderer Anfang jetzt"
+        XCTAssertEqual(try gesichert(s.save(b)).fileName, "Milch und Brot.md")
+    }
+
+    func testGleicherTitelBekommtZahl() throws {
+        let s = u.store()
+        var a = Note.blank(); a.body = "Idee für morgen"
+        var b = Note.blank(); b.body = "Idee für morgen"
+        XCTAssertEqual(try gesichert(s.save(a)).fileName, "Idee für morgen.md")
+        XCTAssertEqual(try gesichert(s.save(b)).fileName, "Idee für morgen 2.md")
+    }
+
+    func testOhneVerwertbarenTitelHeisstUnbenannt() throws {
+        let s = u.store()
+        var n = Note.blank(); n.body = "# ***"
+        XCTAssertEqual(try gesichert(s.save(n)).fileName, "Unbenannt.md")
+    }
+
+    func testFrontmatterWirdGeschrieben() throws {
+        let s = u.store()
+        var n = Note.blank(); n.body = "Ein Text mit Inhalt"
+        _ = try gesichert(s.save(n))
+        let roh = try XCTUnwrap(u.lies("Ein Text mit Inhalt.md"))
+        XCTAssertTrue(roh.hasPrefix("---\ncreated: "))
+        XCTAssertFalse(roh.contains("pinned"))
+    }
+
+    // MARK: - Lesen
+
+    func testVorhandeneDateienWerdenGelesen() throws {
+        try u.schreibe("Aus Obsidian.md", "---\ntags: [x]\n---\nHallo")
+        try u.schreibe("Notiz.txt", "keine Notiz")
+        try u.schreibe(".versteckt.md", "keine Notiz")
+        try FileManager.default.createDirectory(at: u.ordner.appendingPathComponent("Anhänge"),
+                                                withIntermediateDirectories: true)
+        let s = u.store()
+        XCTAssertEqual(s.notes.map(\.title), ["Aus Obsidian"])
+        XCTAssertEqual(s.notes[0].body, "Hallo")
+        XCTAssertEqual(s.notes[0].extraFrontmatter, ["tags: [x]"])
+        XCTAssertTrue(s.notes[0].titleIsFixed)
+    }
+
+    /// Fremde Felder überleben das Speichern.
+    func testFremdeFelderUeberlebenDasSpeichern() throws {
+        try u.schreibe("Aus Obsidian.md", "---\ntags: [x]\n---\nHallo")
+        let s = u.store()
+        var n = s.notes[0]
+        n.body = "Hallo Welt"
+        _ = try gesichert(s.save(n))
+        XCTAssertTrue(try XCTUnwrap(u.lies("Aus Obsidian.md")).contains("tags: [x]"))
+    }
+
+    func testNeueinlesenBehaeltIDUndUebernimmtAenderung() throws {
+        try u.schreibe("X.md", "alt")
+        let s = u.store()
+        let id = s.notes[0].id
+        try u.schreibe("X.md", "neu von außen", zeit: Date().addingTimeInterval(10))
+        s.reload()
+        XCTAssertEqual(s.notes[0].body, "neu von außen")
+        XCTAssertEqual(s.notes[0].id, id)
+    }
+
+    func testICloudPlatzhalterWirdGelistet() throws {
+        try u.schreibe(".Fern.md.icloud", "")
+        let s = u.store()
+        XCTAssertEqual(s.notes.map(\.title), ["Fern"])
+        XCTAssertTrue(s.notes[0].isPlaceholder)
+    }
+
+    // MARK: - Ordner fehlt
+
+    /// Die Vorgabe in „Dokumente“ entsteht erst beim ersten Sichern — wer die
+    /// Seite nur ansieht, bekommt keinen leeren Ordner.
+    func testVorgabeordnerEntstehtErstBeimSichern() throws {
+        let vorgabe = u.wurzel.appendingPathComponent("Dokumente/shout Notizen", isDirectory: true)
+        let s = u.store(ordner: vorgabe, createIfMissing: true)
+        XCTAssertEqual(s.folderState, .ok)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vorgabe.path))
+        var n = Note.blank(); n.body = "Erste Notiz überhaupt"
+        _ = try gesichert(s.save(n))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vorgabe.appendingPathComponent("Erste Notiz überhaupt.md").path))
+    }
+
+    func testFehlenderOrdnerPuffertUndHoltNach() throws {
+        let laufwerk = u.wurzel.appendingPathComponent("Laufwerk", isDirectory: true)
+        let s = u.store(ordner: laufwerk)
+        XCTAssertEqual(s.folderState, .unreachable)
+
+        var n = Note.blank(); n.body = "Unterwegs notiert heute"
+        guard case .buffered(let gepuffert) = s.save(n) else { return XCTFail("nicht gepuffert") }
+        XCTAssertEqual(gepuffert.fileName, "Unterwegs notiert heute.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: u.puffer.appendingPathComponent("Unterwegs notiert heute.md").path))
+
+        try FileManager.default.createDirectory(at: laufwerk, withIntermediateDirectories: true)
+        s.reload()
+        XCTAssertEqual(s.folderState, .ok)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: laufwerk.appendingPathComponent("Unterwegs notiert heute.md").path))
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: u.puffer.path)) ?? [], [])
+        XCTAssertEqual(s.notes.map(\.id), [n.id])      // dieselbe Notiz, nicht eine neue
+    }
+
+    /// Hat in der Zwischenzeit niemand die Datei angefasst, ist die gepufferte
+    /// Fassung einfach die neuere und ersetzt sie — ohne Konfliktdatei.
+    func testUnveraendertesOriginalWirdErsetzt() throws {
+        try u.schreibe("A.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        var n = s.notes[0]
+        let weg = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: u.ordner, to: weg)
+
+        n.body = "neu unterwegs"
+        guard case .buffered = s.save(n) else { return XCTFail("nicht gepuffert") }
+
+        try FileManager.default.moveItem(at: weg, to: u.ordner)
+        s.reload()
+        XCTAssertEqual(u.dateien(), ["A.md"])
+        XCTAssertEqual(u.text("A.md"), "neu unterwegs")
+    }
+
+    /// Liegt dort inzwischen etwas anderes, wird die gepufferte Fassung zur
+    /// Konfliktdatei. Nichts wird überschrieben.
+    func testPufferKollisionWirdKonfliktdatei() throws {
+        try FileManager.default.createDirectory(at: u.puffer, withIntermediateDirectories: true)
+        try Data("---\ncreated: 2026-10-05\n---\naus dem Puffer".utf8)
+            .write(to: u.puffer.appendingPathComponent("A.md"))
+        try u.schreibe("A.md", "im Ordner")
+        _ = u.store()
+        XCTAssertEqual(u.dateien(), ["A (Konflikt).md", "A.md"])
+        XCTAssertEqual(u.text("A.md"), "im Ordner")
+        XCTAssertEqual(u.text("A (Konflikt).md"), "aus dem Puffer")
+    }
+}

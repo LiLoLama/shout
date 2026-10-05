@@ -20,6 +20,9 @@ struct Note: Identifiable, Equatable {
     var titleIsFixed: Bool
     /// iCloud hat die Datei ausgelagert; der Inhalt ist noch nicht da.
     var isPlaceholder: Bool = false
+    /// `created` wörtlich aus der Datei (siehe `NoteFile.Parsed.createdRaw`).
+    /// `nil` bei neuen Notizen: Dann schreibt shout das Datum selbst.
+    var createdRaw: String? = nil
 
     var title: String { (fileName as NSString).deletingPathExtension }
     var isNew: Bool { fileName.isEmpty }

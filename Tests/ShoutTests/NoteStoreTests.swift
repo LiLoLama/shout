@@ -88,6 +88,24 @@ final class NoteStoreTests: XCTestCase {
         XCTAssertFalse(roh.contains("pinned"))
     }
 
+    /// `created` aus Obsidian bleibt beim Sichern wörtlich stehen: ein reines
+    /// Datum bleibt ein reines Datum, eine Uhrzeit ohne Sekunden bleibt so.
+    func testCreatedAusObsidianBleibtWoertlich() throws {
+        let werte = ["2026-10-05", "2026-10-05T14:32", "2026-10-05 14:32", "\"2026-10-05\""]
+        for (i, wert) in werte.enumerated() {
+            try u.schreibe("N\(i).md", "---\ncreated: \(wert)\ntags: [a]\n---\nText",
+                           zeit: Date().addingTimeInterval(-60))
+        }
+        let s = u.store()
+        for var n in s.notes {
+            n.body = "Text, ergänzt"
+            _ = try gesichert(s.save(n))
+        }
+        for (i, wert) in werte.enumerated() {
+            XCTAssertEqual(u.lies("N\(i).md"), "---\ncreated: \(wert)\ntags: [a]\n---\nText, ergänzt")
+        }
+    }
+
     // MARK: - Lesen
 
     func testVorhandeneDateienWerdenGelesen() throws {

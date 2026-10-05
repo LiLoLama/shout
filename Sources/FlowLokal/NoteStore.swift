@@ -178,6 +178,7 @@ final class NoteStore: ObservableObject {
                 note.extraFrontmatter = extern.extraFrontmatter
                 note.pinned = extern.pinned
                 note.created = extern.created
+                note.createdRaw = extern.createdRaw
             }
         }
 
@@ -458,7 +459,7 @@ final class NoteStore: ObservableObject {
                     created: parsed.created ?? werte?.creationDate ?? Date(),
                     modified: werte?.contentModificationDate ?? .distantPast,
                     pinned: parsed.pinned, extraFrontmatter: parsed.extraFrontmatter,
-                    titleIsFixed: true)
+                    titleIsFixed: true, createdRaw: parsed.createdRaw)
     }
 
     /// Ausgelagert von iCloud: Eintrag ohne Inhalt, der Download wird angestoßen.
@@ -473,7 +474,7 @@ final class NoteStore: ObservableObject {
 
     /// Schreibt atomar und gibt das neue mtime zurück (nil bei Fehler).
     func write(_ note: Note, to url: URL) -> Date? {
-        let text = NoteFile.serialize(body: note.body, created: note.created,
+        let text = NoteFile.serialize(body: note.body, created: note.created, createdRaw: note.createdRaw,
                                       pinned: note.pinned, extraFrontmatter: note.extraFrontmatter)
         do {
             try Data(text.utf8).write(to: url, options: .atomic)
@@ -643,7 +644,8 @@ extension NoteStore {
             cache[name] = Note(id: UUID(), fileName: andere.fileName, body: andere.body,
                                created: andere.created, modified: andere.modified,
                                pinned: andere.pinned, extraFrontmatter: andere.extraFrontmatter,
-                               titleIsFixed: andere.titleIsFixed, isPlaceholder: andere.isPlaceholder)
+                               titleIsFixed: andere.titleIsFixed, isPlaceholder: andere.isPlaceholder,
+                               createdRaw: andere.createdRaw)
         }
         cache[note.fileName] = note
         publish()

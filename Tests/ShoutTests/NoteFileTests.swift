@@ -40,7 +40,8 @@ final class NoteFileTests: XCTestCase {
         let text = NoteFile.serialize(body: "# Titel\n\nText\n", created: erstellt, pinned: true,
                                       extraFrontmatter: ["tags: [a]"], timeZone: berlin)
         XCTAssertEqual(NoteFile.parse(text),
-                       .init(body: "# Titel\n\nText\n", created: erstellt, pinned: true,
+                       .init(body: "# Titel\n\nText\n", created: erstellt,
+                             createdRaw: "2026-10-05T14:32:00+02:00", pinned: true,
                              extraFrontmatter: ["tags: [a]"]))
     }
 
@@ -60,6 +61,53 @@ final class NoteFileTests: XCTestCase {
     /// Obsidian schreibt Datumsfelder oft ohne Uhrzeit.
     func testNurDatumWieInObsidian() {
         XCTAssertNotNil(NoteFile.parse("---\ncreated: 2026-10-05\n---\nx").created)
+    }
+
+    /// Obsidian und andere Programme schreiben Uhrzeiten auch ohne Sekunden
+    /// oder mit Leerzeichen statt „T“. Die Uhrzeit gilt in der lokalen Zeitzone.
+    func testUhrzeitOhneSekundenUndMitLeerzeichen() throws {
+        for wert in ["2026-10-05T14:32", "2026-10-05 14:32", "2026-10-05 14:32:07"] {
+            let d = try XCTUnwrap(NoteFile.date(from: wert), wert)
+            let k = Calendar.current.dateComponents(in: .current, from: d)
+            XCTAssertEqual([k.year, k.month, k.day, k.hour, k.minute], [2026, 10, 5, 14, 32], wert)
+        }
+    }
+
+    /// Jede gelesene Schreibweise kommt beim Schreiben wörtlich zurück.
+    func testRundlaufBehaeltCreatedWoertlich() throws {
+        let werte = ["2026-10-05", "2026-10-05T14:32", "2026-10-05 14:32", "2026-10-05 14:32:07",
+                     "2026-10-05T14:32:07", "2026-10-05T14:32:07+02:00", "2026-10-05T12:32:07.250Z",
+                     "\"2026-10-05\"", "'2026-10-05 14:32'"]
+        for wert in werte {
+            let roh = "---\ncreated: \(wert)\ntags: [a]\n---\nText"
+            let gelesen = NoteFile.parse(roh)
+            XCTAssertEqual(gelesen.createdRaw, wert)
+            let geschrieben = NoteFile.serialize(body: gelesen.body, created: try XCTUnwrap(gelesen.created, wert),
+                                                 createdRaw: gelesen.createdRaw, pinned: gelesen.pinned,
+                                                 extraFrontmatter: gelesen.extraFrontmatter, timeZone: utc)
+            XCTAssertEqual(geschrieben, roh)
+        }
+    }
+
+    /// Ein reines Datum bleibt ein reines Datum — keine Uhrzeit dazuerfunden.
+    func testNurDatumWirdAlsNurDatumGeschrieben() {
+        let gelesen = NoteFile.parse("---\ncreated: 2026-10-05\n---\nx")
+        let text = NoteFile.serialize(body: gelesen.body, created: gelesen.created!,
+                                      createdRaw: gelesen.createdRaw, pinned: false, extraFrontmatter: [])
+        XCTAssertEqual(text, "---\ncreated: 2026-10-05\n---\nx")
+    }
+
+    /// Ohne Wert aus der Datei (neue Notiz, unlesbares Feld) schreibt shout ISO 8601.
+    func testOhneRohwertSchreibtISO() {
+        XCTAssertNil(NoteFile.parse("---\ncreated: gestern\n---\nx").createdRaw)
+        let text = NoteFile.serialize(body: "x", created: datum("2026-10-05T12:00:00Z"), createdRaw: nil,
+                                      pinned: false, extraFrontmatter: [], timeZone: utc)
+        XCTAssertEqual(text, "---\ncreated: 2026-10-05T12:00:00Z\n---\nx")
+    }
+
+    /// Ein Datum mit Anhang ist kein Datum — nicht still auf Mitternacht kürzen.
+    func testDatumMitAnhangIstUnlesbar() {
+        XCTAssertNil(NoteFile.date(from: "2026-10-05 gestern"))
     }
 
     /// Ein unlesbares Datum fällt weg und wird beim nächsten Speichern neu

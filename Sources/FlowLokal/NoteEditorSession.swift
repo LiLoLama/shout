@@ -270,6 +270,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
             note.fileName = frisch.fileName
             note.modified = frisch.modified
             note.created = frisch.created
+            note.createdRaw = frisch.createdRaw
             note.extraFrontmatter = frisch.extraFrontmatter
             status = .dirty
             scheduleSave()

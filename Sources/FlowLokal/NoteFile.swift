@@ -9,6 +9,10 @@ enum NoteFile {
     struct Parsed: Equatable {
         var body: String
         var created: Date?
+        /// `created` so, wie es in der Datei stand (z. B. „2026-10-05“ aus
+        /// Obsidian). Wird beim Schreiben wörtlich übernommen; `nil`, wenn das
+        /// Feld fehlte oder unlesbar war.
+        var createdRaw: String? = nil
         var pinned: Bool
         var extraFrontmatter: [String]
     }
@@ -47,7 +51,12 @@ enum NoteFile {
         for line in lines {
             if let value = value(of: "created", in: line) {
                 // Unlesbar: Die Zeile fällt weg und wird beim Speichern neu geschrieben.
+                // Lesbar: Der Wert bleibt wörtlich, samt Anführungszeichen — ein
+                // reines Datum wird beim Sichern nicht zu einer Uhrzeit.
                 parsed.created = date(from: value)
+                if parsed.created != nil {
+                    parsed.createdRaw = line.dropFirst("created:".count).trimmingCharacters(in: .whitespaces)
+                }
             } else if let value = value(of: "pinned", in: line) {
                 parsed.pinned = value.lowercased() == "true"
             } else {
@@ -59,9 +68,12 @@ enum NoteFile {
 
     /// Schreibt Frontmatter und Text. `created` steht immer da, `pinned` nur,
     /// wenn die Notiz angeheftet ist; danach die fremden Felder in ihrer Reihenfolge.
-    static func serialize(body: String, created: Date, pinned: Bool,
+    /// `createdRaw` ist der Wert aus der Datei und wird wörtlich geschrieben; nur
+    /// ohne ihn (neue Notiz, Feld fehlte oder war unlesbar) steht `created` als ISO 8601 da.
+    static func serialize(body: String, created: Date, createdRaw: String? = nil, pinned: Bool,
                           extraFrontmatter: [String], timeZone: TimeZone = .current) -> String {
-        var lines = ["---", "created: " + string(from: created, timeZone: timeZone)]
+        let wert = createdRaw.flatMap { $0.isEmpty ? nil : $0 } ?? string(from: created, timeZone: timeZone)
+        var lines = ["---", "created: " + wert]
         if pinned { lines.append("pinned: true") }
         lines += extraFrontmatter
         lines.append("---")
@@ -78,14 +90,13 @@ enum NoteFile {
 
     // MARK: - Datum
 
-    /// ISO 8601 mit Zeitzone, mit Sekundenbruchteilen, ohne Zeitzone oder als
-    /// reines Datum — so, wie Obsidian und andere Programme es schreiben.
+    /// ISO 8601 mit Zeitzone oder Sekundenbruchteilen; ohne Zeitzone mit „T“ oder
+    /// Leerzeichen, mit oder ohne Sekunden; oder als reines Datum — so, wie
+    /// Obsidian und andere Programme es schreiben. Ohne Zeitzone gilt die lokale.
     static func date(from value: String) -> Date? {
         let varianten: [ISO8601DateFormatter.Options] = [
             [.withInternetDateTime],
             [.withInternetDateTime, .withFractionalSeconds],
-            [.withFullDate, .withTime, .withColonSeparatorInTime, .withDashSeparatorInDate],
-            [.withFullDate],
         ]
         for optionen in varianten {
             let formatter = ISO8601DateFormatter()
@@ -93,8 +104,25 @@ enum NoteFile {
             formatter.timeZone = .current
             if let date = formatter.date(from: value) { return date }
         }
+        // `ISO8601DateFormatter` mit `.withFullDate` nimmt auch „2026-10-05T14:32“
+        // an und macht Mitternacht daraus. `DateFormatter` verlangt den ganzen Text.
+        for format in localFormats {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = .current
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value) { return date }
+        }
         return nil
     }
+
+    private static let localFormats = [
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd",
+    ]
 
     static func string(from date: Date, timeZone: TimeZone = .current) -> String {
         let formatter = ISO8601DateFormatter()

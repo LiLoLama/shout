@@ -224,6 +224,58 @@ final class ScratchpadModelTests: XCTestCase {
         XCTAssertEqual(zweites.tabs.first?.note.title, "A")
     }
 
+    // MARK: - Fix nach Review
+
+    /// Neue (nie gesicherte) Tabs werden nicht gemerkt — der aktive Tab wird deshalb
+    /// über seinen Namen wiedergefunden, nicht über die Stelle.
+    func testAktiverTabWirdNachNameWiederhergestellt() throws {
+        try u.schreibe("A.md", "a")
+        try u.schreibe("B.md", "b")
+        let store = u.store()
+        let m = modell(store)
+        m.newTab()
+        m.open(id(m, "A"), inNewTab: true)
+        m.open(id(m, "B"), inNewTab: true)
+        m.select(1)
+        XCTAssertEqual(m.active?.note.title, "A")
+        let zweites = modell(store)
+        zweites.restoreTabs()
+        XCTAssertEqual(zweites.tabs.map(\.note.title), ["A", "B"])
+        XCTAssertEqual(zweites.active?.note.title, "A")
+    }
+
+    /// Ein leeres Diktat ist kein Fehler und öffnet keinen leeren Tab.
+    func testLeeresDiktatOeffnetKeinenTab() {
+        let m = modell()
+        XCTAssertTrue(m.insertDictation("", into: UUID()))
+        XCTAssertTrue(m.insertDictation(" \n ", into: UUID()))
+        XCTAssertTrue(m.tabs.isEmpty)
+    }
+
+    /// Sichern vor dem ersten Einblenden überschreibt die gemerkten Tabs nicht.
+    func testSichernBehaeltDieGemerktenTabs() throws {
+        try u.schreibe("A.md", "a")
+        let store = u.store()
+        let m = modell(store)
+        m.open(id(m, "A"), inNewTab: true)
+        modell(store).flushAll()
+        let drittes = modell(store)
+        drittes.restoreTabs()
+        XCTAssertEqual(drittes.tabs.map(\.note.title), ["A"])
+    }
+
+    /// Landet der Eingang in einer Konfliktdatei, meldet `appendToInbox` das —
+    /// der Aufrufer legt den Text dann zusätzlich in die Zwischenablage.
+    func testEingangImKonfliktMeldetFehlschlag() throws {
+        try u.schreibe("Eingang.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let m = modell()
+        XCTAssertNotNil(m.store.notes.first { $0.fileName == "Eingang.md" })
+        try u.schreibe("Eingang.md", "fremd", zeit: Date())
+        XCTAssertFalse(m.appendToInbox("Milch kaufen"))
+        let texte = u.dateien().compactMap { u.text($0) }
+        XCTAssertTrue(texte.contains { $0.contains("Milch kaufen") }, "\(u.dateien())")
+    }
+
     /// Nach einem Ordnerwechsel hält das Panel keine Sitzungen des alten Ordners mehr,
     /// die die Registry nicht mehr kennt.
     func testOrdnerwechselRaeumtDieTabs() throws {

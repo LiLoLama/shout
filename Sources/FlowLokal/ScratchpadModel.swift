@@ -31,7 +31,9 @@ final class ScratchpadModel: ObservableObject {
 
     private enum K {
         static let tabs = "scratchpad.tabs"
-        static let aktiv = "scratchpad.activeTab"
+        /// Dateiname des aktiven Tabs. Nicht die Stelle: Neue Tabs werden nicht
+        /// gemerkt, eine Stelle zeigte nach dem Neustart auf die falsche Notiz.
+        static let aktiv = "scratchpad.activeTabName"
         static let liste = "scratchpad.showsList"
         static let angeheftet = "scratchpad.lastPinned"
         static let eingang = "scratchpad.inboxFileName"
@@ -69,7 +71,8 @@ final class ScratchpadModel: ObservableObject {
                   !tabs.contains(where: { $0.id == note.id }) else { continue }
             tabs.append(registry.acquire(note))
         }
-        activeIndex = tabs.isEmpty ? nil : min(max(defaults.integer(forKey: K.aktiv), 0), tabs.count - 1)
+        let aktiv = defaults.string(forKey: K.aktiv)
+        activeIndex = tabs.isEmpty ? nil : (tabs.firstIndex { $0.note.fileName == aktiv } ?? 0)
     }
 
     /// Beim Einblenden des Panels.
@@ -150,6 +153,8 @@ final class ScratchpadModel: ObservableObject {
 
     /// Beim Ausblenden: alle Tabs sichern, die Tabs bleiben.
     func flushAll() {
+        // Sonst schriebe `persist()` eine leere Liste über die gemerkten Tabs.
+        restoreTabs()
         for tab in tabs { tab.flush() }
         persist()
     }
@@ -182,6 +187,8 @@ final class ScratchpadModel: ObservableObject {
     /// Fügt ein Diktat am Cursor der Notiz ein. Ist sie nicht mehr offen, landet
     /// es in einem neuen Tab. `false` nur, wenn auch das nicht geht.
     func insertDictation(_ text: String, into id: UUID) -> Bool {
+        // Nichts gesprochen: nichts verloren, und kein leerer Tab.
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
         if let session = tabs.first(where: { $0.id == id }) ?? registry.session(id: id),
            session.insert(text, at: .cursor) {
             return true
@@ -222,7 +229,9 @@ final class ScratchpadModel: ObservableObject {
         let anhang = NoteInbox.appendix(to: session.note.body, text: text, date: now, locale: sprache)
         guard session.insert(anhang, at: .end) else { return false }
         session.flush()
-        return !session.hasUnsavedText
+        // Konflikt beim Sichern: Der Text steht nur in der Konfliktdatei, davon
+        // erführe der Nutzer sonst nichts — `false` legt ihn zusätzlich in die Zwischenablage.
+        return !session.hasUnsavedText && session.conflictNotice == nil
     }
 
     func openInbox() {
@@ -275,6 +284,10 @@ final class ScratchpadModel: ObservableObject {
 
     private func persist() {
         defaults.set(tabs.filter { !$0.note.isNew }.map(\.note.fileName), forKey: K.tabs)
-        defaults.set(activeIndex ?? 0, forKey: K.aktiv)
+        if let aktiv = active, !aktiv.note.isNew {
+            defaults.set(aktiv.note.fileName, forKey: K.aktiv)
+        } else {
+            defaults.removeObject(forKey: K.aktiv)
+        }
     }
 }

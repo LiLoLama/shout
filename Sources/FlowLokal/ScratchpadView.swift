@@ -8,6 +8,11 @@ struct ScratchpadView: View {
     @ObservedObject var store: NoteStore
     @ObservedObject var mic: ScratchpadMicState
     let onMic: () -> Void
+    /// Macht das Panel zum Key-Fenster. Ein Klick auf Tab oder Listenzeile soll es
+    /// dazu machen — sonst wirken ⌘N/⌘W nicht, und Tasten gingen an die App dahinter.
+    var onActivate: () -> Void = {}
+    /// Blendet das Panel aus (Esc im Suchfeld).
+    var onHide: () -> Void = {}
 
     @FocusState private var searchFocused: Bool
     /// Fokus-Anstoß je Tab: Wird ein Tab vorne, bekommt sein Editor den Fokus —
@@ -34,6 +39,16 @@ struct ScratchpadView: View {
         .onChange(of: model.active?.id) { _, id in
             if let id { fokus[id, default: 0] += 1 }
         }
+        .onChange(of: model.tabs.map(\.id)) { _, offen in
+            fokus = fokus.filter { offen.contains($0.key) }
+        }
+    }
+
+    /// Wählt einen Tab. Ist er schon vorne, holt er trotzdem den Fokus in seinen
+    /// Editor (etwa aus dem Suchfeld zurück).
+    private func waehle(_ index: Int) {
+        if index == model.activeIndex, let id = model.active?.id { fokus[id, default: 0] += 1 }
+        model.select(index)
     }
 
     // MARK: Tabs
@@ -42,9 +57,9 @@ struct ScratchpadView: View {
         HStack(spacing: 4) {
             ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in
                 TabChip(session: tab, active: index == model.activeIndex,
-                        onSelect: { model.select(index) }, onClose: { model.close(index) })
+                        onSelect: { onActivate(); waehle(index) }, onClose: { model.close(index) })
             }
-            Button { model.newTab() } label: { Image(systemName: "plus") }
+            Button { onActivate(); model.newTab() } label: { Image(systemName: "plus") }
                 .buttonStyle(.borderless).foregroundStyle(Color(white: 0.6))
                 .help(Loc.t("Neuer Tab"))
             Spacer(minLength: 0)
@@ -65,6 +80,8 @@ struct ScratchpadView: View {
                 TextField(Loc.t("Notizen durchsuchen"), text: $model.query)
                     .textFieldStyle(.plain).font(.system(size: 12))
                     .focused($searchFocused)
+                    // Das Suchfeld schluckt Esc selbst; es soll wie überall ausblenden.
+                    .onExitCommand(perform: onHide)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 7).fill(Color(white: 0.10)))
@@ -81,6 +98,8 @@ struct ScratchpadView: View {
     private func row(_ note: Note) -> some View {
         let vorne = model.active?.id == note.id
         return Button {
+            onActivate()
+            if vorne, let id = model.active?.id { fokus[id, default: 0] += 1 }
             // ⌘-Klick: in einem neuen Tab.
             model.open(note.id, inNewTab: NSEvent.modifierFlags.contains(.command))
         } label: {
@@ -102,8 +121,9 @@ struct ScratchpadView: View {
 
     // MARK: Editoren
 
-    /// Jeder Tab behält seinen Editor (und damit sein Rückgängig); sichtbar und
-    /// klickbar ist nur der vordere.
+    /// Jeder Tab behält seinen Editor (und damit sein Rückgängig); sichtbar,
+    /// klickbar und fokussierbar ist nur der vordere — verdeckte Editoren sind
+    /// versteckt (`isFront`), damit niemand blind in sie tippt.
     @ViewBuilder private var editors: some View {
         if model.tabs.isEmpty {
             VStack(spacing: 8) {
@@ -118,7 +138,8 @@ struct ScratchpadView: View {
                     let vorne = tab === model.active
                     VStack(spacing: 0) {
                         NoteNoticesView(session: tab, onDiscard: { model.discard(tab) })
-                        NoteEditorView(session: tab, focusRequest: fokus[tab.id] ?? 0)
+                        NoteEditorView(session: tab, autofocus: vorne, focusRequest: fokus[tab.id] ?? 0,
+                                       isFront: vorne)
                             .id(ObjectIdentifier(tab))
                     }
                     .opacity(vorne ? 1 : 0)
@@ -155,14 +176,16 @@ struct ScratchpadView: View {
             Button("") { model.newTab() }.keyboardShortcut("n", modifiers: .command)
             Button("") { if let i = model.activeIndex { model.close(i) } }.keyboardShortcut("w", modifiers: .command)
             ForEach(0..<ScratchpadModel.maxTabs, id: \.self) { i in
-                Button("") { model.select(i) }.keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
+                Button("") { waehle(i) }.keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
             }
-            Button("") { model.selectNext(-1) }.keyboardShortcut("[", modifiers: [.command, .shift])
-            Button("") { model.selectNext(1) }.keyboardShortcut("]", modifiers: [.command, .shift])
+            // ⌃⇥ / ⌃⇧⇥ fängt das Panel selbst ab (`ScratchpadPanel.sendEvent`).
+            Button("") { model.selectNext(-1) }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            Button("") { model.selectNext(1) }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             Button("") { model.showsList.toggle() }.keyboardShortcut("l", modifiers: [.command, .shift])
             Button("") {
                 model.showsList = true
-                searchFocused = true
+                // War die Liste aus, gibt es das Suchfeld erst nach diesem Durchlauf.
+                DispatchQueue.main.async { searchFocused = true }
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
         }

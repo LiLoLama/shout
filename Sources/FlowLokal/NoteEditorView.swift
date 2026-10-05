@@ -17,6 +17,10 @@ struct NoteEditorView: NSViewRepresentable {
     var autofocus = false
     /// Steigt, wenn die Seite den Fokus in den Editor holen will (⏎ in der Liste).
     var focusRequest = 0
+    /// `false` für den Editor eines verdeckten Tabs: Er bleibt bestehen (samt
+    /// Rückgängig), ist aber versteckt — AppKit nimmt ihm dabei den Fokus und
+    /// lässt ihn aus der Tab-Reihenfolge und der Bedienungshilfe heraus.
+    var isFront = true
 
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
 
@@ -37,6 +41,7 @@ struct NoteEditorView: NSViewRepresentable {
         textView.textStorage?.delegate = highlighter
         textView.string = session.note.body
         textView.isEditable = session.status != .placeholder
+        scroll.isHidden = !isFront
 
         let c = context.coordinator
         c.textView = textView
@@ -63,6 +68,7 @@ struct NoteEditorView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let c = context.coordinator
         guard let textView = c.textView else { return }
+        if scroll.isHidden == isFront { scroll.isHidden = !isFront }
         // Erst freigeben, dann ersetzen: Kommt eine Notiz aus iCloud an, wechseln
         // Text und Sperre im selben Durchlauf — ein gesperrter Editor nähme den
         // Text sonst nicht an.

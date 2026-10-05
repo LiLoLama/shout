@@ -12,16 +12,33 @@ final class ScratchpadMicState: ObservableObject {
 /// shout. aktiv wird (kein Dock-Symbol, „vorige App“ bleibt die App davor).
 final class ScratchpadPanel: NSPanel, HidesOnEscape {
     var onHide: (() -> Void)?
+    /// ⌃⇥ (+1) und ⌃⇧⇥ (−1): nächster bzw. voriger Tab.
+    var onCycleTab: ((Int) -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     override func cancelOperation(_ sender: Any?) { onHide?() }
     func hideOnEscape() { onHide?() }
 
-    /// Die Editoren verdeckter Tabs bleiben im Fenster (für ihr Rückgängig) und
-    /// stehen damit in der Tab-Reihenfolge: ⇥ aus dem Suchfeld landete sonst im
-    /// unsichtbaren Editor des ersten Tabs, und man tippte blind hinein. Ein
-    /// unsichtbarer Kandidat wird deshalb auf den sichtbaren Editor umgelenkt.
+    /// ⌃⇥ / ⌃⇧⇥ hier statt als SwiftUI-Kürzel: Der Editor nähme ⌃⇥ sonst als
+    /// „nächstes Bedienelement“ und sprünge ins Suchfeld, und ein echtes ⌃⇧⇥
+    /// meldet sich als Rück-Tab, das SwiftUIs `.tab`-Kürzel nicht erkennt.
+    /// Tastencode statt Zeichen: gleich auf jeder Tastaturbelegung.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 48,   // kVK_Tab
+           event.modifierFlags.intersection([.command, .option, .control]) == .control,
+           let onCycleTab {
+            onCycleTab(event.modifierFlags.contains(.shift) ? -1 : 1)
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    /// Nur noch Rückfalllinie: Verdeckte Editoren sind seit `NoteEditorView(isFront:)`
+    /// versteckt (`isHidden`) und damit weder Key-View noch Fokus-Ziel. Ruft doch
+    /// etwas `makeFirstResponder` mit einem unsichtbaren Editor auf (etwa ein
+    /// verspäteter Fokus-Anstoß eines Tabs, der inzwischen verdeckt ist), landet
+    /// der Fokus im sichtbaren Editor statt unsichtbar — man tippte sonst blind.
     override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
         guard let view = responder as? NSView, Self.unsichtbar(view) else {
             return super.makeFirstResponder(responder)
@@ -30,7 +47,8 @@ final class ScratchpadPanel: NSPanel, HidesOnEscape {
         return super.makeFirstResponder(sichtbar)
     }
 
-    /// SwiftUI setzt für `opacity(0)` den Alpha-Wert einer umgebenden Ansicht auf 0.
+    /// `isHidden` setzt der Editor selbst; für `opacity(0)` setzt SwiftUI den
+    /// Alpha-Wert einer umgebenden Ansicht auf 0.
     private static func verborgen(_ view: NSView) -> Bool {
         view.isHidden || view.alphaValue == 0 || view.layer?.opacity == 0
     }
@@ -68,6 +86,9 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
     private let defaults: UserDefaults
     private let onMic: () -> Void
     private var panel: ScratchpadPanel?
+    /// Während `show()` den Rahmen selbst setzt: nicht merken. Sonst ersetzte ein
+    /// auf einen kleineren Bildschirm geklemmter Rahmen den gemerkten.
+    private var setztRahmen = false
 
     init(model: ScratchpadModel, settings: ScratchpadSettings, mic: ScratchpadMicState,
          defaults: UserDefaults = .standard, onMic: @escaping () -> Void) {
@@ -91,7 +112,9 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
         let fenster = panel ?? baue()
         if !fenster.isVisible {
             model.prepareForShowing(behavior: settings.openBehavior)
+            setztRahmen = true
             fenster.setFrame(gespeicherterRahmen(), display: false)
+            setztRahmen = false
             fenster.orderFrontRegardless()
         }
         if focus { fenster.makeKey() }
@@ -113,7 +136,7 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
     }
 
     func windowDidMove(_ notification: Notification) {
-        if let fenster = panel { merke(fenster) }
+        if !setztRahmen, let fenster = panel { merke(fenster) }
     }
 
     func windowDidEndLiveResize(_ notification: Notification) {
@@ -140,7 +163,11 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
         fenster.backgroundColor = NSColor(Color.shoutWindow)
         fenster.delegate = self
         fenster.onHide = { [weak self] in self?.hide() }
-        fenster.contentView = NSHostingView(rootView: ScratchpadView(model: model, store: model.store, mic: mic, onMic: onMic))
+        fenster.onCycleTab = { [weak self] schritt in self?.model.selectNext(schritt) }
+        let ansicht = ScratchpadView(model: model, store: model.store, mic: mic, onMic: onMic,
+                                     onActivate: { [weak fenster] in fenster?.makeKey() },
+                                     onHide: { [weak self] in self?.hide() })
+        fenster.contentView = NSHostingView(rootView: ansicht)
         panel = fenster
         return fenster
     }

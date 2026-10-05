@@ -128,7 +128,7 @@ final class ScratchpadModel: ObservableObject {
         persist()
     }
 
-    /// ⌘⇧[ und ⌘⇧] — rundherum.
+    /// ⌃⇥ und ⌃⇧⇥ (auch ⌘⌥→ und ⌘⌥←) — rundherum.
     func selectNext(_ offset: Int) {
         guard !tabs.isEmpty else { return }
         let jetzt = activeIndex ?? 0

@@ -63,7 +63,7 @@ struct ScratchpadView: View {
                 .buttonStyle(.borderless).foregroundStyle(Color(white: 0.6))
                 .help(Loc.t("Neuer Tab"))
             Spacer(minLength: 0)
-            Button { model.showsList.toggle() } label: { Image(systemName: "sidebar.left") }
+            Button { onActivate(); model.showsList.toggle() } label: { Image(systemName: "sidebar.left") }
                 .buttonStyle(.borderless).foregroundStyle(Color(white: 0.6))
                 .help(Loc.t("Liste ein/aus"))
         }
@@ -154,7 +154,7 @@ struct ScratchpadView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Button(action: onMic) {
+            Button { onActivate(); onMic() } label: {
                 Image(systemName: mic.isRecording ? "mic.fill" : "mic")
                     .font(.system(size: 13))
                     .foregroundStyle(mic.isRecording ? Color.shoutLive : Color(white: 0.7))
@@ -162,7 +162,7 @@ struct ScratchpadView: View {
             }
             .buttonStyle(.borderless)
             .help(mic.isRecording ? Loc.t("Diktat beenden") : Loc.t("In diese Notiz diktieren"))
-            if let vorne = model.active { PinButton(session: vorne) }
+            if let vorne = model.active { PinButton(session: vorne, onActivate: onActivate) }
             Spacer()
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
@@ -227,9 +227,10 @@ private struct TabChip: View {
 /// Anheften der vorderen Notiz — über die Sitzung, damit ungesicherter Text mitkommt.
 private struct PinButton: View {
     @ObservedObject var session: NoteEditorSession
+    let onActivate: () -> Void
 
     var body: some View {
-        Button { session.setPinned(!session.note.pinned) } label: {
+        Button { onActivate(); session.setPinned(!session.note.pinned) } label: {
             Image(systemName: session.note.pinned ? "pin.fill" : "pin").font(.system(size: 12))
         }
         .buttonStyle(.borderless)

@@ -27,6 +27,9 @@ final class ScratchpadPanel: NSPanel, HidesOnEscape {
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, event.keyCode == 48,   // kVK_Tab
            event.modifierFlags.intersection([.command, .option, .control]) == .control,
+           // Eine offene Komposition (Option+U …) bliebe sonst unbestätigt im
+           // dann verdeckten Editor stehen.
+           (firstResponder as? NSTextView)?.hasMarkedText() != true,
            let onCycleTab {
             onCycleTab(event.modifierFlags.contains(.shift) ? -1 : 1)
             return

@@ -34,6 +34,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     private let retryDelay: TimeInterval
     private var saveTask: Task<Void, Never>?
     private var subscription: AnyCancellable?
+    private var conflictSubscription: AnyCancellable?
     /// Es gibt Text, der nicht in der Datei steht und nur in dieser Sitzung lebt,
     /// weil die Datei fehlt. Taucht sie wieder auf, darf ihr Inhalt ihn nicht ersetzen.
     private var unsavedWhileMissing = false
@@ -49,6 +50,11 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         status = note.isPlaceholder ? .placeholder : .clean
         subscription = store.$notes.dropFirst().sink { [weak self] notes in
             MainActor.assumeIsolated { self?.storeChanged(notes) }
+        }
+        // Ohne `dropFirst`: Eine Sitzung, die erst nach der Rückkehr geöffnet wird,
+        // zeigt den noch nicht quittierten Hinweis auch.
+        conflictSubscription = store.$returnedAsConflict.sink { [weak self] eintraege in
+            MainActor.assumeIsolated { self?.returnedAsConflict(eintraege) }
         }
     }
 
@@ -216,6 +222,19 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         if status == .dirty { unsavedWhileMissing = true }
         status = .missing
         saveFailed = false
+    }
+
+    /// Gepufferter Text dieser Notiz kam als Konfliktdatei in den Ordner zurück:
+    /// Der Hinweis nennt sie, so wie bei einem Konflikt beim Sichern.
+    private func returnedAsConflict(_ eintraege: [UUID: String]) {
+        guard let name = eintraege[id] else { return }
+        conflictNotice = name
+        // Nicht hier im Sink quittieren: `@Published` meldet vor dem Speichern,
+        // eine Änderung mitten darin würde gleich wieder überschrieben.
+        let store = store, id = id
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { store.acknowledgeReturnedConflict(id) }
+        }
     }
 
     /// Die Liste des Stores hat sich geändert (eigene Sicherung, Neueinlesen,

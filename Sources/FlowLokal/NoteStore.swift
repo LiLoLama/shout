@@ -29,6 +29,10 @@ final class NoteStore: ObservableObject {
 
     @Published private(set) var notes: [Note] = []
     @Published private(set) var folderState: FolderState = .ok
+    /// Gepufferter Text einer vorhandenen Notiz, der als Konfliktdatei in den
+    /// Ordner zurückkam (Notiz-ID → Name der Konfliktdatei). Die Sitzung der
+    /// Notiz zeigt den Hinweis und quittiert mit `acknowledgeReturnedConflict`.
+    @Published private(set) var returnedAsConflict: [UUID: String] = [:]
     private(set) var folder: URL
 
     private let bufferFolder: URL
@@ -70,6 +74,11 @@ final class NoteStore: ObservableObject {
         try FileManager.default.trashItem(at: url, resultingItemURL: &ergebnis)
         guard let imKorb = ergebnis as URL? else { throw CocoaError(.fileNoSuchFile) }
         return imKorb
+    }
+
+    /// Die Sitzung hat den Hinweis auf die zurückgekehrte Konfliktdatei gezeigt.
+    func acknowledgeReturnedConflict(_ id: UUID) {
+        returnedAsConflict[id] = nil
     }
 
     // MARK: - Lesen
@@ -360,6 +369,18 @@ final class NoteStore: ObservableObject {
                 try makeDurable(zielURL)
                 if !zurueck {
                     NSLog("shout: Gepufferte Notiz \(name) kollidiert — gesichert als \(zielName)")
+                    if let id = bufferedIDs[name] {
+                        if note(id: id) == nil {
+                            // Neue Notiz, nie im Ordner gewesen: Ihr Text ist ganz da,
+                            // nur unter anderem Namen. Die Sitzung folgt ihm — sonst
+                            // läse ihr nächstes Sichern die fremde Datei unter ihrer ID.
+                            pendingIDs[zielName] = id
+                        } else {
+                            // Vorhandene Notiz: Die Sitzung bleibt bei der Datei im
+                            // Ordner und sagt, wo ihre Fassung liegt.
+                            returnedAsConflict[id] = zielName
+                        }
+                    }
                 } else if let id = bufferedIDs[name] {
                     pendingIDs[name] = id
                 }

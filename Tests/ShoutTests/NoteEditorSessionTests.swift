@@ -507,4 +507,73 @@ final class NoteEditorSessionTests: XCTestCase {
         XCTAssertFalse(sitzung.hasUnsavedText)
         XCTAssertEqual(u.text("X 2.md"), "Text, zwei")
     }
+
+    // MARK: - Gepuffertes kommt als Konfliktdatei zurück
+
+    /// Während der Ordner fehlte, wurde die Datei anderswo geändert. Die
+    /// gepufferte Fassung wird Konfliktdatei — und die Sitzung sagt es, statt
+    /// still die fremde Fassung zu zeigen.
+    func testGepufferterTextAlsKonfliktdateiZurueckZeigtHinweis() async throws {
+        try u.schreibe("X.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        let weg = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: u.ordner, to: weg)
+        sitzung.edit("meins unterwegs")
+        sitzung.flush()
+        XCTAssertEqual(s.folderState, .unreachable)
+
+        let fremd = weg.appendingPathComponent("X.md")
+        try Data("fremd".utf8).write(to: fremd)
+        try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: fremd.path)
+        try FileManager.default.moveItem(at: weg, to: u.ordner)
+        s.reload()
+
+        XCTAssertEqual(u.dateien(), ["X (Konflikt).md", "X.md"])
+        XCTAssertEqual(u.text("X (Konflikt).md"), "meins unterwegs")
+        XCTAssertEqual(sitzung.conflictNotice, "X (Konflikt).md")
+        XCTAssertEqual(sitzung.note.fileName, "X.md")
+        XCTAssertEqual(sitzung.note.body, "fremd")
+        XCTAssertNotEqual(s.notes.first { $0.fileName == "X (Konflikt).md" }?.id, sitzung.id)
+
+        // Quittiert: Der Hinweis kommt nicht bei jedem Einlesen wieder.
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(s.returnedAsConflict, [:])
+        sitzung.dismissNotice()
+        s.reload()
+        XCTAssertNil(sitzung.conflictNotice)
+    }
+
+    /// Eine neue, nur gepufferte Notiz, deren Name inzwischen einer anderen
+    /// gehört: Die Sitzung folgt ihrem eigenen Text unter dem Konfliktnamen und
+    /// liest beim nächsten Sichern nicht die fremde Datei unter ihrer ID.
+    func testNeueGepufferteNotizFolgtIhrerKonfliktdatei() throws {
+        let laufwerk = u.wurzel.appendingPathComponent("Laufwerk", isDirectory: true)
+        let s = u.store(ordner: laufwerk)
+        let sitzung = NoteEditorSession(note: .blank(), store: s, saveDelay: 60)
+        sitzung.edit("Foo")
+        sitzung.flush()
+        XCTAssertEqual(sitzung.note.fileName, "Foo.md")
+
+        try FileManager.default.createDirectory(at: laufwerk, withIntermediateDirectories: true)
+        try Data("andere Notiz".utf8).write(to: laufwerk.appendingPathComponent("Foo.md"))
+        s.reload()
+
+        XCTAssertEqual(sitzung.note.fileName, "Foo (Konflikt).md")
+        XCTAssertEqual(sitzung.note.body, "Foo")
+        XCTAssertEqual(sitzung.status, .clean)
+        XCTAssertNil(sitzung.conflictNotice)
+
+        sitzung.edit("Foo und noch mehr")
+        sitzung.flush()
+        let dateien = try FileManager.default.contentsOfDirectory(atPath: laufwerk.path).sorted()
+        XCTAssertEqual(dateien, ["Foo (Konflikt).md", "Foo.md"])
+        let lies = { (name: String) in
+            try NoteFile.parse(String(contentsOf: laufwerk.appendingPathComponent(name), encoding: .utf8)).body
+        }
+        XCTAssertEqual(try lies("Foo.md"), "andere Notiz")
+        XCTAssertEqual(try lies("Foo (Konflikt).md"), "Foo und noch mehr")
+        XCTAssertNotEqual(s.notes.first { $0.fileName == "Foo.md" }?.id, sitzung.id)
+        XCTAssertNil(sitzung.conflictNotice)
+    }
 }

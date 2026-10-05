@@ -211,6 +211,72 @@ final class NoteStoreTests: XCTestCase {
         XCTAssertEqual(u.text("A (Konflikt).md"), "aus dem Puffer")
     }
 
+    /// Liegt die Pufferdatei nach dem Schreiben der Konfliktdatei noch da (das
+    /// Entfernen scheiterte), wird daraus keine zweite Konfliktdatei — weder beim
+    /// nächsten Einlesen noch nach einem Neustart.
+    func testLiegengebliebenerPufferErzeugtKeineWeitereKonfliktdatei() throws {
+        let inhalt = Data("---\ncreated: 2026-10-05\n---\naus dem Puffer".utf8)
+        try FileManager.default.createDirectory(at: u.puffer, withIntermediateDirectories: true)
+        let pufferdatei = u.puffer.appendingPathComponent("A.md")
+        try inhalt.write(to: pufferdatei)
+        try u.schreibe("A.md", "im Ordner")
+        let s = u.store()
+        XCTAssertEqual(u.dateien(), ["A (Konflikt).md", "A.md"])
+
+        try inhalt.write(to: pufferdatei)
+        s.reload()
+        XCTAssertEqual(u.dateien(), ["A (Konflikt).md", "A.md"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pufferdatei.path))
+
+        try inhalt.write(to: pufferdatei)
+        _ = u.store()
+        XCTAssertEqual(u.dateien(), ["A (Konflikt).md", "A.md"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pufferdatei.path))
+        XCTAssertEqual(u.text("A (Konflikt).md"), "aus dem Puffer")
+    }
+
+    /// Echt gescheitertes Entfernen (Puffer schreibgeschützt): Jedes Einlesen
+    /// versucht nur das Aufräumen erneut, statt die Kopie zu vervielfachen.
+    func testNichtEntfernbarerPufferVervielfachtKeineKonfliktdatei() throws {
+        try FileManager.default.createDirectory(at: u.puffer, withIntermediateDirectories: true)
+        let pufferdatei = u.puffer.appendingPathComponent("A.md")
+        try Data("---\ncreated: 2026-10-05\n---\naus dem Puffer".utf8).write(to: pufferdatei)
+        try u.schreibe("A.md", "im Ordner")
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: u.puffer.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: u.puffer.path) }
+
+        let s = u.store()
+        s.reload()
+        s.reload()
+        XCTAssertEqual(u.dateien(), ["A (Konflikt).md", "A.md"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pufferdatei.path))
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: u.puffer.path)
+        s.reload()
+        XCTAssertEqual(u.dateien(), ["A (Konflikt).md", "A.md"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pufferdatei.path))
+    }
+
+    /// Wiederholtes Aufräumen einer neuen Notiz, die als Konfliktdatei zurückkam:
+    /// Ihre ID bleibt bei der Konfliktdatei und geht nie an die fremde Datei.
+    func testWiederholtesAufraeumenGibtFremderDateiKeineID() throws {
+        let laufwerk = u.wurzel.appendingPathComponent("Laufwerk", isDirectory: true)
+        let s = u.store(ordner: laufwerk)
+        var neu = Note.blank(); neu.body = "Foo"
+        guard case .buffered = s.save(neu) else { return XCTFail("nicht gepuffert") }
+
+        try FileManager.default.createDirectory(at: laufwerk, withIntermediateDirectories: true)
+        try Data("andere Notiz".utf8).write(to: laufwerk.appendingPathComponent("Foo.md"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: u.puffer.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: u.puffer.path) }
+        s.reload()
+        s.reload()
+
+        XCTAssertEqual(s.notes.first { $0.fileName == "Foo (Konflikt).md" }?.id, neu.id)
+        XCTAssertNotEqual(s.notes.first { $0.fileName == "Foo.md" }?.id, neu.id)
+        XCTAssertEqual(Set(s.notes.map(\.id)).count, 2)
+    }
+
     // MARK: - Puffer: Namen, Fehler, Laufwerke
 
     private func fremdeNotiz(_ name: String, _ text: String) -> Note {

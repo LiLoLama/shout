@@ -51,6 +51,10 @@ final class NoteStore: ObservableObject {
     private var bufferedBase: [String: Date] = [:]
     /// Aus dem Puffer zurückgewandert: Die Datei behält beim Einlesen ihre ID.
     private var pendingIDs: [String: UUID] = [:]
+    /// Pufferdateien, deren Konfliktdatei schon geschrieben ist (Puffername →
+    /// Konfliktdatei), deren Aufräumen aber noch aussteht. Ein weiterer Versuch
+    /// schreibt dann keine zweite Kopie und meldet die Rückkehr nicht noch einmal.
+    private var writtenConflicts: [String: String] = [:]
     private var watcher: NoteFolderWatcher?
     private var retryTimer: Timer?
 
@@ -301,6 +305,9 @@ final class NoteStore: ObservableObject {
         }
         guard let mtime = write(note, to: bufferFolder.appendingPathComponent(note.fileName)) else { return nil }
         note.modified = mtime
+        // Neuer Inhalt unter diesem Namen: Eine früher geschriebene Konfliktdatei
+        // ist nicht mehr seine Kopie.
+        writtenConflicts[note.fileName] = nil
         bufferedIDs[note.fileName] = note.id
         if let basis { bufferedBase[note.fileName] = basis }
         return note
@@ -343,6 +350,7 @@ final class NoteStore: ObservableObject {
                 let platzhalter = folder.appendingPathComponent("." + name + ".icloud")
                 var zielName = name
                 var zurueck = true      // geht die ID an die Datei im Ordner zurück?
+                var schonGeschrieben = false
                 if fileManager.fileExists(atPath: ziel.path) {
                     let basis = bufferedBase[name]
                     if basis == nil || modificationDate(of: ziel) != basis {
@@ -355,31 +363,37 @@ final class NoteStore: ObservableObject {
                             bufferedBase[name] = nil
                             continue
                         }
-                        zielName = conflictFileName(for: name)
+                        (zielName, schonGeschrieben) = conflictTarget(for: name, data: daten)
                         zurueck = false
                     }
                 } else if fileManager.fileExists(atPath: platzhalter.path) {
                     // Ausgelagert bei iCloud: die Datei ist da, nur nicht lokal.
-                    zielName = conflictFileName(for: name)
+                    (zielName, schonGeschrieben) = conflictTarget(for: name, data: daten)
                     zurueck = false
                 }
                 let zielURL = folder.appendingPathComponent(zielName)
-                try daten.write(to: zielURL, options: .atomic)
-                // mtime der Pufferdatei übernehmen: so passt `Note.modified` der Sitzung.
-                adoptModificationTime(of: quelle, onto: zielURL)
+                if !schonGeschrieben {
+                    try daten.write(to: zielURL, options: .atomic)
+                    // mtime der Pufferdatei übernehmen: so passt `Note.modified` der Sitzung.
+                    adoptModificationTime(of: quelle, onto: zielURL)
+                }
                 try makeDurable(zielURL)
                 if !zurueck {
-                    NSLog("shout: Gepufferte Notiz \(name) kollidiert — gesichert als \(zielName)")
-                    if let id = bufferedIDs[name] {
-                        if note(id: id) == nil {
-                            // Neue Notiz, nie im Ordner gewesen: Ihr Text ist ganz da,
-                            // nur unter anderem Namen. Die Sitzung folgt ihm — sonst
-                            // läse ihr nächstes Sichern die fremde Datei unter ihrer ID.
-                            pendingIDs[zielName] = id
-                        } else {
-                            // Vorhandene Notiz: Die Sitzung bleibt bei der Datei im
-                            // Ordner und sagt, wo ihre Fassung liegt.
-                            returnedAsConflict[id] = zielName
+                    // Nur beim ersten Mal melden: Ein weiterer Versuch räumt bloß auf.
+                    if writtenConflicts[name] == nil {
+                        NSLog("shout: Gepufferte Notiz \(name) kollidiert — gesichert als \(zielName)")
+                        writtenConflicts[name] = zielName
+                        if let id = bufferedIDs[name] {
+                            if note(id: id) == nil {
+                                // Neue Notiz, nie im Ordner gewesen: Ihr Text ist ganz da,
+                                // nur unter anderem Namen. Die Sitzung folgt ihm — sonst
+                                // läse ihr nächstes Sichern die fremde Datei unter ihrer ID.
+                                pendingIDs[zielName] = id
+                            } else {
+                                // Vorhandene Notiz: Die Sitzung bleibt bei der Datei im
+                                // Ordner und sagt, wo ihre Fassung liegt.
+                                returnedAsConflict[id] = zielName
+                            }
                         }
                     }
                 } else if let id = bufferedIDs[name] {
@@ -388,6 +402,7 @@ final class NoteStore: ObservableObject {
                 try fileManager.removeItem(at: quelle)
                 bufferedIDs[name] = nil
                 bufferedBase[name] = nil
+                writtenConflicts[name] = nil
             } catch {
                 NSLog("shout: Gepufferte Notiz \(name) konnte nicht zurück: \(error)")
             }
@@ -429,10 +444,26 @@ final class NoteStore: ObservableObject {
         }
     }
 
-    private func conflictFileName(for name: String) -> String {
+    /// Wohin eine kollidierende Pufferdatei kommt. Liegt sie schon byte-gleich als
+    /// „X (Konflikt).md“, „X (Konflikt) 2.md“ … im Ordner, wurde sie beim letzten
+    /// Mal geschrieben und nur das Aufräumen (Sync, Entfernen) scheiterte: dann
+    /// diese Datei, ohne neu zu schreiben. Sonst ein freier Konfliktname.
+    private func conflictTarget(for name: String, data: Data) -> (name: String, written: Bool) {
         let titel = NoteFile.conflictTitle((name as NSString).deletingPathExtension,
                                            suffix: Loc.t("(Konflikt)"))
-        return NoteFile.freeFileName(for: titel, in: folder, fileManager: fileManager)
+        let gleich = { (kandidat: String) in
+            (try? Data(contentsOf: self.folder.appendingPathComponent(kandidat))) == data
+        }
+        if let bekannt = writtenConflicts[name], gleich(bekannt) { return (bekannt, true) }
+        let praefix = titel.lowercased()
+        let namen = ((try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? []).sorted()
+        for kandidat in namen where (kandidat as NSString).pathExtension.lowercased() == NoteFile.fileExtension {
+            let ohne = (kandidat as NSString).deletingPathExtension.lowercased()
+            let istKonfliktname = ohne == praefix
+                || (ohne.hasPrefix(praefix + " ") && Int(ohne.dropFirst(praefix.count + 1)) != nil)
+            if istKonfliktname, gleich(kandidat) { return (kandidat, true) }
+        }
+        return (NoteFile.freeFileName(for: titel, in: folder, fileManager: fileManager), false)
     }
 
     // MARK: - Dateien

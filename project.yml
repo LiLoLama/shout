@@ -387,6 +387,7 @@ targets:
       - path: Sources/FlowLokal/DictationInsertion.swift
       - path: Sources/FlowLokal/NoteInbox.swift
       - path: Sources/FlowLokal/NoteSessionRegistry.swift
+      - path: Sources/FlowLokal/NoteEditorView.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

@@ -468,6 +468,7 @@ final class NoteStore: ObservableObject {
 extension NoteStore {
 
     struct DeletedNote: Equatable {
+        let id: UUID
         let fileName: String
         let trashURL: URL
     }
@@ -478,12 +479,21 @@ extension NoteStore {
     func rename(_ id: UUID, to raw: String) -> Note? {
         guard var note = note(id: id), !note.isPlaceholder,
               let titel = NoteFile.safeTitle(raw) else { return nil }
+        // Die Liste kann hinter der Platte herhinken (Watcher-Verzögerung). Ein
+        // neues mtime auf eine veraltete Fassung zu setzen ließe das nächste
+        // Einlesen den alten Text für aktuell halten — deshalb zuerst die Datei
+        // neu lesen (mit derselben ID), wenn das mtime nicht mehr passt.
+        if modificationDate(of: url(for: note)) != note.modified {
+            guard let frisch = read(note.fileName, keepingID: note.id) else { return nil }
+            note = frisch
+            cache[note.fileName] = note
+        }
         let neu = NoteFile.freeFileName(for: titel, in: folder, current: note.fileName)
         if neu != note.fileName {
             guard move(note.fileName, to: neu) else { return nil }
             cache[note.fileName] = nil
+            // `rename(2)` lässt das mtime unberührt: `modified` bleibt, was es war.
             note.fileName = neu
-            note.modified = modificationDate(of: folder.appendingPathComponent(neu))
         }
         note.titleIsFixed = true
         cache[note.fileName] = note
@@ -515,9 +525,11 @@ extension NoteStore {
             let imKorb = try trash(url(for: note))
             cache[note.fileName] = nil
             publish()
-            return DeletedNote(fileName: note.fileName, trashURL: imKorb)
+            return DeletedNote(id: note.id, fileName: note.fileName, trashURL: imKorb)
         } catch {
             NSLog("shout: Notiz \(note.fileName) konnte nicht in den Papierkorb: \(error)")
+            // Fehlt die Datei längst, soll auch ihr Eintrag aus der Liste verschwinden.
+            reload()
             return nil
         }
     }
@@ -529,11 +541,13 @@ extension NoteStore {
         let titel = (deleted.fileName as NSString).deletingPathExtension
         let name = NoteFile.freeFileName(for: titel, in: folder)
         do {
-            try FileManager.default.moveItem(at: deleted.trashURL, to: folder.appendingPathComponent(name))
+            try fileManager.moveItem(at: deleted.trashURL, to: folder.appendingPathComponent(name))
         } catch {
             NSLog("shout: Notiz konnte nicht aus dem Papierkorb zurück: \(error)")
             return nil
         }
+        // Die Notiz behält ihre ID — außer sie ist inzwischen anderweitig vergeben.
+        if note(id: deleted.id) == nil { pendingIDs[name] = deleted.id }
         reload()
         return cache[name]
     }
@@ -545,7 +559,8 @@ extension NoteStore {
         guard checkFolder(create: true) == .ready else {
             folderState = .unreachable
             scheduleRetry()
-            note.fileName = ""
+            // Der Dateiname bleibt: Er trägt den Titel, den der Nutzer kennt. Eine
+            // leere Angabe ließe den Puffer einen Namen aus dem Text ableiten.
             return buffer(note)
         }
         folderState = .ok
@@ -562,6 +577,15 @@ extension NoteStore {
         for (name, alt) in cache where alt.id == note.id && name != note.fileName
             && !fileManager.fileExists(atPath: folder.appendingPathComponent(name).path) {
             cache[name] = nil
+        }
+        // Lebt ein anderer Eintrag noch mit dieser ID (Originaldatei vorhanden oder
+        // unter dem Namen neu aufgetaucht), bekommt er eine frische — die
+        // wiederhergestellte Notiz behält ihre, damit der Editor sie wiederfindet.
+        for (name, andere) in cache where andere.id == note.id && name != note.fileName {
+            cache[name] = Note(id: UUID(), fileName: andere.fileName, body: andere.body,
+                               created: andere.created, modified: andere.modified,
+                               pinned: andere.pinned, extraFrontmatter: andere.extraFrontmatter,
+                               titleIsFixed: andere.titleIsFixed, isPlaceholder: andere.isPlaceholder)
         }
         cache[note.fileName] = note
         publish()

@@ -162,4 +162,67 @@ final class NoteStoreAktionenTests: XCTestCase {
         XCTAssertEqual(imPuffer.count, 1)
         XCTAssertEqual(s.folderState, .unreachable)
     }
+
+    // MARK: - Nach dem Review
+
+    /// Umbenennen darf keine veraltete Fassung mit neuem mtime versehen: Sonst
+    /// hielte das nächste Einlesen den alten Text für aktuell.
+    func testUmbenennenBehaeltAenderungVonAussen() throws {
+        try u.schreibe("A.md", "alt", zeit: Date().addingTimeInterval(-100))
+        let s = u.store()
+        let id = s.notes[0].id
+        try u.schreibe("A.md", "von außen geändert", zeit: Date())
+        let umbenannt = try XCTUnwrap(s.rename(id, to: "B"))
+        XCTAssertEqual(umbenannt.body, "von außen geändert")
+        XCTAssertEqual(umbenannt.id, id)
+        s.reload()
+        XCTAssertEqual(s.notes.map(\.body), ["von außen geändert"])
+        XCTAssertEqual(s.notes.map(\.id), [id])
+        XCTAssertEqual(u.text("B.md"), "von außen geändert")
+    }
+
+    /// Existiert die Originaldatei noch, behalten beide Einträge verschiedene IDs;
+    /// die wiederhergestellte Notiz behält ihre.
+    func testWiederSichernBeiVorhandenerDateiHatEindeutigeIDs() throws {
+        try u.schreibe("Doppelt.md", "Original")
+        let s = u.store()
+        let n = s.notes[0]
+        guard case .saved(let kopie) = s.restore(n) else { return XCTFail("nicht gesichert") }
+        XCTAssertEqual(kopie.fileName, "Doppelt 2.md")
+        XCTAssertEqual(kopie.id, n.id)
+        XCTAssertEqual(s.notes.count, 2)
+        XCTAssertEqual(Set(s.notes.map(\.id)).count, 2)
+        XCTAssertEqual(s.note(id: n.id)?.fileName, "Doppelt 2.md")
+        XCTAssertEqual(u.text("Doppelt.md"), "Original")
+    }
+
+    func testZurueckholenBehaeltDieID() throws {
+        try u.schreibe("Weg.md", "weg damit")
+        let s = u.store()
+        let id = s.notes[0].id
+        let geloescht = try XCTUnwrap(s.delete(id))
+        XCTAssertEqual(try XCTUnwrap(s.undoDelete(geloescht)).id, id)
+    }
+
+    /// Nicht erreichbarer Ordner: Die Pufferdatei trägt den Titel der Notiz,
+    /// nicht einen aus dem Text abgeleiteten.
+    func testWiederSichernBeiFehlendemOrdnerBehaeltDenTitel() throws {
+        let s = u.store(ordner: u.wurzel.appendingPathComponent("Fehlt", isDirectory: true))
+        var n = Note.blank()
+        n.fileName = "Mein Titel.md"
+        n.body = "Ganz anderer Anfang des Textes"
+        guard case .buffered(let g) = s.restore(n) else { return XCTFail("nicht gepuffert") }
+        XCTAssertEqual(g.fileName, "Mein Titel.md")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: u.puffer.path), ["Mein Titel.md"])
+    }
+
+    /// Scheitert der Papierkorb, weil die Datei weg ist, verschwindet der Eintrag.
+    func testLoeschenEntferntEintragEinerVerschwundenenDatei() throws {
+        try u.schreibe("Weg.md", "x")
+        let s = u.store()
+        let id = s.notes[0].id
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("Weg.md"))
+        XCTAssertNil(s.delete(id))
+        XCTAssertEqual(s.notes, [])
+    }
 }

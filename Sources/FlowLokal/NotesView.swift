@@ -5,6 +5,10 @@ import AppKit
 struct NotesView: View {
     @ObservedObject var model: NotesPageModel
     @ObservedObject var store: NoteStore
+    @ObservedObject var scratchpadSettings: ScratchpadSettings
+    var onScratchpadCapture: (ScratchpadSettings.Role) -> Void = { _ in }
+    @AppStorage("notes.settingsExpanded") private var einstellungenOffen = true
+    @AppStorage("scratchpad.hintSeen") private var hinweisGesehen = false
 
     @FocusState private var listFocused: Bool
     @FocusState private var searchFocused: Bool
@@ -16,7 +20,12 @@ struct NotesView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             if !model.rescuedFiles.isEmpty { rescueBanner }
-            folderPanel
+            if !hinweisGesehen && scratchpadSettings.isEnabled { hintCard }
+            settingsHeader
+            if einstellungenOffen {
+                folderPanel
+                ScratchpadSettingsSection(settings: scratchpadSettings, onCapture: onScratchpadCapture)
+            }
             if store.folderState == .unreachable {
                 banner(Loc.t("Der Ordner ist nicht erreichbar. Änderungen werden zwischengespeichert und landen dort, sobald er wieder da ist."))
             }
@@ -63,6 +72,38 @@ struct NotesView: View {
             .buttonStyle(ConsoleButtonStyle())
             .keyboardShortcut("n", modifiers: .command)
         }
+    }
+
+    /// Die Einstellungen sind einklappbar — sonst bliebe für Liste und Editor wenig Platz.
+    private var settingsHeader: some View {
+        Button { einstellungenOffen.toggle() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: einstellungenOffen ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(Loc.t("Einstellungen")).font(.system(size: 11, weight: .semibold)).tracking(0.8)
+            }
+            .foregroundStyle(Color(white: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var hintCard: some View {
+        let scratch = scratchpadSettings.combo(for: .scratchpad)?.display ?? Loc.t("Keine")
+        let eingang = scratchpadSettings.combo(for: .inbox)?.display ?? Loc.t("Keine")
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "rectangle.on.rectangle").foregroundStyle(Color.shoutLive)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Loc.t("Neu: das Scratchpad")).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(white: 0.92))
+                Text(Loc.f("%@ antippen blendet einen schwebenden Notizblock ein, halten diktiert hinein. %@ diktiert in die Eingangs-Notiz, ohne ein Fenster zu öffnen.", scratch, eingang))
+                    .font(.system(size: 12)).foregroundStyle(Color(white: 0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button(Loc.t("Verstanden")) { hinweisGesehen = true }.buttonStyle(ConsoleButtonStyle())
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.shoutLive.opacity(0.10)))
     }
 
     private var folderPanel: some View {
@@ -349,6 +390,57 @@ private struct NoteEditorPane: View {
             NoteEditorView(session: session,
                            autofocus: session.note.isNew && session.note.body.isEmpty,
                            focusRequest: focusRequest)
+        }
+    }
+}
+
+/// Scratchpad an/aus, die zwei globalen Tasten, das Verhalten beim Öffnen.
+private struct ScratchpadSettingsSection: View {
+    @ObservedObject var settings: ScratchpadSettings
+    let onCapture: (ScratchpadSettings.Role) -> Void
+
+    var body: some View {
+        ConsolePanel(title: Loc.t("Scratchpad")) {
+            FieldRow(title: Loc.t("Scratchpad aktiv"), help: Loc.t("Schwebender Notizblock mit eigenen Tasten.")) {
+                Toggle("", isOn: $settings.isEnabled).labelsHidden().toggleStyle(.switch)
+            }
+            if settings.isEnabled {
+                ConsoleDivider()
+                tastenZeile(.scratchpad, titel: Loc.t("Scratchpad-Taste"),
+                            hilfe: Loc.t("Antippen blendet ein und aus, Halten diktiert hinein."))
+                ConsoleDivider()
+                tastenZeile(.inbox, titel: Loc.t("Eingangs-Taste"),
+                            hilfe: Loc.t("Diktiert in die Eingangs-Notiz, ohne ein Fenster zu öffnen."))
+                ConsoleDivider()
+                FieldRow(title: Loc.t("Beim Öffnen")) {
+                    ConsoleSegmented(selection: $settings.openBehavior, options: [
+                        (.resume, Loc.t("Letzte Notizen")),
+                        (.newTab, Loc.t("Neuer Tab")),
+                        (.lastPinned, Loc.t("Angeheftete")),
+                    ])
+                }
+            }
+        }
+    }
+
+    private func tastenZeile(_ rolle: ScratchpadSettings.Role, titel: String, hilfe: String) -> some View {
+        let nimmtAuf = settings.capturing == rolle
+        let zeile = settings.registrationProblems[rolle]
+            ?? (nimmtAuf ? (settings.captureHint ?? Loc.t("Drücke die Tastenkombination … (Esc bricht ab)")) : hilfe)
+        return FieldRow(title: titel, help: zeile) {
+            HStack(spacing: 8) {
+                if nimmtAuf {
+                    Keycap(text: "…")
+                } else if let kombi = settings.combo(for: rolle) {
+                    Keycap(text: kombi.display)
+                } else {
+                    Text(Loc.t("Keine")).font(.system(size: 12)).foregroundStyle(Color(white: 0.5))
+                }
+                Button(Loc.t("Ändern")) { onCapture(rolle) }.buttonStyle(ConsoleButtonStyle())
+                if settings.combo(for: rolle) != nil && !nimmtAuf {
+                    Button(Loc.t("Entfernen")) { settings.setCombo(nil, for: rolle) }.buttonStyle(ConsoleButtonStyle())
+                }
+            }
         }
     }
 }

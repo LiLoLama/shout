@@ -966,5 +966,29 @@ final class Loc: ObservableObject {
         "Im Eingang notiert": "Added to Inbox",
         "Der Eingang ist gerade nicht erreichbar. Der Text liegt in der Zwischenablage.":
             "The inbox can’t be reached right now. The text is on the clipboard.",
+        // Scratchpad-Panel
+        "Eingang.md": "Inbox.md",
+        "Neuer Tab": "New Tab",
+        "Tab schließen": "Close Tab",
+        "Liste ein/aus": "Show/Hide List",
+        "Noch keine Notiz offen. ⌘N legt eine neue an.": "No note open. ⌘N creates one.",
+        "Diktat beenden": "Stop dictation",
+        "In diese Notiz diktieren": "Dictate into this note",
+        "Konnte nicht angemeldet werden": "Couldn’t be registered",
+        // Scratchpad-Einstellungen und Hinweiskarte auf der Seite „Notizen“
+        "Scratchpad aktiv": "Scratchpad on",
+        "Schwebender Notizblock mit eigenen Tasten.": "A floating notepad with its own keys.",
+        "Scratchpad-Taste": "Scratchpad key",
+        "Antippen blendet ein und aus, Halten diktiert hinein.": "Tap to show or hide, hold to dictate into it.",
+        "Eingangs-Taste": "Inbox key",
+        "Diktiert in die Eingangs-Notiz, ohne ein Fenster zu öffnen.": "Dictates into the inbox note without opening a window.",
+        "Beim Öffnen": "When opening",
+        "Letzte Notizen": "Last notes",
+        "Angeheftete": "Pinned",
+        "Drücke die Tastenkombination … (Esc bricht ab)": "Press the key combination… (Esc cancels)",
+        "Keine": "None",
+        "Neu: das Scratchpad": "New: the Scratchpad",
+        "%@ antippen blendet einen schwebenden Notizblock ein, halten diktiert hinein. %@ diktiert in die Eingangs-Notiz, ohne ein Fenster zu öffnen.":
+            "Tap %@ to show a floating notepad, hold it to dictate into it. %@ dictates into the inbox note without opening a window.",
     ]
 }

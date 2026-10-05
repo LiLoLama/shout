@@ -52,6 +52,8 @@ struct DashboardView: View {
     /// Seite „Notizen“. Modell und Store leben beim AppDelegate, damit beim
     /// Schließen und Beenden gesichert wird.
     @ObservedObject var notes: NotesPageModel
+    @ObservedObject var scratchpadSettings: ScratchpadSettings
+    var onScratchpadCapture: (ScratchpadSettings.Role) -> Void = { _ in }
     /// Öffnet bzw. schließt das Ergebnisfenster eines Auftrags. Die Fenster liegen
     /// beim AppDelegate, weil sie das Dashboard überdauern können.
     var onOpenResult: (FileTranscriptionJob) -> Void = { _ in }
@@ -175,7 +177,8 @@ struct DashboardView: View {
                       formatterReady: model.formatterReady,
                       onOpenResult: onOpenResult, onCloseResult: onCloseResult)
         case .notizen:
-            NotesView(model: notes, store: notes.store)
+            NotesView(model: notes, store: notes.store, scratchpadSettings: scratchpadSettings,
+                      onScratchpadCapture: onScratchpadCapture)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:

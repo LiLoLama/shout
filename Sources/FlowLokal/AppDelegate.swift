@@ -805,6 +805,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 files: fileQueue,
                 meetingRecorder: meetingRecorder,
                 notes: notesPage,
+                scratchpadSettings: scratchpadSettings,
+                onScratchpadCapture: { [weak self] rolle in self?.beginScratchpadCapture(rolle) },
                 onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
                 onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
                 updates: updateBridge
@@ -1521,8 +1523,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 guard let kombi = scratchpadSettings.combo(for: rolle) else { continue }
                 do {
                     try taste.register(kombi)
-                } catch {
+                } catch GlobalHotkey.RegistrationError.taken {
                     probleme[rolle] = Loc.t("Von einer anderen App belegt")
+                } catch {
+                    probleme[rolle] = Loc.t("Konnte nicht angemeldet werden")
                 }
             }
         }

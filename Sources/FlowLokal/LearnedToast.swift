@@ -58,8 +58,13 @@ final class LearnedToast {
         panel.orderFrontRegardless()
         self.panel = panel
 
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.dismiss() }
+        // Nur diesen Toast schließen: Eine schon eingereihte Task eines alten
+        // Zeitgebers darf nicht den inzwischen gezeigten nächsten wegnehmen.
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: false) { [weak self, weak panel] _ in
+            Task { @MainActor in
+                guard let self, let panel, self.panel === panel else { return }
+                self.dismiss()
+            }
         }
     }
 }

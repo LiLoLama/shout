@@ -175,9 +175,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// erledigen das über Loc.shared selbst).
     private var languageObserver: AnyCancellable?
 
-    /// Ziel-App zum Zeitpunkt des Aufnahmestarts (fürs app-abhängige Register).
-    private var targetBundleID: String?
-
     /// Zuletzt aktive Fremd-App (nicht shout.) — Ziel fürs Einfügen aus dem Verlauf.
     private var lastExternalApp: NSRunningApplication?
 
@@ -1395,19 +1392,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// eine Aufnahme in die App davor, und das Halten der Scratchpad-Taste fände
     /// `state != .idle` vor. Kommt die Carbon-Taste im selben Druck an, gehört der
     /// Druck ihr: Eine eben erst (vor weniger als `claimWindow`) von genau diesem
-    /// Druck gestartete Aufnahme wird ohne Ton verworfen — gesprochen wurde in
-    /// diesem Bruchteil noch nichts —, ein wartender Doppeltipp zurückgesetzt, und
-    /// das Loslassen der ⌥ beendet danach nichts. Eine länger laufende Aufnahme
+    /// Druck gestartete Aufnahme wird ohne Ton verworfen — egal mit welchem Ziel:
+    /// Hat das Panel den Fokus, zielt sie auf die Notiz und liefe sonst nach dem
+    /// Ausblenden unbemerkt weiter (das Loslassen der ⌥ ist ja beansprucht), bzw.
+    /// ⌃⌥I schriebe in die Notiz statt in den Eingang. Gesprochen wurde in
+    /// diesem Bruchteil noch nichts. Außerdem wird ein wartender Doppeltipp
+    /// zurückgesetzt, und das Loslassen der ⌥ beendet danach nichts. Eine länger laufende Aufnahme
     /// bleibt unberührt: Dann diktiert der Nutzer schon, und nichts wird verworfen.
     private func claimDictationModifierPress() {
         guard settings.isModifierOnly, let seit = dictationModifierDownAt, !dictationModifierClaimed else { return }
         let jetzt = ProcessInfo.processInfo.systemUptime
         guard jetzt - seit < Self.claimWindow else { return }
         dictationModifierClaimed = true
-        if recordingStartedByModifierPress, state == .recording, dictationTarget.isFrontApp {
-            _ = recorder.stop()
-            state = .idle
-            recIndicator.finish()
+        if recordingStartedByModifierPress, state == .recording {
+            discardRecordingSilently()
         }
         recordingStartedByModifierPress = false
         if armedTimer != nil {
@@ -1658,7 +1656,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Ziel-App merken, solange sie noch im Vordergrund ist. Das Panel ist
         // nicht aktivierend — hat es den Fokus, ist die App davor trotzdem vorne.
         let vorne = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        targetBundleID = vorne
         dictationTarget = explizit ?? DictationTarget.forDictationKey(
             panelIsKey: scratchpadPanelStorage?.isKey == true,
             activeNote: scratchpadStorage?.active?.id,
@@ -1680,6 +1677,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             sounds.play(.error)
             NSLog("Aufnahme-Start fehlgeschlagen: \(error)")
         }
+    }
+
+    /// Wie `cancelRecording()`, aber ohne Ton: für eine Aufnahme, die nur
+    /// Sekundenbruchteile lief und nie gemeint war (siehe `claimDictationModifierPress()`).
+    private func discardRecordingSilently() {
+        _ = recorder.stop()
+        scratchpadMic.isRecording = false
+        state = .idle
+        recIndicator.finish()
     }
 
     /// Bricht eine laufende Aufnahme ab: Samples verwerfen, nichts transkribieren.

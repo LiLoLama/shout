@@ -94,6 +94,28 @@ final class NoteSessionRegistryTests: XCTestCase {
         XCTAssertEqual(gemeldet, [s.id])
     }
 
+    /// Nach dem Ordnerwechsel kennt die Registry keine Sitzung mehr: Alle Halter
+    /// erfahren es, sonst hielte das Panel Sitzungen, die niemand mehr sichert.
+    func testRemoveAllMeldetJedeSitzung() throws {
+        try u.schreibe("X.md", "a")
+        try u.schreibe("Y.md", "b")
+        let store = u.store()
+        let r = NoteSessionRegistry(store: store, saveDelay: 60)
+        var gemeldet: [UUID] = []
+        r.onDiscard { gemeldet.append($0) }
+        let x = r.acquire(store.notes.first { $0.title == "X" }!)
+        _ = r.acquire(store.notes.first { $0.title == "X" }!)
+        let y = r.acquire(store.notes.first { $0.title == "Y" }!)
+        let neu = r.acquireNew()
+        r.removeAll()
+        XCTAssertEqual(gemeldet.count, 3)                       // je Sitzung einmal, nicht je Halter
+        XCTAssertEqual(Set(gemeldet), [x.id, y.id, neu.id])
+        XCTAssertTrue(r.sessions.isEmpty)
+        // Ein zweites Mal gibt es nichts mehr zu melden.
+        r.removeAll()
+        XCTAssertEqual(gemeldet.count, 3)
+    }
+
     func testRettungskopienFuerAlleUngesicherten() throws {
         try u.schreibe("X.md", "a")
         let store = u.store()

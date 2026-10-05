@@ -89,9 +89,15 @@ final class NoteSessionRegistry {
 
     /// Nach einem Ordnerwechsel: Die Sitzungen gehören zum alten Ordner. Der
     /// Aufrufer hat vorher mit `flushAll()` sichergestellt, dass nichts offen ist.
+    /// Alle Halter erfahren es (einmal je Sitzung, wie bei `discard`) — sonst
+    /// hielten Seite oder Panel Sitzungen, die die Registry nicht mehr kennt.
     func removeAll() {
+        let weg = Array(eintraege.keys)
         eintraege = [:]
         letzteRettung = [:]
+        for id in weg {
+            for melden in verwerfenMelden { melden(id) }
+        }
     }
 
     /// Letzte Sicherung beim Beenden: Steht nach `flush()` noch Text nur im

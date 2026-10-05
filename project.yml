@@ -388,6 +388,7 @@ targets:
       - path: Sources/FlowLokal/NoteInbox.swift
       - path: Sources/FlowLokal/NoteSessionRegistry.swift
       - path: Sources/FlowLokal/NoteEditorView.swift
+      - path: Sources/FlowLokal/ScratchpadModel.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

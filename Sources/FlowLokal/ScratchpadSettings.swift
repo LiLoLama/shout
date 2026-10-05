@@ -12,7 +12,12 @@ final class ScratchpadSettings: ObservableObject {
     }
 
     @Published var isEnabled: Bool {
-        didSet { d.set(isEnabled, forKey: K.aktiv); onChange?() }
+        didSet {
+            d.set(isEnabled, forKey: K.aktiv)
+            // Ausgeschaltet verschwinden die Tastenzeilen — eine laufende Aufnahme darf nicht hängen bleiben.
+            if !isEnabled { capturing = nil; captureHint = nil }
+            onChange?()
+        }
     }
     @Published var openBehavior: ScratchpadModel.OpenBehavior {
         didSet { d.set(openBehavior.rawValue, forKey: K.oeffnen) }
@@ -51,6 +56,15 @@ final class ScratchpadSettings: ObservableObject {
                 combos[rolle] = rolle == .scratchpad ? .scratchpadDefault : .inboxDefault
             }
         }
+    }
+
+    /// Bricht eine laufende Tastenaufnahme ab (z. B. wenn die Zeilen verschwinden)
+    /// und lässt über `onChange` beide Tasten neu anmelden.
+    func cancelCapture() {
+        guard capturing != nil else { return }
+        capturing = nil
+        captureHint = nil
+        onChange?()
     }
 
     func combo(for rolle: Role) -> HotkeyCombo? { combos[rolle] }

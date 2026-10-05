@@ -421,6 +421,8 @@ private struct ScratchpadSettingsSection: View {
                 }
             }
         }
+        // Zugeklappt, Tabwechsel oder Fenster weg: Sonst bliebe die Aufnahme aktiv und beide Tasten abgemeldet.
+        .onDisappear { settings.cancelCapture() }
     }
 
     private func tastenZeile(_ rolle: ScratchpadSettings.Role, titel: String, hilfe: String) -> some View {

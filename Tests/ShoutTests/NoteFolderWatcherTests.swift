@@ -31,18 +31,50 @@ final class NoteFolderWatcherTests: XCTestCase {
     }
 
     func testMeldetAenderungAnOrtUndStelle() throws {
+        // Die Startdatei muss vor dem Watcher liegen und ihre Ereignisse müssen
+        // verklungen sein — sonst würde der Test das Anlegen statt der
+        // Bearbeitung an Ort und Stelle messen.
         let ziel = ordner.appendingPathComponent("a.md")
         try Data("alt".utf8).write(to: ziel)
+        let abgewartet = expectation(description: "Startdatei abgeklungen")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { abgewartet.fulfill() }
+        wait(for: [abgewartet], timeout: 5)
+
+        var meldungen = 0
         let gemeldet = expectation(description: "Änderung gemeldet")
         gemeldet.assertForOverFulfill = false
-        let watcher = try XCTUnwrap(NoteFolderWatcher(url: ordner, latency: 0.1) { gemeldet.fulfill() })
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            guard let handle = try? FileHandle(forWritingTo: ziel) else { return }
-            handle.seekToEndOfFile()
-            handle.write(Data(" neu".utf8))
-            try? handle.close()
-        }
+        let watcher = try XCTUnwrap(NoteFolderWatcher(url: ordner, latency: 0.1) {
+            meldungen += 1
+            gemeldet.fulfill()
+        })
+        // Der Strom startet mit „seit jetzt“; vor dem Anhängen kurz warten und
+        // sicherstellen, dass bis dahin nichts gemeldet wurde.
+        let bereit = expectation(description: "Strom läuft")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { bereit.fulfill() }
+        wait(for: [bereit], timeout: 5)
+        XCTAssertEqual(meldungen, 0, "Vor der Bearbeitung darf nichts gemeldet werden")
+
+        let handle = try FileHandle(forWritingTo: ziel)
+        handle.seekToEndOfFile()
+        handle.write(Data(" neu".utf8))
+        try handle.close()
+
         wait(for: [gemeldet], timeout: 5)
+        XCTAssertGreaterThanOrEqual(meldungen, 1)
         withExtendedLifetime(watcher) {}
+    }
+
+    /// Nach dem Freigeben darf kein Rückruf mehr kommen — auch keiner, der schon
+    /// auf der Hauptwarteschlange eingereiht war.
+    func testStopptNachFreigabe() throws {
+        let gemeldet = expectation(description: "Nach Freigabe gemeldet")
+        gemeldet.isInverted = true
+        var watcher: NoteFolderWatcher? = NoteFolderWatcher(url: ordner, latency: 0.1) {
+            gemeldet.fulfill()
+        }
+        XCTAssertNotNil(watcher)
+        watcher = nil
+        try Data("x".utf8).write(to: ordner.appendingPathComponent("b.md"))
+        wait(for: [gemeldet], timeout: 1.5)
     }
 }

@@ -377,6 +377,7 @@ targets:
       - path: Sources/FlowLokal/Note.swift
       - path: Sources/FlowLokal/NoteFile.swift
       - path: Sources/FlowLokal/NoteSearch.swift
+      - path: Sources/FlowLokal/NotesFolder.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

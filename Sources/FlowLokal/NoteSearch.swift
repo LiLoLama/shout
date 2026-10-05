@@ -49,8 +49,8 @@ enum NoteSearch {
         let start = text.index(range.lowerBound, offsetBy: -context, limitedBy: text.startIndex) ?? text.startIndex
         let end = text.index(range.upperBound, offsetBy: context, limitedBy: text.endIndex) ?? text.endIndex
         func flach(_ teil: Substring) -> String {
-            String(teil).replacingOccurrences(of: "\n", with: " ")
-                        .replacingOccurrences(of: "\r", with: " ")
+            // Jeden Zeilenumbruch zu einem Leerzeichen zusammenfassen
+            String(teil.map { $0.isNewline ? " " : $0 })
         }
         return Snippet(
             before: (start > text.startIndex ? "…" : "") + flach(text[start..<range.lowerBound]),

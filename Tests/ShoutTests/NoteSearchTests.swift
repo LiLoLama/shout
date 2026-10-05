@@ -64,8 +64,23 @@ final class NoteSearchTests: XCTestCase {
         XCTAssertEqual(s.after, " zwei")
     }
 
+    func testAusschnittMitCRLF() throws {
+        let s = try XCTUnwrap(NoteSearch.filter([notiz("A", "eins\r\nTreffer\r\nzwei")], query: "treffer")[0].snippet)
+        XCTAssertEqual(s.before, "eins ")
+        XCTAssertEqual(s.after, " zwei")
+    }
+
+    func testAusschnittMitU2028() throws {
+        let s = try XCTUnwrap(NoteSearch.filter([notiz("A", "eins\u{2028}Treffer")], query: "treffer")[0].snippet)
+        XCTAssertEqual(s.before, "eins ")
+    }
+
     func testVorschau() {
         XCTAssertEqual(NoteSearch.preview("# Titel\n\n- [ ] Milch\nBrot"), "Titel Milch Brot")
         XCTAssertEqual(NoteSearch.preview(String(repeating: "a", count: 300)).count, 120)
+    }
+
+    func testVorschauMitCRLF() {
+        XCTAssertEqual(NoteSearch.preview("# Titel\r\n\r\n- [ ] Milch\r\nBrot"), "Titel Milch Brot")
     }
 }

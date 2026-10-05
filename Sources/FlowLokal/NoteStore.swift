@@ -462,3 +462,109 @@ final class NoteStore: ObservableObject {
         if sortiert != notes { notes = sortiert }
     }
 }
+
+// MARK: - Umbenennen, Anheften, Papierkorb
+
+extension NoteStore {
+
+    struct DeletedNote: Equatable {
+        let fileName: String
+        let trashURL: URL
+    }
+
+    /// Benennt um und hält den Titel danach fest. Gibt `nil` zurück, wenn der
+    /// Name nach dem Säubern leer ist oder das Umbenennen scheitert.
+    @discardableResult
+    func rename(_ id: UUID, to raw: String) -> Note? {
+        guard var note = note(id: id), !note.isPlaceholder,
+              let titel = NoteFile.safeTitle(raw) else { return nil }
+        let neu = NoteFile.freeFileName(for: titel, in: folder, current: note.fileName)
+        if neu != note.fileName {
+            guard move(note.fileName, to: neu) else { return nil }
+            cache[note.fileName] = nil
+            note.fileName = neu
+            note.modified = modificationDate(of: folder.appendingPathComponent(neu))
+        }
+        note.titleIsFixed = true
+        cache[note.fileName] = note
+        publish()
+        return note
+    }
+
+    /// Ändert nur `pinned` und sichert. Offene Sitzungen gehen über
+    /// `NoteEditorSession.setPinned`, damit ungesicherter Text mitkommt.
+    @discardableResult
+    func setPinned(_ id: UUID, _ pinned: Bool) -> SaveResult? {
+        guard var note = note(id: id), !note.isPlaceholder else { return nil }
+        // Die Liste kann hinter der Platte herhinken (Watcher-Verzögerung). Wer
+        // aus einer veralteten Fassung sichert, überschriebe die Änderung von
+        // außen — deshalb zuerst neu einlesen, wenn das mtime nicht mehr passt.
+        if modificationDate(of: url(for: note)) != note.modified {
+            reload()
+            guard let frisch = self.note(id: id) else { return nil }
+            note = frisch
+        }
+        note.pinned = pinned
+        return save(note)
+    }
+
+    /// In den Papierkorb, nicht endgültig — ein Versehen lässt sich zurückholen.
+    func delete(_ id: UUID) -> DeletedNote? {
+        guard let note = note(id: id), !note.isNew, !note.isPlaceholder else { return nil }
+        do {
+            let imKorb = try trash(url(for: note))
+            cache[note.fileName] = nil
+            publish()
+            return DeletedNote(fileName: note.fileName, trashURL: imKorb)
+        } catch {
+            NSLog("shout: Notiz \(note.fileName) konnte nicht in den Papierkorb: \(error)")
+            return nil
+        }
+    }
+
+    /// Holt aus dem Papierkorb zurück — unter dem alten Namen oder, wenn der
+    /// inzwischen vergeben ist, als „Name 2“. Überschreibt nie etwas: `moveItem`
+    /// scheitert, wenn das Ziel doch existiert, und die Datei bleibt im Papierkorb.
+    func undoDelete(_ deleted: DeletedNote) -> Note? {
+        let titel = (deleted.fileName as NSString).deletingPathExtension
+        let name = NoteFile.freeFileName(for: titel, in: folder)
+        do {
+            try FileManager.default.moveItem(at: deleted.trashURL, to: folder.appendingPathComponent(name))
+        } catch {
+            NSLog("shout: Notiz konnte nicht aus dem Papierkorb zurück: \(error)")
+            return nil
+        }
+        reload()
+        return cache[name]
+    }
+
+    /// Legt eine Notiz neu an, deren Datei von außen entfernt wurde. Behält ID
+    /// und Titel; ist der Name belegt, wird es „Titel 2“.
+    func restore(_ input: Note) -> SaveResult {
+        var note = input
+        guard checkFolder(create: true) == .ready else {
+            folderState = .unreachable
+            scheduleRetry()
+            note.fileName = ""
+            return buffer(note)
+        }
+        folderState = .ok
+        startWatchingIfNeeded()
+        let titel = note.title.isEmpty ? (NoteFile.deriveTitle(from: note.body) ?? Loc.t("Unbenannt")) : note.title
+        note.fileName = NoteFile.freeFileName(for: titel, in: folder)
+        guard let mtime = write(note, to: folder.appendingPathComponent(note.fileName)) else {
+            return buffer(note)
+        }
+        note.modified = mtime
+        note.titleIsFixed = true
+        // Ein veralteter Listeneintrag derselben Notiz, dessen Datei weg ist,
+        // darf nicht neben der neuen Fassung stehen bleiben (zwei Einträge, eine ID).
+        for (name, alt) in cache where alt.id == note.id && name != note.fileName
+            && !fileManager.fileExists(atPath: folder.appendingPathComponent(name).path) {
+            cache[name] = nil
+        }
+        cache[note.fileName] = note
+        publish()
+        return .saved(note)
+    }
+}

@@ -134,6 +134,12 @@ struct NoteEditorView: NSViewRepresentable {
             return ns.replacingCharacters(in: markiert, with: "")
         }
 
+        /// Der Editor zeigt, was die Sitzung hält — mit oder ohne offene
+        /// Komposition, je nachdem, ob die Eingabemethode sie gemeldet hat.
+        private func istAktuell(_ tv: NSTextView) -> Bool {
+            tv.string == session.note.body || gemeldeterText(tv) == session.note.body
+        }
+
         func undoManager(for view: NSTextView) -> UndoManager? { undo }
 
         func textDidChange(_ notification: Notification) {
@@ -148,7 +154,7 @@ struct NoteEditorView: NSViewRepresentable {
         /// weg. Dann gleicht er erst an und lehnt diesen Anschlag sichtbar ab.
         func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
                       replacementString: String?) -> Bool {
-            guard !setztSelbst, gemeldeterText(textView) != session.note.body else { return true }
+            guard !setztSelbst, !istAktuell(textView) else { return true }
             mirror(session.note.body)
             return false
         }
@@ -179,7 +185,7 @@ struct NoteEditorView: NSViewRepresentable {
             // angeglichen), meldete er beim Einfügen seinen alten Text als neuen —
             // und überschriebe damit die neuere Fassung. Dann lieber ablehnen: Die
             // Sitzung fügt selbst ein und lädt den Editor neu.
-            guard gemeldeterText(tv) == session.note.body else { return false }
+            guard istAktuell(tv) else { return false }
             // Eine offene Komposition zuerst festschreiben; sie wird dabei gemeldet.
             if tv.hasMarkedText() { tv.unmarkText() }
             let ns = tv.string as NSString

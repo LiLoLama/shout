@@ -175,6 +175,40 @@ final class NoteEditorCoordinatorTests: XCTestCase {
         withExtendedLifetime(c) {}
     }
 
+    /// Meldet eine Eingabemethode ihre Komposition doch an die Sitzung, gilt der
+    /// Editor trotzdem als aktuell — sonst lehnte er jeden Anschlag ab.
+    func testGemeldeteKompositionGiltAlsAktuell() throws {
+        let s = try sitzung("a")
+        let (c, tv) = editor(s)
+        tv.setSelectedRange(NSRange(location: 1, length: 0))
+        tv.setMarkedText("¨", selectedRange: NSRange(location: 1, length: 0),
+                         replacementRange: NSRange(location: NSNotFound, length: 0))
+        // Wie eine Eingabemethode, die markierten Text meldet.
+        s.edit(tv.string, from: c)
+        XCTAssertEqual(s.note.body, "a¨")
+        tv.insertText("ü", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(tv.string, "aü")
+        XCTAssertEqual(s.note.body, "aü")
+    }
+
+    /// Festschreiben einer Komposition in einem veralteten Editor: Der Anschlag
+    /// gleicht mitten im Einfügen an (wiedereintretend) und lehnt ab.
+    func testFestschreibenImVeraltetenEditor() throws {
+        let s = try sitzung("a")
+        let (a, aTV) = editor(s)
+        let (b, bTV) = editor(s)
+        bTV.setSelectedRange(NSRange(location: 1, length: 0))
+        bTV.setMarkedText("¨", selectedRange: NSRange(location: 1, length: 0),
+                          replacementRange: NSRange(location: NSNotFound, length: 0))
+        aTV.setSelectedRange(NSRange(location: 1, length: 0))
+        aTV.insertText("b", replacementRange: aTV.selectedRange())
+        XCTAssertEqual(s.note.body, "ab")
+        bTV.insertText("ü", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(s.note.body.contains("b"), "die Eingabe von A muss bleiben")
+        XCTAssertEqual(bTV.string, s.note.body)
+        withExtendedLifetime((a, b)) {}
+    }
+
     func testJederEditorHatEigenesRueckgaengig() throws {
         let s = try sitzung("a")
         let (eins, tv1) = editor(s)

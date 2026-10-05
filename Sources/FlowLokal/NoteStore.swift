@@ -19,9 +19,11 @@ final class NoteStore: ObservableObject {
         case conflict(external: Note, conflictFileName: String)
         /// Die Datei wurde von außen entfernt oder umbenannt.
         case missing
-        /// Weder der Ordner noch der Puffer ließ sich beschreiben (z. B. Platte
-        /// voll). Nichts wurde geschrieben — der Aufrufer muss den Text als
-        /// ungesichert behalten und den Nutzer warnen.
+        /// Nichts wurde geschrieben — der Aufrufer muss den Text als ungesichert
+        /// behalten und den Nutzer warnen. Gründe: Weder der Ordner noch der
+        /// Puffer ließ sich beschreiben (z. B. Platte voll), die Konfliktdatei
+        /// ließ sich nicht schreiben, oder die von außen geänderte Datei war
+        /// nicht lesbar und bleibt deshalb unangetastet.
         case failed
     }
 
@@ -152,10 +154,21 @@ final class NoteStore: ObservableObject {
         if !note.isNew {
             let url = url(for: note)
             guard fileManager.fileExists(atPath: url.path) else { return .missing }
-            if modificationDate(of: url) != note.modified,
-               let extern = read(note.fileName, keepingID: note.id),
-               extern.body != note.body {
-                return resolveConflict(mine: note, external: extern)
+            if modificationDate(of: url) != note.modified {
+                // Von außen angefasst, aber nicht lesbar (kein UTF-8, E/A-Fehler,
+                // halb synchronisiert): nichts schreiben. Die Fremddatei bleibt
+                // wie sie ist, unser Text bleibt beim Aufrufer ungesichert.
+                guard let extern = read(note.fileName, keepingID: note.id) else { return .failed }
+                if extern.body != note.body {
+                    return resolveConflict(mine: note, external: extern)
+                }
+                // Nur Frontmatter geändert: Der Editor bearbeitet es nicht, also
+                // gilt die Fassung von der Platte (Tags aus Obsidian, Anheften auf
+                // einem anderen Mac). Ein bewusstes Anheften geht über `setPinned`,
+                // das bei neuem mtime vorher neu einliest.
+                note.extraFrontmatter = extern.extraFrontmatter
+                note.pinned = extern.pinned
+                note.created = extern.created
             }
         }
 

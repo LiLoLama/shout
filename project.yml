@@ -373,6 +373,9 @@ targets:
       - path: Sources/FlowLokal/AbbruchFlagge.swift
       # Gedächtnis für fehlgeschlagene Abkürzungen; nur Foundation.
       - path: Sources/FlowLokal/Abkuerzungsgedaechtnis.swift
+      # Scratchpad / Notizen: nur Foundation, AppKit und CoreServices.
+      - path: Sources/FlowLokal/Note.swift
+      - path: Sources/FlowLokal/NoteFile.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

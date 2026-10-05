@@ -386,6 +386,7 @@ targets:
       # Scratchpad, Teil 2
       - path: Sources/FlowLokal/DictationInsertion.swift
       - path: Sources/FlowLokal/NoteInbox.swift
+      - path: Sources/FlowLokal/NoteSessionRegistry.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

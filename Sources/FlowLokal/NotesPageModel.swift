@@ -20,16 +20,22 @@ final class NotesPageModel: ObservableObject {
     /// Gerettete Notizen (`.md` im Rettungsordner). Solange welche da sind, zeigt
     /// die Seite einen Hinweis — sonst lägen sie unbemerkt im App-Support.
     @Published private(set) var rescuedFiles: [URL] = []
-    /// Text und Datei der letzten Rettungskopie. Wird das Beenden abgebrochen und
-    /// erneut versucht, entsteht für denselben Text keine zweite Kopie.
-    private var lastRescue: (body: String, url: URL)?
+    /// Teilt die Sitzungen mit dem Panel: eine pro Notiz.
+    let registry: NoteSessionRegistry
+    /// Nach einem Ordnerwechsel — das Panel räumt dann seine Tabs ab.
+    var onFolderChanged: (() -> Void)?
 
-    init(store: NoteStore, defaults: UserDefaults = .standard,
+    init(store: NoteStore, registry: NoteSessionRegistry? = nil, defaults: UserDefaults = .standard,
          rescueDirectory: URL = StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)) {
         self.store = store
+        self.registry = registry ?? NoteSessionRegistry(store: store)
         self.defaults = defaults
         self.rescueDirectory = rescueDirectory
         refreshRescuedFiles()
+        self.registry.onDiscard { [weak self] id in
+            guard let self, self.session?.id == id else { return }
+            self.session = nil
+        }
     }
 
     /// Liest den Rettungsordner neu ein.
@@ -85,7 +91,10 @@ final class NotesPageModel: ObservableObject {
     private func leaveSession() -> Bool {
         guard let session else { return true }
         session.flush()
-        return !session.hasUnsavedText
+        guard !session.hasUnsavedText else { return false }
+        registry.release(session)
+        self.session = nil
+        return true
     }
 
     func select(_ id: UUID) {
@@ -93,13 +102,13 @@ final class NotesPageModel: ObservableObject {
         // Erst nach dem Sichern holen: Das kann neu eingelesen haben (Konflikt),
         // eine vorher geholte Fassung wäre dann veraltet.
         guard let note = store.note(id: id) else { return }
-        session = NoteEditorSession(note: note, store: store)
+        session = registry.acquire(note)
     }
 
     func createNote() {
         guard leaveSession() else { return }
         query = ""
-        session = NoteEditorSession(note: .blank(), store: store)
+        session = registry.acquireNew()
     }
 
     /// ↑/↓ und j/k. Ohne Auswahl wird die erste Notiz gewählt; am Rand bleibt es stehen.
@@ -130,16 +139,19 @@ final class NotesPageModel: ObservableObject {
 
     /// Löscht in den Papierkorb. Steht in der offenen Notiz Text, der sich nicht
     /// sichern lässt, passiert nichts: Die Datei zu entsorgen ließe die neuere
-    /// Fassung nur im Speicher zurück.
+    /// Fassung nur im Speicher zurück. Das gilt auch, wenn die Notiz nur im Panel
+    /// offen ist — die Sitzung kommt dann aus der Registry.
     func delete(_ id: UUID) {
         let istOffen = session?.id == id
-        if istOffen {
-            session?.flush()
-            if session?.hasUnsavedText == true { return }
+        let offen = istOffen ? session : registry.session(id: id)
+        if let offen {
+            offen.flush()
+            if offen.hasUnsavedText { return }
             // Nie gesichert und leer geblieben: keine Datei, nichts zurückzuholen.
             // (Getippter Text wurde eben gesichert und geht regulär in den Papierkorb.)
-            if session?.note.isNew == true {
-                session = nil
+            if offen.note.isNew {
+                registry.discard(offen)
+                if istOffen { session = nil }
                 return
             }
         }
@@ -147,6 +159,8 @@ final class NotesPageModel: ObservableObject {
         let index = vorher.firstIndex { $0.id == id }
         guard let titel = store.note(id: id)?.title, let token = store.delete(id) else { return }
         lastDeleted = UndoDelete(title: titel, token: token)
+        // Die Datei liegt im Papierkorb: Wer die Sitzung hält (Seite, Panel), erfährt es.
+        if let offen { registry.discard(offen) }
 
         guard istOffen else { return }
         session = nil
@@ -166,15 +180,19 @@ final class NotesPageModel: ObservableObject {
 
     func dismissUndo() { lastDeleted = nil }
 
-    /// `true`, wenn der Ordner gewechselt wurde. Bleibt Text der offenen Notiz
-    /// ungesichert, bleibt alles, wie es ist.
+    /// `true`, wenn der Ordner gewechselt wurde. Bleibt Text irgendeiner offenen
+    /// Notiz ungesichert, bleibt alles, wie es ist.
     @discardableResult
     func changeFolder(to url: URL) -> Bool {
-        guard leaveSession() else { return false }
+        // Alle Sitzungen, auch die Tabs des Panels: Bleibt irgendwo Text
+        // ungesichert, bleibt alles, wie es ist.
+        guard registry.flushAll().isEmpty else { return false }
+        registry.removeAll()
         session = nil
         lastDeleted = nil
         NotesFolder.set(url, defaults: defaults)
         store.setFolder(url)
+        onFolderChanged?()
         return true
     }
 
@@ -182,46 +200,20 @@ final class NotesPageModel: ObservableObject {
     /// zu sichern. Ihr ungesicherter Text ist danach weg — die Oberfläche fragt
     /// vorher nach und bietet an, ihn zu kopieren.
     func discardSession() {
+        if let offen = session { registry.discard(offen) }
         session = nil
     }
 
     func flush() { session?.flush() }
 
-    /// Letzte Sicherung beim Beenden: Steht nach `flush()` noch Text nur im
-    /// Speicher (Platte voll, fremde Änderung nicht lesbar), geht er als eigene
-    /// Datei in `directory`, damit er nicht mit der App verschwindet. Die Datei
-    /// heißt „Titel yyyy-MM-dd HH-mm-ss.md“. Gibt ihre URL zurück, oder `nil`,
-    /// wenn nichts zu retten war oder das Schreiben scheiterte.
+    /// Letzte Sicherung beim Beenden für die offene Notiz der Seite; schreibt
+    /// über `registry.writeRescueCopy(for:in:)`. Eine neue Kopie erscheint sofort
+    /// im Hinweis.
     @discardableResult
     func writeRescueCopyIfNeeded(in directory: URL) -> URL? {
-        guard let session, session.hasUnsavedText else { return nil }
-        let note = session.note
-        // Beenden abgebrochen und erneut versucht: Derselbe Text liegt schon gerettet da.
-        if let letzte = lastRescue, letzte.body == note.body,
-           letzte.url.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL,
-           FileManager.default.fileExists(atPath: letzte.url.path) {
-            return letzte.url
-        }
-        let titel = (note.isNew ? nil : NoteFile.safeTitle(note.title))
-            ?? NoteFile.deriveTitle(from: note.body)
-            ?? Loc.t("Unbenannt")
-
-        let format = DateFormatter()
-        format.locale = Locale(identifier: "en_US_POSIX")
-        format.dateFormat = "yyyy-MM-dd HH-mm-ss"
-        let zeit = format.string(from: Date())
-
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let name = NoteFile.freeFileName(for: "\(titel) \(zeit)", in: directory)
-            let url = directory.appendingPathComponent(name)
-            try Data(note.body.utf8).write(to: url, options: .atomic)
-            lastRescue = (note.body, url)
-            refreshRescuedFiles()
-            return url
-        } catch {
-            NSLog("shout: Rettungskopie der Notiz konnte nicht geschrieben werden: \(error)")
-            return nil
-        }
+        guard let session else { return nil }
+        let url = registry.writeRescueCopy(for: session, in: directory)
+        if url != nil { refreshRescuedFiles() }
+        return url
     }
 }

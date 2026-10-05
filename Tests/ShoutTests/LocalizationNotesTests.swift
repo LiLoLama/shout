@@ -43,6 +43,9 @@ final class LocalizationNotesTests: XCTestCase {
         // Hinweis auf gerettete Notizen
         "Beim letzten Beenden wurden ungesicherte Notizen gerettet.",
         "In den Notizordner holen",
+        // Scratchpad-Tasten
+        "Mit ⌃ oder ⌥ kombinieren",
+        "Schon belegt",
         // schon vorhanden, hier mitgeprüft, weil die Seite sie benutzt
         "Löschen",
         "Rückgängig",

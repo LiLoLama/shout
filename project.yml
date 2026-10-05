@@ -389,6 +389,12 @@ targets:
       - path: Sources/FlowLokal/NoteSessionRegistry.swift
       - path: Sources/FlowLokal/NoteEditorView.swift
       - path: Sources/FlowLokal/ScratchpadModel.swift
+      - path: Sources/FlowLokal/RecordingSettings.swift
+      - path: Sources/FlowLokal/HotkeyCombo.swift
+      - path: Sources/FlowLokal/HotkeyPressClassifier.swift
+      - path: Sources/FlowLokal/DictationTarget.swift
+      - path: Sources/FlowLokal/ScratchpadSettings.swift
+      - path: Sources/FlowLokal/GlobalHotkey.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

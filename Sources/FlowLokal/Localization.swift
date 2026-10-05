@@ -955,5 +955,8 @@ final class Loc: ObservableObject {
         "Text kopieren und beenden": "Copy text and quit",
         "Beim letzten Beenden wurden ungesicherte Notizen gerettet.": "Unsaved notes were rescued when shout. last quit.",
         "In den Notizordner holen": "Move to notes folder",
+        // Scratchpad-Tasten
+        "Mit ⌃ oder ⌥ kombinieren": "Combine with ⌃ or ⌥",
+        "Schon belegt": "Already in use",
     ]
 }

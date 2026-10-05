@@ -15,8 +15,12 @@ final class NotesPageModel: ObservableObject {
     @Published private(set) var session: NoteEditorSession?
     @Published private(set) var lastDeleted: UndoDelete?
     private let defaults: UserDefaults
-    /// Hierhin rettet `writeRescueCopyIfNeeded` beim Beenden ungesicherten Text.
+    /// Hierhin rettet das Beenden ungesicherten Text (`NoteSessionRegistry.writeRescueCopies`).
     let rescueDirectory: URL
+    /// Der Rettungsordner im App-Support — die eine Stelle für Seite und Beenden.
+    nonisolated static var defaultRescueDirectory: URL {
+        StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)
+    }
     /// Gerettete Notizen (`.md` im Rettungsordner). Solange welche da sind, zeigt
     /// die Seite einen Hinweis — sonst lägen sie unbemerkt im App-Support.
     @Published private(set) var rescuedFiles: [URL] = []
@@ -26,7 +30,7 @@ final class NotesPageModel: ObservableObject {
     var onFolderChanged: (() -> Void)?
 
     init(store: NoteStore, registry: NoteSessionRegistry? = nil, defaults: UserDefaults = .standard,
-         rescueDirectory: URL = StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)) {
+         rescueDirectory: URL = NotesPageModel.defaultRescueDirectory) {
         self.store = store
         self.registry = registry ?? NoteSessionRegistry(store: store)
         self.defaults = defaults

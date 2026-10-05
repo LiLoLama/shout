@@ -54,6 +54,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let store = notesStoreStorage { return store }
         let store = NoteStore(folder: NotesFolder.current())
         notesStoreStorage = store
+        // Mit dem Ordner entsteht auch das Scratchpad-Modell (ohne Panel): Es hört auf
+        // Umbenennungen. Würde „Eingang“ sonst zuerst auf der Seite umbenannt, legte
+        // ⌃⌥I danach eine zweite Eingangs-Notiz an. Nicht schon beim Start — das läse
+        // den Ordner in „Dokumente“ und könnte nach der Freigabe dafür fragen.
+        _ = scratchpad
         return store
     }
 
@@ -78,7 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var scratchpadStorage: ScratchpadModel?
     private var scratchpad: ScratchpadModel {
         if let model = scratchpadStorage { return model }
-        let model = ScratchpadModel(store: noteStore, registry: noteRegistry)
+        let store = noteStore
+        // Ein frisch angelegter Ordner hat das Modell eben schon selbst erzeugt.
+        if let model = scratchpadStorage { return model }
+        let model = ScratchpadModel(store: store, registry: noteRegistry)
         scratchpadStorage = model
         return model
     }
@@ -101,6 +109,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var scratchpadMenuItem: NSMenuItem?
     /// Wohin das laufende Diktat geht — festgelegt beim Start der Aufnahme.
     private var dictationTarget: DictationTarget = .frontApp(bundleID: nil)
+
+    /// Ein Beenden, das auf das laufende Diktat wartet (`.terminateLater`).
+    /// Siehe `applicationShouldTerminate`.
+    private var pendingTermination: DeferredTermination?
+    private var pendingTerminationTimer: Timer?
+    /// Wie lange das Beenden höchstens auf die Zustellung wartet.
+    private static let terminationWaitLimit: TimeInterval = 20
+    /// Was das laufende Diktat schon erkannt hat — für den Fall, dass das Beenden
+    /// nicht länger auf die Aufbereitung warten kann.
+    private var processingText: (text: String, raw: String)?
 
     /// Reine Modifier-Diktiertaste (Vorgabe: rechte ⌥): seit wann sie gedrückt ist
     /// (`nil` = nicht gedrückt), ob genau dieser Druck eine Aufnahme gestartet hat
@@ -976,19 +994,97 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    /// Läuft noch ein Datei-Auftrag, wird nachgefragt — sonst ist die Arbeit von
-    /// vielleicht einer halben Stunde stillschweigend weg.
+    /// Läuft noch ein Diktat, wartet das Beenden auf seine Zustellung — sonst wäre ein
+    /// Diktat in den Eingang oder eine Notiz still weg. Danach kommen die Prüfungen
+    /// in `terminationChecks()`.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Ein zweites Beenden, während das erste noch wartet, ändert nichts.
+        guard pendingTermination == nil else { return .terminateCancel }
+        switch state {
+        case .recording:
+            // Was schon gesprochen ist, wird noch erkannt und zugestellt.
+            stopAndProcess()
+            return waitForDictationThenTerminate()
+        case .working:
+            return waitForDictationThenTerminate()
+        case .loadingModel, .idle, .failed:
+            return terminationChecks()
+        }
+    }
+
+    /// Antwortet AppKit erst, wenn das Diktat zugestellt ist (`dictationProcessingFinished`)
+    /// oder `terminationWaitLimit` verstrichen ist (`terminationWaitTimedOut`).
+    /// Die Notiz-Prüfungen laufen erst danach, damit sie das Diktat mit sichern.
+    private func waitForDictationThenTerminate() -> NSApplication.TerminateReply {
+        pendingTermination = DeferredTermination { NSApp.reply(toApplicationShouldTerminate: $0) }
+        // `.common`: Solange AppKit auf die Antwort wartet, läuft die Run-Loop im
+        // Modal-Modus — ein Zeitgeber nur im Standard-Modus käme nie an.
+        let timer = Timer(timeInterval: Self.terminationWaitLimit, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.terminationWaitTimedOut() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pendingTerminationTimer = timer
+        return .terminateLater
+    }
+
+    /// Das Diktat ist zugestellt oder gescheitert. Die halbe Sekunde lässt das ⌘V in
+    /// die App davor noch abgehen (`TextInjector` sendet es nach 0,06 s und stellt
+    /// die Zwischenablage nach 0,41 s wieder her).
+    private func dictationProcessingFinished() {
+        guard pendingTermination != nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            MainActor.assumeIsolated { self?.answerPendingTermination() }
+        }
+    }
+
+    private func answerPendingTermination() {
+        pendingTerminationTimer?.invalidate()
+        pendingTerminationTimer = nil
+        pendingTermination?.resolve { terminationChecks() == .terminateNow }
+        pendingTermination = nil
+    }
+
+    /// Die Zustellung dauert zu lange (etwa ein hängender Anbieter). Ist der Text
+    /// schon erkannt, geht er in die Zwischenablage und den Verlauf. Sonst fragt
+    /// die App, statt ihn still zu verlieren.
+    private func terminationWaitTimedOut() {
+        pendingTerminationTimer = nil
+        pendingTermination?.resolve {
+            if state == .working, processingText == nil {
+                let alert = NSAlert()
+                alert.messageText = Loc.t("Ein Diktat wird noch verarbeitet.")
+                alert.informativeText = Loc.t("Wenn du jetzt beendest, geht es verloren.")
+                alert.addButton(withTitle: Loc.t("Trotzdem beenden"))
+                alert.addButton(withTitle: Loc.t("Abbrechen"))
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
+                guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            }
+            // Auch während des Hinweises kann die Erkennung fertig geworden sein.
+            if state == .working, let stand = processingText {
+                injector.copyConcealed(stand.text)
+                history.add(stand.text, raw: stand.raw)
+            }
+            return terminationChecks() == .terminateNow
+        }
+        pendingTermination = nil
+    }
+
+    /// Die Prüfungen vor dem Beenden: Notizen, Mitschnitt, Datei-Aufträge.
+    /// Gibt nur `.terminateNow` oder `.terminateCancel` zurück.
+    private func terminationChecks() -> NSApplication.TerminateReply {
         // Notizen zuerst: Ungesicherter Text aller offenen Notizen (Seite und Panel,
         // höchstens eine Sekunde alt) wird jetzt gesichert. Scheitert das (Platte voll,
         // fremde Änderung nicht lesbar), geht er als Rettungskopie in den App-Support
         // (die Seite zeigt sie danach an). Scheitert auch das, fragt die App nach, statt
         // den Text still zu verlieren. Wird das Beenden abgebrochen und erneut versucht,
         // entsteht für denselben Text keine zweite Kopie.
+        // Die Tabs des Panels über das Modell sichern: Es merkt sich dabei auch neue
+        // Tabs, die es erst mit dem ersten Sichern als Datei gibt.
+        scratchpadStorage?.flushAll()
         if let registry = noteRegistryStorage {
             registry.flushAll()
-            let rettung = notesPageStorage?.rescueDirectory
-                ?? StoreIO.directory().appendingPathComponent("Notizen-Rettung", isDirectory: true)
+            let rettung = notesPageStorage?.rescueDirectory ?? NotesPageModel.defaultRescueDirectory
             let ergebnis = registry.writeRescueCopies(in: rettung)
             // Neue Kopien sofort im Hinweis der Seite — falls das Beenden abgebrochen wird.
             if !ergebnis.written.isEmpty { notesPageStorage?.refreshRescuedFiles() }
@@ -1270,17 +1366,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func installHotkeyMonitors() {
         for matching in [NSEvent.EventTypeMask.flagsChanged, .keyDown, .keyUp] {
+            // Global: Ereignisse für andere Apps. Lokal: für shout. selbst.
             if let m = NSEvent.addGlobalMonitorForEvents(matching: matching, handler: { [weak self] event in
-                self?.route(event)
+                self?.route(event, local: false)
             }) { eventMonitors.append(m) }
             if let m = NSEvent.addLocalMonitorForEvents(matching: matching, handler: { [weak self] event in
-                self?.route(event)
+                self?.route(event, local: true)
                 return event
             }) { eventMonitors.append(m) }
         }
     }
 
-    private func route(_ event: NSEvent) {
+    private func route(_ event: NSEvent, local: Bool) {
         // Selbst erzeugte ⌘V-Events (TextInjector) ignorieren — sonst kann das
         // Einfügen eines Diktats den eigenen Hotkey erneut auslösen.
         if let cg = event.cgEvent,
@@ -1288,19 +1385,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
         switch event.type {
-        case .flagsChanged: handleFlagsChanged(event)
-        case .keyDown: handleKeyDown(event)
+        case .flagsChanged: handleFlagsChanged(event, local: local)
+        case .keyDown: handleKeyDown(event, local: local)
         case .keyUp: handleKeyUp(event)
         default: break
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) {
+    private func handleKeyDown(_ event: NSEvent, local: Bool) {
         // Auto-Repeat der gehaltenen Taste ignorieren (sonst togglet der Toggle-Modus
         // im Sekundentakt und feste Shortcuts feuern mehrfach).
         guard !event.isARepeat else { return }
 
-        if let rolle = scratchpadSettings.capturing {
+        // Eine Scratchpad-Taste wird nur aus shout. selbst aufgenommen. Ein Druck in
+        // einer anderen App (⌥L für „@“ in Mail) würde sonst angemeldet und danach
+        // systemweit verschluckt. Fremde Ereignisse laufen normal weiter.
+        if local, NSApp.isActive, let rolle = scratchpadSettings.capturing {
             captureScratchpadKey(event, rolle: rolle)
             return
         }
@@ -1362,7 +1462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if settings.matchesKeyUp(event) { handleTrigger(down: false) }
     }
 
-    private func handleFlagsChanged(_ event: NSEvent) {
+    private func handleFlagsChanged(_ event: NSEvent, local: Bool) {
         if isCapturingHotkey {
             handleCaptureFlagsChanged(event)
             return
@@ -1370,8 +1470,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard let pressed = settings.modifierPressed(in: event) else { return }
         if pressed {
             // Während eine Scratchpad-Taste aufgenommen wird, gehört die ⌥ zur neuen
-            // Kombination und startet kein Diktat.
-            guard scratchpadSettings.capturing == nil else { return }
+            // Kombination und startet kein Diktat — in shout. selbst, nicht anderswo.
+            guard !local || scratchpadSettings.capturing == nil else { return }
             dictationModifierDownAt = ProcessInfo.processInfo.systemUptime
             dictationModifierClaimed = false
             let vorher = state
@@ -1510,6 +1610,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         inboxKey.onRelease = { [weak self] in self?.inboxKeyUp() }
         scratchpadSettings.onChange = { [weak self] in self?.applyScratchpadHotkeys() }
         applyScratchpadHotkeys()
+        // Wer während der Tastenaufnahme in eine andere App wechselt, hat sie
+        // vergessen: beenden, damit beide Tasten wieder angemeldet sind.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appDidResignActive(_:)),
+            name: NSApplication.didResignActiveNotification, object: nil
+        )
+    }
+
+    @objc private func appDidResignActive(_ notification: Notification) {
+        scratchpadSettings.cancelCapture()     // meldet über onChange neu an
     }
 
     /// Meldet beide Tasten neu an. Während eine aufgenommen wird, bleiben sie
@@ -1656,6 +1766,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// `held`: Die auslösende Taste wird gehalten (Scratchpad-Taste halten) — dann
     /// stoppt ihr Loslassen, nie der Auto-Stopp, unabhängig vom Modus der Diktiertaste.
     private func startRecording(target explizit: DictationTarget? = nil, held: Bool = false) {
+        // Das Beenden wartet gerade auf ein Diktat — ein neues ginge dabei verloren.
+        guard pendingTermination == nil else { return }
         disarmPill()
         // Ziel-App merken, solange sie noch im Vordergrund ist. Das Panel ist
         // nicht aktivierend — hat es den Fokus, ist die App davor trotzdem vorne.
@@ -1716,7 +1828,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled")
 
         Task {
-            defer { state = .idle; recIndicator.finish() }
+            defer {
+                processingText = nil
+                state = .idle
+                recIndicator.finish()
+                // Wartet ein Beenden auf dieses Diktat, darf es jetzt weiter.
+                dictationProcessingFinished()
+            }
             guard !samples.isEmpty else { return }
             do {
                 let raw = try await transcriber.transcribe(samples)
@@ -1725,6 +1843,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
                 // Gesprochene Befehle („Komma", „neue Zeile" …) vor der Formatierung anwenden.
                 if useCommands { output = SpeechCommands.apply(to: output) }
+                processingText = (output, raw)
 
                 if useFormatting {
                     output = await formatter.format(output, bundleID: bundleID, termHint: dictionary.termHint)

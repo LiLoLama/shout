@@ -16,13 +16,19 @@ final class NoteEditorSessionInsertTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Ein Editor-Ersatz, der nur festhält, was ihm zum Einfügen gegeben wurde.
+    /// Ein Editor-Ersatz, der festhält, was ihm zum Einfügen gegeben wurde. Wie ein
+    /// echter Editor meldet er die Änderung danach über `edit(_:from:)` — außer er
+    /// soll es vergessen (`meldet = false`).
     private final class FakeEditor: NoteTextEditing {
+        weak var sitzung: NoteEditorSession?
         var aufrufe: [(String, NoteEditorSession.InsertionPoint)] = []
         var nimmtAn = true
+        var meldet = true
         func insertText(_ text: String, at point: NoteEditorSession.InsertionPoint) -> Bool {
             aufrufe.append((text, point))
-            return nimmtAn
+            guard nimmtAn else { return false }
+            if meldet, let sitzung { sitzung.edit(sitzung.note.body + text, from: self) }
+            return true
         }
     }
 
@@ -61,11 +67,43 @@ final class NoteEditorSessionInsertTests: XCTestCase {
     func testMitEditorGehtEsAnDenEditor() throws {
         let s = try sitzung("Text")
         let editor = FakeEditor()
+        editor.sitzung = s
         s.attach(editor: editor)
         XCTAssertTrue(s.insert("neu", at: .cursor))
         XCTAssertEqual(editor.aufrufe.count, 1)
         XCTAssertEqual(editor.aufrufe.first?.0, "neu")
-        XCTAssertEqual(s.note.body, "Text")    // der Editor meldet die Änderung selbst über edit
+        XCTAssertEqual(s.note.body, "Textneu")             // der Editor meldet die Änderung selbst über edit
+        XCTAssertTrue(s.lastEditSource === editor)
+        XCTAssertEqual(s.externalRevision, 0)              // er hat seinen Text schon, kein Neuladen
+    }
+
+    /// Sagt der Editor „angenommen“, meldet aber nichts, fügt die Sitzung selbst ein — nichts geht verloren.
+    func testEditorMeldetNichtDannSelbst() throws {
+        let s = try sitzung("Text")
+        let editor = FakeEditor()
+        editor.meldet = false
+        s.attach(editor: editor)
+        s.selectionChanged(NSRange(location: 4, length: 0))
+        XCTAssertTrue(s.insert("neu", at: .cursor))
+        XCTAssertEqual(s.note.body, "Text neu")
+        XCTAssertEqual(s.externalRevision, 1)
+    }
+
+    /// Der Editor hat die Einfügung nicht gesehen: Er lädt neu, sonst überschriebe seine nächste Eingabe sie.
+    func testSelbstEinfuegenMitEditorLaedtDenEditorNeu() throws {
+        let s = try sitzung("Text")
+        let editor = FakeEditor()
+        editor.nimmtAn = false
+        s.attach(editor: editor)
+        s.insert("neu", at: .end)
+        XCTAssertEqual(s.externalRevision, 1)
+        XCTAssertEqual(s.note.body, "Textneu")
+    }
+
+    func testSelbstEinfuegenOhneEditorLaedtNichtNeu() throws {
+        let s = try sitzung("Text")
+        s.insert("neu", at: .end)
+        XCTAssertEqual(s.externalRevision, 0)
     }
 
     /// Kann der Editor nicht annehmen, fügt die Sitzung selbst ein — nichts geht verloren.

@@ -115,7 +115,11 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     @discardableResult
     func insert(_ text: String, at point: InsertionPoint) -> Bool {
         guard status != .placeholder, !text.isEmpty else { return false }
-        if let editor, editor.insertText(text, at: point) { return true }
+        // Ein Editor gilt nur als angenommen, wenn er die Änderung auch gemeldet hat
+        // (`edit` hebt `editRevision`). Sonst stünde der Text nirgends.
+        let revision = editRevision
+        if let editor, editor.insertText(text, at: point), editRevision != revision { return true }
+        let hatEditor = editor != nil
         let ns = note.body as NSString
         var ort = point == .end ? ns.length : min(max(lastSelection.location, 0), ns.length)
         // Ein veralteter Cursor kann mitten in einem Zeichen (Emoji, Kombination)
@@ -130,6 +134,9 @@ final class NoteEditorSession: ObservableObject, Identifiable {
             lastSelection = NSRange(location: ort + (einfuegen as NSString).length, length: 0)
         }
         edit(neu)
+        // Der angehängte Editor kennt die Einfügung nicht: Er muss neu laden, sonst
+        // überschriebe seine nächste Eingabe sie.
+        if hatEditor { externalRevision += 1 }
         return true
     }
 

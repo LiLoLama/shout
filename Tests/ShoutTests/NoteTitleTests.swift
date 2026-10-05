@@ -1,5 +1,13 @@
 import XCTest
 
+/// Ein Dateiverwalter, der den Ordner nicht auflisten kann — wie bei einem
+/// Ordner ohne Leserecht oder einem iCloud-Fehler.
+private final class UnlesbarerDateiverwalter: FileManager {
+    override func contentsOfDirectory(atPath path: String) throws -> [String] {
+        throw CocoaError(.fileReadNoPermission)
+    }
+}
+
 /// Wie aus dem Text ein Dateiname wird — und wie zwei Notizen sich nie
 /// gegenseitig überschreiben.
 final class NoteTitleTests: XCTestCase {
@@ -37,6 +45,12 @@ final class NoteTitleTests: XCTestCase {
         XCTAssertEqual(NoteFile.deriveTitle(from: "\n\n![](Anhänge/a.png)\nEchter Anfang"), "Echter Anfang")
     }
 
+    /// „\r\n“ ist in Swift ein einzelnes Zeichen und trennt trotzdem Zeilen.
+    func testWindowsZeilenumbruch() {
+        XCTAssertEqual(NoteFile.deriveTitle(from: "Kurz\r\nzweite Zeile"), "Kurz")
+        XCTAssertEqual(NoteFile.deriveTitle(from: "![](x.png)\r\nEchter Anfang"), "Echter Anfang")
+    }
+
     func testNurLeerraumGibtNichts() {
         XCTAssertNil(NoteFile.deriveTitle(from: "  \n\n "))
         XCTAssertNil(NoteFile.deriveTitle(from: "# "))
@@ -54,6 +68,24 @@ final class NoteTitleTests: XCTestCase {
         XCTAssertNil(NoteFile.safeTitle(" ?: "))
     }
 
+    /// Punkte und Leerzeichen am Rand fallen wiederholt weg, bis nichts mehr übrig ist.
+    func testRandPunkteUndLeerraumWiederholt() {
+        XCTAssertEqual(NoteFile.safeTitle("Hallo Welt ..."), "Hallo Welt")
+        XCTAssertEqual(NoteFile.safeTitle(". Idee"), "Idee")
+        XCTAssertEqual(NoteFile.safeTitle(" . . Idee . . "), "Idee")
+        XCTAssertNil(NoteFile.safeTitle(" . . "))
+    }
+
+    /// Auch der Schnitt bei 60 Zeichen darf keinen Rand aus Leerzeichen oder Punkten lassen.
+    func testSechzigZeichenSchnittOhneRand() {
+        XCTAssertEqual(NoteFile.safeTitle(String(repeating: "a", count: 59) + " b"),
+                       String(repeating: "a", count: 59))
+        XCTAssertEqual(NoteFile.safeTitle(String(repeating: "a", count: 59) + ".b"),
+                       String(repeating: "a", count: 59))
+        XCTAssertEqual(NoteFile.safeTitle(String(repeating: "a", count: 57) + " . b"),
+                       String(repeating: "a", count: 57))
+    }
+
     func testSechzigZeichen() throws {
         let titel = try XCTUnwrap(NoteFile.safeTitle(String(repeating: "a", count: 100)))
         XCTAssertEqual(titel.count, 60)
@@ -61,6 +93,13 @@ final class NoteTitleTests: XCTestCase {
 
     func testUmlauteBleiben() {
         XCTAssertEqual(NoteFile.safeTitle("Jahresgespräch Müller"), "Jahresgespräch Müller")
+    }
+
+    /// Das Kästchen einer erledigten Aufgabe ist kein Wort.
+    func testHakenKastenZaehltNicht() {
+        XCTAssertEqual(NoteFile.wordCount("- [x] Milch"), 1)
+        XCTAssertEqual(NoteFile.wordCount("- [X] Milch und Brot"), 3)
+        XCTAssertEqual(NoteFile.wordCount("[x] [X] [ ]"), 0)
     }
 
     func testWoerterZaehlen() {
@@ -112,5 +151,17 @@ final class NoteTitleTests: XCTestCase {
     func testPlatzhalterBelegtDenNamen() throws {
         try lege(".Idee.md.icloud")
         XCTAssertEqual(NoteFile.freeFileName(for: "Idee", in: ordner), "Idee 2.md")
+    }
+
+    /// Lässt sich der Ordner nicht auflisten, gilt er nicht als leer: Jeder
+    /// Kandidat wird einzeln geprüft.
+    func testUnlesbarerOrdnerGiltNichtAlsLeer() throws {
+        try lege("Idee.md")
+        let verwalter = UnlesbarerDateiverwalter()
+        XCTAssertEqual(NoteFile.freeFileName(for: "Idee", in: ordner, fileManager: verwalter), "Idee 2.md")
+        try lege("Idee 2.md")
+        try lege(".Idee 3.md.icloud")
+        XCTAssertEqual(NoteFile.freeFileName(for: "Idee", in: ordner, fileManager: verwalter), "Idee 4.md")
+        XCTAssertEqual(NoteFile.freeFileName(for: "Idee", in: ordner, current: "idee.md", fileManager: verwalter), "Idee.md")
     }
 }

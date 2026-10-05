@@ -113,7 +113,8 @@ enum NoteFile {
     /// Titel aus den ersten Wörtern der ersten Zeile mit Inhalt. Bildzeilen
     /// zählen nicht — ein Dateiname „![](Anhänge-…" hilft niemandem.
     static func deriveTitle(from body: String) -> String? {
-        let erste = body.split(separator: "\n")
+        // `isNewline` erkennt auch „\r\n“, das Swift als ein einzelnes Zeichen sieht.
+        let erste = body.split(whereSeparator: \.isNewline)
             .map(cleanLine)
             .first { !$0.isEmpty && !$0.hasPrefix("![") }
         guard let erste else { return nil }
@@ -146,15 +147,31 @@ enum NoteFile {
             .replacingOccurrences(of: "\\", with: "-")
         text.removeAll { ":*\"<>|?#^[]".contains($0) }
         text = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        while text.hasPrefix(".") { text.removeFirst() }
-        text = String(text.prefix(maxTitleLength)).trimmingCharacters(in: .whitespaces)
-        while text.hasSuffix(".") { text.removeLast() }
+        text = trimEdges(text)
+        // Der Schnitt bei 60 Zeichen kann wieder Leerzeichen oder Punkte an den Rand legen.
+        text = trimEdges(String(text.prefix(maxTitleLength)))
         return text.isEmpty ? nil : text
     }
 
-    /// Wörter mit mindestens einem Buchstaben oder einer Ziffer. „- [ ]" zählt nicht.
+    /// Leerraum und Punkte am Anfang und Ende, so lange bis nichts mehr wegfällt:
+    /// Aus „Hallo Welt ..." wird „Hallo Welt", aus „. Idee" wird „Idee".
+    private static func trimEdges(_ text: String) -> String {
+        var result = text
+        var vorher: String
+        repeat {
+            vorher = result
+            result = result.trimmingCharacters(in: .whitespaces)
+            while result.hasPrefix(".") { result.removeFirst() }
+            while result.hasSuffix(".") { result.removeLast() }
+        } while result != vorher
+        return result
+    }
+
+    /// Wörter mit mindestens einem Buchstaben oder einer Ziffer. Die Kästchen
+    /// „- [ ]“, „- [x]“ und „- [X]“ zählen nicht.
     static func wordCount(_ body: String) -> Int {
         body.split(whereSeparator: \.isWhitespace)
+            .filter { $0.lowercased() != "[x]" }
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
             .count
     }
@@ -178,17 +195,30 @@ enum NoteFile {
     /// ohne Groß-/Kleinschreibung, wie APFS es standardmäßig tut.
     static func freeFileName(for title: String, in folder: URL, current: String? = nil,
                              fileManager: FileManager = .default) -> String {
-        let namen = (try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? []
-        var belegt = Set<String>()
-        for name in namen {
-            belegt.insert(name.lowercased())
-            if let echt = placeholderTarget(name) { belegt.insert(echt.lowercased()) }
+        let ownLower = current?.lowercased()
+        let istBelegt: (String) -> Bool
+
+        if let namen = try? fileManager.contentsOfDirectory(atPath: folder.path) {
+            var belegt = Set<String>()
+            for name in namen {
+                belegt.insert(name.lowercased())
+                if let echt = placeholderTarget(name) { belegt.insert(echt.lowercased()) }
+            }
+            if let ownLower { belegt.remove(ownLower) }
+            istBelegt = { belegt.contains($0.lowercased()) }
+        } else {
+            // Ordner nicht lesbar: nicht als leer behandeln (sonst würde eine
+            // vorhandene Notiz überschrieben), sondern jeden Kandidaten einzeln prüfen.
+            istBelegt = { kandidat in
+                if kandidat.lowercased() == ownLower { return false }
+                return fileManager.fileExists(atPath: folder.appendingPathComponent(kandidat).path)
+                    || fileManager.fileExists(atPath: folder.appendingPathComponent(".\(kandidat).icloud").path)
+            }
         }
-        if let current { belegt.remove(current.lowercased()) }
 
         var kandidat = "\(title).\(fileExtension)"
         var zahl = 2
-        while belegt.contains(kandidat.lowercased()) {
+        while istBelegt(kandidat) {
             kandidat = "\(title) \(zahl).\(fileExtension)"
             zahl += 1
         }

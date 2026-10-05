@@ -149,6 +149,16 @@ final class NoteStore: ObservableObject {
         startWatchingIfNeeded()
         flushBuffer()
 
+        if !note.isNew {
+            let url = url(for: note)
+            guard fileManager.fileExists(atPath: url.path) else { return .missing }
+            if modificationDate(of: url) != note.modified,
+               let extern = read(note.fileName, keepingID: note.id),
+               extern.body != note.body {
+                return resolveConflict(mine: note, external: extern)
+            }
+        }
+
         let alt = note.fileName
         var neu = targetFileName(for: note)
         if !note.isNew && neu != alt && !move(alt, to: neu) { neu = alt }
@@ -170,6 +180,20 @@ final class NoteStore: ObservableObject {
         cache[note.fileName] = note
         publish()
         return .saved(note)
+    }
+
+    /// Beide Seiten haben geändert. Die eigene Fassung wird daneben gesichert,
+    /// die Datei behält die Fassung von außen — keine gewinnt still.
+    /// Scheitert das Schreiben der Konfliktdatei, existiert unser Text sonst
+    /// nirgends: dann `.failed`, damit der Aufrufer ihn als ungesichert behält.
+    /// `freeFileName` liefert einen freien Namen, die Konfliktdatei überschreibt
+    /// also nie eine vorhandene Datei.
+    private func resolveConflict(mine: Note, external: Note) -> SaveResult {
+        let titel = NoteFile.conflictTitle(mine.title, suffix: Loc.t("(Konflikt)"))
+        let name = NoteFile.freeFileName(for: titel, in: folder, fileManager: fileManager)
+        guard write(mine, to: folder.appendingPathComponent(name)) != nil else { return .failed }
+        reload()
+        return .conflict(external: note(id: mine.id) ?? external, conflictFileName: name)
     }
 
     private func buffer(_ note: Note) -> SaveResult {

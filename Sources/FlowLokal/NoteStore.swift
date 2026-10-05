@@ -102,6 +102,7 @@ final class NoteStore: ObservableObject {
         createIfMissing = NotesFolder.isDefault(url)
         cache = [:]
         pendingIDs = [:]
+        angestosseneDownloads = []
         watcher = nil
         publish()
         reload()

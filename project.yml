@@ -395,6 +395,7 @@ targets:
       - path: Sources/FlowLokal/DictationTarget.swift
       - path: Sources/FlowLokal/ScratchpadSettings.swift
       - path: Sources/FlowLokal/GlobalHotkey.swift
+      - path: Sources/FlowLokal/PanelPlacement.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

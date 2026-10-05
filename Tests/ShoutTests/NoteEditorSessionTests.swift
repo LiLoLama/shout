@@ -100,7 +100,7 @@ final class NoteEditorSessionTests: XCTestCase {
         let s = u.store()
         let sitzung = NoteEditorSession(note: .blank(), store: s, saveDelay: 60)
         sitzung.edit("eins zwei drei")
-        sitzung.rename(to: "Neuer Name")
+        XCTAssertTrue(sitzung.rename(to: "Neuer Name"))
         XCTAssertEqual(sitzung.note.fileName, "Neuer Name.md")
         XCTAssertEqual(u.dateien(), ["Neuer Name.md"])
     }
@@ -230,7 +230,7 @@ final class NoteEditorSessionTests: XCTestCase {
         sitzung.edit("meins")
         try Data([0x47, 0xFC, 0x6E]).write(to: u.ordner.appendingPathComponent("X.md"))
 
-        sitzung.rename(to: "Anders")
+        XCTAssertFalse(sitzung.rename(to: "Anders"))
         XCTAssertEqual(sitzung.status, .dirty)
         XCTAssertTrue(sitzung.saveFailed)
         XCTAssertEqual(sitzung.note.body, "meins", "der ungesicherte Text darf nicht durch die alte Fassung ersetzt werden")
@@ -371,6 +371,107 @@ final class NoteEditorSessionTests: XCTestCase {
         XCTAssertNotNil(s.undoDelete(geloescht))
         XCTAssertEqual(sitzung.status, .clean)
         XCTAssertEqual(sitzung.note.body, "Text")
+        XCTAssertNil(sitzung.conflictNotice)
+    }
+
+    // MARK: - Wiederherstellen nur auf ausdrücklichen flush
+
+    /// Ein noch laufender Sicherungs-Zeitgeber darf eine von außen gelöschte
+    /// Notiz nicht neu anlegen: Der Nutzer soll „fehlt“ sehen.
+    func testZeitgeberLegtVonAussenGeloeschteNotizNichtNeuAn() async throws {
+        try u.schreibe("X.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 0.05)
+        sitzung.edit("meins")
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("X.md"))
+        s.reload()
+        XCTAssertEqual(sitzung.status, .missing)
+
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(sitzung.status, .missing)
+        XCTAssertEqual(u.dateien(), [])
+
+        sitzung.flush()   // ausdrücklich (Schließen, Beenden): jetzt wird gerettet
+        XCTAssertEqual(sitzung.status, .clean)
+        XCTAssertEqual(u.text("X.md"), "meins")
+    }
+
+    func testAnheftenUndUmbenennenLegenFehlendeNotizNichtNeuAn() throws {
+        try u.schreibe("X.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        sitzung.edit("meins")
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("X.md"))
+        s.reload()
+        XCTAssertEqual(sitzung.status, .missing)
+
+        sitzung.setPinned(true)
+        XCTAssertEqual(sitzung.status, .missing)
+        XCTAssertEqual(u.dateien(), [])
+        XCTAssertFalse(sitzung.rename(to: "Anders"))
+        XCTAssertEqual(sitzung.status, .missing)
+        XCTAssertEqual(u.dateien(), [])
+        XCTAssertEqual(sitzung.note.body, "meins")
+    }
+
+    // MARK: - Wiederholung genau einmal
+
+    func testWiederholungNachFehlschlagNurEinmal() async throws {
+        try u.schreibe("X.md", "alt", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60, retryDelay: 0.1)
+        sitzung.edit("meins")
+        try Data([0x47, 0xFC, 0x6E]).write(to: u.ordner.appendingPathComponent("X.md"))
+        sitzung.flush()
+        XCTAssertTrue(sitzung.saveFailed)
+
+        try await Task.sleep(for: .milliseconds(300))   // der eine Versuch ist gescheitert
+        XCTAssertTrue(sitzung.saveFailed)
+        try u.schreibe("X.md", "meins", zeit: Date().addingTimeInterval(5))
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(sitzung.status, .dirty, "kein zweiter Versuch von allein")
+        XCTAssertTrue(sitzung.saveFailed)
+    }
+
+    /// Scheitert „Wieder sichern“, wiederholt der Versuch genau das.
+    func testWiederholungNachGescheitertemWiederSichernStelltWiederHer() async throws {
+        try u.schreibe("X.md", "Text")
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60, retryDelay: 0.1)
+        try FileManager.default.removeItem(at: u.ordner.appendingPathComponent("X.md"))
+        s.reload()
+        sitzung.edit("Text, weiter")
+        // Ordner schreibgeschützt, Puffer unbrauchbar (eine Datei statt Ordner).
+        try Data().write(to: u.puffer)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: u.ordner.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: u.ordner.path) }
+
+        sitzung.flush()
+        XCTAssertEqual(sitzung.status, .missing)
+        XCTAssertTrue(sitzung.saveFailed)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: u.ordner.path)
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(sitzung.status, .clean)
+        XCTAssertEqual(u.text("X.md"), "Text, weiter")
+    }
+
+    // MARK: - Anheften geht beim Wiederauftauchen nicht verloren
+
+    func testAnheftenBeiFehlenderDateiUeberlebtRueckgaengig() throws {
+        try u.schreibe("X.md", "Text", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s, saveDelay: 60)
+        let geloescht = try XCTUnwrap(s.delete(sitzung.id))
+        XCTAssertEqual(sitzung.status, .missing)
+        sitzung.setPinned(true)
+
+        XCTAssertNotNil(s.undoDelete(geloescht))
+        XCTAssertTrue(sitzung.note.pinned)
+        XCTAssertEqual(sitzung.status, .dirty)
+        sitzung.flush()
+        XCTAssertEqual(sitzung.status, .clean)
+        XCTAssertEqual(u.lies("X.md").map { NoteFile.parse($0).pinned }, true)
         XCTAssertNil(sitzung.conflictNotice)
     }
 }

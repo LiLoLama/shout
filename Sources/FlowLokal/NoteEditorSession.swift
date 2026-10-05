@@ -37,6 +37,8 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     /// Es gibt Text, der nicht in der Datei steht und nur in dieser Sitzung lebt,
     /// weil die Datei fehlt. Taucht sie wieder auf, darf ihr Inhalt ihn nicht ersetzen.
     private var unsavedWhileMissing = false
+    /// Läuft gerade der eine Wiederholversuch? Dann folgt auf einen Fehlschlag kein weiterer.
+    private var isRetrying = false
 
     init(note: Note, store: NoteStore, saveDelay: TimeInterval = 1.0, retryDelay: TimeInterval = 5.0) {
         id = note.id
@@ -67,19 +69,21 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         scheduleSave()
     }
 
-    /// Sichert sofort, wenn es etwas zu sichern gibt. Fehlt die Datei und wurde
-    /// ohne sie weitergeschrieben (oder angeheftet), legt es sie neu an — wer das
-    /// Fenster schließt oder die App beendet, verliert den Text so nicht.
+    /// Für Aufrufer von außen, wenn die Sitzung endet oder wechselt (Schließen,
+    /// Beenden, anderer Tab): sichert, und legt eine fehlende Datei neu an, wenn
+    /// ohne sie weitergeschrieben (oder angeheftet) wurde — der Text geht so nicht
+    /// verloren. Zeitgeber, Wiederholung, Anheften und Umbenennen legen nie neu
+    /// an; dort soll der Nutzer „fehlt“ sehen.
     func flush() {
-        saveTask?.cancel()
-        saveTask = nil
-        if status == .missing {
-            if unsavedWhileMissing { restoreMissing() }
-            return
-        }
+        saveIfDirty()
+        if status == .missing, unsavedWhileMissing { restoreMissing() }
+    }
+
+    /// Sichert, wenn etwas ungesichert ist. Stellt nie eine fehlende Datei her.
+    private func saveIfDirty() {
+        cancelTimer()
         guard status == .dirty else { return }
-        let gesendet = note.body
-        apply(store.save(note), sent: gesendet)
+        apply(store.save(note), restoring: false)
     }
 
     /// Heftet an oder löst. Ungesicherter Text wird zuerst gesichert; danach
@@ -87,7 +91,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     /// inzwischen von außen geändert hat (sonst gingen deren Änderungen verloren).
     func setPinned(_ pinned: Bool) {
         guard status != .placeholder else { return }
-        flush()
+        saveIfDirty()
         // Fehlende Datei, neue Notiz oder gescheitertes Sichern: Es gibt nichts,
         // worauf der Store aufsetzen könnte. Die Absicht bleibt im Speicher und
         // wird mit dem nächsten Sichern (bzw. „Wieder sichern“) geschrieben.
@@ -103,11 +107,10 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         // Der Store darf nur aufsetzen, wenn er denselben Text kennt wie die
         // Sitzung. Nach `.buffered` hält er noch den alten (Puffer-Fassung steht
         // nur hier); dann ginge der neue Text verloren. Also lokal sichern.
-        let gesendet = note.body
         guard storeMatchesSession, let ergebnis = store.setPinned(id, pinned) else {
             note.pinned = pinned
             status = .dirty
-            flush()
+            saveIfDirty()
             return
         }
         if case .failed = ergebnis {
@@ -115,24 +118,26 @@ final class NoteEditorSession: ObservableObject, Identifiable {
             note.pinned = pinned
             status = .dirty
         }
-        apply(ergebnis, sent: gesendet)
+        apply(ergebnis, restoring: false)
     }
 
-    func rename(to title: String) {
-        flush()
+    /// `true`, wenn umbenannt wurde.
+    @discardableResult
+    func rename(to title: String) -> Bool {
+        saveIfDirty()
         // Bleibt Text ungesichert (Sichern gescheitert) oder kennt der Store den
         // Text nicht (gepuffert), würde seine Fassung ihn ersetzen. Dann lieber
         // nicht umbenennen: `saveFailed` bzw. die Pufferanzeige warnt.
-        guard status == .clean, storeMatchesSession else { return }
-        guard let umbenannt = store.rename(id, to: title) else { return }
+        guard status == .clean, storeMatchesSession else { return false }
+        guard let umbenannt = store.rename(id, to: title) else { return false }
         if umbenannt.body != note.body { externalRevision += 1 }
         note = umbenannt
+        return true
     }
 
     func restoreMissing() {
         guard status == .missing else { return }
-        let gesendet = note.body
-        apply(store.restore(note), sent: gesendet)
+        apply(store.restore(note), restoring: true)
     }
 
     func dismissNotice() { conflictNotice = nil }
@@ -144,23 +149,43 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         store.folderState == .ok && store.note(id: id)?.body == note.body
     }
 
-    private func scheduleSave(after delay: TimeInterval? = nil) {
+    private func cancelTimer() {
         saveTask?.cancel()
-        let delay = delay ?? saveDelay
+        saveTask = nil
+    }
+
+    private func scheduleSave() {
+        cancelTimer()
+        let delay = saveDelay
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            self?.flush()
+            self?.saveIfDirty()
         }
     }
 
-    /// `sent` ist der Text, der zum Sichern ging. Kommt ein anderer zurück, hat der
-    /// Editor ihn nicht — dann muss er neu geladen werden, sonst klaffen Editor
-    /// und `note` still auseinander.
-    private func apply(_ result: NoteStore.SaveResult, sent: String) {
+    /// Ein einziger neuer Versuch nach einem Fehlschlag. Scheitert auch er, wartet
+    /// die Sitzung auf die nächste Eingabe oder ein ausdrückliches `flush()`.
+    /// Nach gescheitertem „Wieder sichern“ wiederholt er genau das.
+    private func scheduleRetry(restoring: Bool) {
+        cancelTimer()
+        let delay = retryDelay
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.isRetrying = true
+            defer { self.isRetrying = false }
+            if restoring { self.restoreMissing() } else { self.saveIfDirty() }
+        }
+    }
+
+    /// Ersetzt `note` durch das Ergebnis des Stores. Kommt ein anderer Text zurück
+    /// als der aktuelle, hat der Editor ihn nicht — dann muss er neu geladen
+    /// werden, sonst klaffen Editor und `note` still auseinander.
+    private func apply(_ result: NoteStore.SaveResult, restoring: Bool) {
         switch result {
         case .saved(let gesichert), .buffered(let gesichert):
-            if gesichert.body != sent { externalRevision += 1 }
+            if gesichert.body != note.body { externalRevision += 1 }
             note = gesichert
             markSaved()
         case .skippedEmpty:
@@ -176,7 +201,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
             // Nichts geschrieben: Status bleibt, wie er ist (ungesichert bzw. fehlend).
             // Ein Versuch später noch einmal; die nächste Eingabe oder `flush()` ersetzt ihn.
             saveFailed = true
-            scheduleSave(after: retryDelay)
+            if !isRetrying { scheduleRetry(restoring: restoring) }
         }
     }
 
@@ -187,6 +212,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     }
 
     private func markMissing() {
+        cancelTimer()
         if status == .dirty { unsavedWhileMissing = true }
         status = .missing
         saveFailed = false
@@ -213,6 +239,18 @@ final class NoteEditorSession: ObservableObject, Identifiable {
             return
         }
         // Eine fehlende Notiz, die unverändert zurückkommt, ist wieder da.
+        if status == .missing, unsavedWhileMissing, !frisch.isPlaceholder,
+           frisch.body == note.body, frisch.pinned != note.pinned {
+            // Gleicher Text, aber hier wurde ohne Datei angeheftet: Die Absicht
+            // bleibt ungesichert. Gleiches mtime, also kein Konflikt beim Sichern.
+            note.fileName = frisch.fileName
+            note.modified = frisch.modified
+            note.created = frisch.created
+            note.extraFrontmatter = frisch.extraFrontmatter
+            status = .dirty
+            scheduleSave()
+            return
+        }
         guard frisch != note || status == .missing else { return }
         let textGeaendert = frisch.body != note.body
         note = frisch

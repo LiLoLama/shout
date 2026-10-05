@@ -19,6 +19,10 @@ final class NoteStore: ObservableObject {
         case conflict(external: Note, conflictFileName: String)
         /// Die Datei wurde von außen entfernt oder umbenannt.
         case missing
+        /// Weder der Ordner noch der Puffer ließ sich beschreiben (z. B. Platte
+        /// voll). Nichts wurde geschrieben — der Aufrufer muss den Text als
+        /// ungesichert behalten und den Nutzer warnen.
+        case failed
     }
 
     @Published private(set) var notes: [Note] = []
@@ -77,6 +81,7 @@ final class NoteStore: ObservableObject {
         folder = url
         createIfMissing = NotesFolder.isDefault(url)
         cache = [:]
+        pendingIDs = [:]
         watcher = nil
         publish()
         reload()
@@ -138,7 +143,7 @@ final class NoteStore: ObservableObject {
         guard checkFolder(create: true) == .ready else {
             folderState = .unreachable
             scheduleRetry()
-            return .buffered(writeToBuffer(note))
+            return buffer(note)
         }
         folderState = .ok
         startWatchingIfNeeded()
@@ -151,13 +156,25 @@ final class NoteStore: ObservableObject {
         if NoteFile.wordCount(note.body) >= NoteFile.fixedTitleWordCount { note.titleIsFixed = true }
 
         guard let mtime = write(note, to: folder.appendingPathComponent(note.fileName)) else {
-            return .buffered(writeToBuffer(note))
+            // Schreiben gescheitert: die Umbenennung zurücknehmen, damit Datei
+            // und Notiz im Speicher denselben Namen behalten.
+            if !input.isNew && note.fileName != alt && move(note.fileName, to: alt) { note.fileName = alt }
+            return buffer(note)
         }
         note.modified = mtime
+        // Ein Rückwanderer-Eintrag gilt nur für das nächste Einlesen; bleibt er
+        // stehen, erbt später eine andere Datei desselben Namens fremde ID.
+        pendingIDs[alt] = nil
+        pendingIDs[note.fileName] = nil
         if alt != note.fileName { cache[alt] = nil }
         cache[note.fileName] = note
         publish()
         return .saved(note)
+    }
+
+    private func buffer(_ note: Note) -> SaveResult {
+        guard let gepuffert = writeToBuffer(note) else { return .failed }
+        return .buffered(gepuffert)
     }
 
     /// Dateiname nach der Titelregel: fest, sobald `titleIsFixed`; sonst aus den
@@ -214,52 +231,114 @@ final class NoteStore: ObservableObject {
 
     /// Sichert in Application Support, solange der Ordner fehlt. Merkt sich, zu
     /// welcher Notiz die Datei gehört und wie die Datei im Ordner vorher aussah.
-    func writeToBuffer(_ input: Note) -> Note {
+    /// `nil`, wenn auch der Puffer nicht beschreibbar ist — dann ist nichts
+    /// geschrieben und der Aufrufer meldet `.failed`.
+    func writeToBuffer(_ input: Note) -> Note? {
         var note = input
-        try? fileManager.createDirectory(at: bufferFolder, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: bufferFolder, withIntermediateDirectories: true)
+        } catch {
+            NSLog("shout: Notizpuffer konnte nicht angelegt werden: \(error)")
+            return nil
+        }
+        var basis: Date?
         if note.isNew {
-            note.fileName = NoteFile.freeFileName(
-                for: NoteFile.deriveTitle(from: note.body) ?? Loc.t("Unbenannt"),
-                in: bufferFolder, fileManager: fileManager)
+            note.fileName = freeBufferName(for: NoteFile.deriveTitle(from: note.body) ?? Loc.t("Unbenannt"))
+        } else if bufferNameBelongsToOther(note.fileName, than: note.id) {
+            // Der Name im Puffer gehört einer anderen Notiz: nichts überschreiben,
+            // die Fassung wandert als Konfliktdatei zurück.
+            let titel = NoteFile.conflictTitle(note.title, suffix: Loc.t("(Konflikt)"))
+            note.fileName = freeBufferName(for: titel)
         } else if bufferedBase[note.fileName] == nil && bufferedIDs[note.fileName] == nil {
-            bufferedBase[note.fileName] = input.modified
+            basis = input.modified
         }
+        guard let mtime = write(note, to: bufferFolder.appendingPathComponent(note.fileName)) else { return nil }
+        note.modified = mtime
         bufferedIDs[note.fileName] = note.id
-        if let mtime = write(note, to: bufferFolder.appendingPathComponent(note.fileName)) {
-            note.modified = mtime
-        }
+        if let basis { bufferedBase[note.fileName] = basis }
         return note
+    }
+
+    /// Belegt im Puffer, in der Liste oder bei einer anderen gepufferten Notiz.
+    private func freeBufferName(for title: String) -> String {
+        let belegt = Set(cache.keys.map { $0.lowercased() } + bufferedIDs.keys.map { $0.lowercased() })
+        var zahl = 1
+        while true {
+            let t = zahl == 1 ? title : "\(title) \(zahl)"
+            let name = "\(t).\(NoteFile.fileExtension)"
+            if !belegt.contains(name.lowercased()),
+               NoteFile.freeFileName(for: t, in: bufferFolder, fileManager: fileManager) == name { return name }
+            zahl += 1
+        }
+    }
+
+    /// Liegt unter diesem Namen schon etwas im Puffer, das nicht zu `id` gehört?
+    /// Eine Datei ohne Eintrag (Rest aus einer früheren Sitzung) zählt auch.
+    private func bufferNameBelongsToOther(_ name: String, than id: UUID) -> Bool {
+        if let fremd = bufferedIDs[name] { return fremd != id }
+        return fileManager.fileExists(atPath: bufferFolder.appendingPathComponent(name).path)
     }
 
     /// Bringt Gepuffertes zurück in den Ordner. Unverändertes Original: wird
     /// ersetzt. Verändertes oder unbekanntes: unsere Fassung wird Konfliktdatei.
+    /// Der Puffer liegt oft auf einem anderen Volume als der Ordner (USB-Stick,
+    /// Netzlaufwerk) — dort scheitern `moveItem`/`replaceItemAt` mit „Cross-device
+    /// link". Deshalb wird gelesen und atomar neu geschrieben; die Pufferdatei
+    /// wird erst nach erfolgreichem Schreiben entfernt.
     private func flushBuffer() {
         guard let namen = try? fileManager.contentsOfDirectory(atPath: bufferFolder.path) else { return }
         for name in namen where isNoteFile(name, in: bufferFolder) {
             let quelle = bufferFolder.appendingPathComponent(name)
             let ziel = folder.appendingPathComponent(name)
             do {
+                let daten = try Data(contentsOf: quelle)
+                let platzhalter = folder.appendingPathComponent("." + name + ".icloud")
+                var zielName = name
+                var zurueck = true      // geht die ID an die Datei im Ordner zurück?
                 if fileManager.fileExists(atPath: ziel.path) {
-                    if let basis = bufferedBase[name], modificationDate(of: ziel) == basis {
-                        _ = try fileManager.replaceItemAt(ziel, withItemAt: quelle)
-                        if let id = bufferedIDs[name] { pendingIDs[name] = id }
-                    } else {
-                        let titel = NoteFile.conflictTitle((name as NSString).deletingPathExtension,
-                                                           suffix: Loc.t("(Konflikt)"))
-                        let konflikt = NoteFile.freeFileName(for: titel, in: folder, fileManager: fileManager)
-                        try fileManager.moveItem(at: quelle, to: folder.appendingPathComponent(konflikt))
-                        NSLog("shout: Gepufferte Notiz \(name) kollidiert — gesichert als \(konflikt)")
+                    let basis = bufferedBase[name]
+                    if basis == nil || modificationDate(of: ziel) != basis {
+                        zielName = conflictFileName(for: name)
+                        zurueck = false
                     }
-                } else {
-                    try fileManager.moveItem(at: quelle, to: ziel)
-                    if let id = bufferedIDs[name] { pendingIDs[name] = id }
+                } else if fileManager.fileExists(atPath: platzhalter.path) {
+                    // Ausgelagert bei iCloud: die Datei ist da, nur nicht lokal.
+                    zielName = conflictFileName(for: name)
+                    zurueck = false
                 }
+                let zielURL = folder.appendingPathComponent(zielName)
+                try daten.write(to: zielURL, options: .atomic)
+                // mtime der Pufferdatei übernehmen: so passt `Note.modified` der Sitzung.
+                adoptModificationTime(of: quelle, onto: zielURL)
+                if !zurueck {
+                    NSLog("shout: Gepufferte Notiz \(name) kollidiert — gesichert als \(zielName)")
+                } else if let id = bufferedIDs[name] {
+                    pendingIDs[name] = id
+                }
+                try fileManager.removeItem(at: quelle)
                 bufferedIDs[name] = nil
                 bufferedBase[name] = nil
             } catch {
                 NSLog("shout: Gepufferte Notiz \(name) konnte nicht zurück: \(error)")
             }
         }
+    }
+
+    /// Übernimmt das mtime nanosekundengenau. `setAttributes` mit einem `Date`
+    /// rundet (Double) und träfe das mtime der Sitzung um Bruchteile daneben.
+    private func adoptModificationTime(of quelle: URL, onto ziel: URL) {
+        var st = stat()
+        guard lstat(quelle.path, &st) == 0 else { return }
+        var zeiten = [timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)), st.st_mtimespec]
+        if utimensat(AT_FDCWD, ziel.path, &zeiten, 0) != 0 {
+            NSLog("shout: mtime von \(ziel.lastPathComponent) konnte nicht gesetzt werden")
+        }
+    }
+
+    private func conflictFileName(for name: String) -> String {
+        let titel = NoteFile.conflictTitle((name as NSString).deletingPathExtension,
+                                           suffix: Loc.t("(Konflikt)"))
+        return NoteFile.freeFileName(for: titel, in: folder, fileManager: fileManager)
     }
 
     // MARK: - Dateien
@@ -274,12 +353,14 @@ final class NoteStore: ObservableObject {
 
     func read(_ name: String, keepingID id: UUID?) -> Note? {
         let url = folder.appendingPathComponent(name)
+        // mtime vor dem Inhalt: Schreibt jemand dazwischen, ist die Notiz eher
+        // „zu alt" (wird neu gelesen) als „zu neu" (Änderung ginge unter).
+        let werte = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
         guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else {
             NSLog("shout: Notiz \(name) ist nicht lesbar (kein UTF-8?) — übersprungen.")
             return nil
         }
         let parsed = NoteFile.parse(text)
-        let werte = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
         return Note(id: id ?? UUID(), fileName: name, body: parsed.body,
                     created: parsed.created ?? werte?.creationDate ?? Date(),
                     modified: werte?.contentModificationDate ?? .distantPast,
@@ -316,6 +397,13 @@ final class NoteStore: ObservableObject {
         let von = folder.appendingPathComponent(alt)
         let nach = folder.appendingPathComponent(neu)
         if alt.lowercased() == neu.lowercased() {
+            // Auf einem Volume mit Groß-/Kleinschreibung kann `nach` eine andere,
+            // vorhandene Datei sein — `rename(2)` würde sie überschreiben.
+            if fileManager.fileExists(atPath: nach.path) {
+                let a = try? von.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier
+                let b = try? nach.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier
+                guard let a, let b, a.isEqual(b) else { return false }
+            }
             return Darwin.rename(von.path, nach.path) == 0
         }
         do {

@@ -192,4 +192,147 @@ final class NoteStoreTests: XCTestCase {
         XCTAssertEqual(u.text("A.md"), "im Ordner")
         XCTAssertEqual(u.text("A (Konflikt).md"), "aus dem Puffer")
     }
+
+    // MARK: - Puffer: Namen, Fehler, Laufwerke
+
+    private func fremdeNotiz(_ name: String, _ text: String) -> Note {
+        Note(id: UUID(), fileName: name, body: text, created: Date(), modified: Date(),
+             pinned: false, extraFrontmatter: [], titleIsFixed: true)
+    }
+
+    private func puffer(_ name: String) -> String? {
+        (try? String(contentsOf: u.puffer.appendingPathComponent(name), encoding: .utf8))
+            .map { NoteFile.parse($0).body }
+    }
+
+    /// Neue Notiz gleichen Namens wie eine vorhandene: Beide Texte überleben.
+    func testNeuePufferNotizUeberschreibtNichtDieVorhandene() throws {
+        try u.schreibe("Einkaufsliste.md", "alt")
+        let s = u.store()
+        var vorhanden = s.notes[0]
+        let weg = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: u.ordner, to: weg)
+
+        var neu = Note.blank(); neu.body = "Einkaufsliste"
+        guard case .buffered = s.save(neu) else { return XCTFail("neu nicht gepuffert") }
+        vorhanden.body = "alt, jetzt ergänzt"
+        guard case .buffered = s.save(vorhanden) else { return XCTFail("alt nicht gepuffert") }
+
+        XCTAssertEqual(Set((try? FileManager.default.contentsOfDirectory(atPath: u.puffer.path)) ?? []).count, 2)
+        XCTAssertEqual(puffer("Einkaufsliste.md"), "alt, jetzt ergänzt")
+        XCTAssertEqual(puffer("Einkaufsliste 2.md"), "Einkaufsliste")
+
+        try FileManager.default.moveItem(at: weg, to: u.ordner)
+        s.reload()
+        XCTAssertEqual(u.dateien(), ["Einkaufsliste 2.md", "Einkaufsliste.md"])
+        XCTAssertEqual(u.text("Einkaufsliste.md"), "alt, jetzt ergänzt")
+        XCTAssertEqual(u.text("Einkaufsliste 2.md"), "Einkaufsliste")
+    }
+
+    /// Gehört der Pufferdateiname einer anderen Notiz, wird die zweite Fassung
+    /// unter einem Konfliktnamen gepuffert statt die erste zu überschreiben.
+    func testPufferNameEinerAnderenNotizWirdKonfliktname() throws {
+        let laufwerk = u.wurzel.appendingPathComponent("Laufwerk", isDirectory: true)
+        let s = u.store(ordner: laufwerk)
+        var erste = Note.blank(); erste.body = "Foo"
+        guard case .buffered(let a) = s.save(erste) else { return XCTFail("erste nicht gepuffert") }
+        XCTAssertEqual(a.fileName, "Foo.md")
+
+        guard case .buffered(let b) = s.save(fremdeNotiz("Foo.md", "andere Fassung")) else {
+            return XCTFail("zweite nicht gepuffert")
+        }
+        XCTAssertEqual(b.fileName, "Foo (Konflikt).md")
+        XCTAssertEqual(puffer("Foo.md"), "Foo")
+        XCTAssertEqual(puffer("Foo (Konflikt).md"), "andere Fassung")
+
+        try FileManager.default.createDirectory(at: laufwerk, withIntermediateDirectories: true)
+        s.reload()
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: laufwerk.path))?.sorted(),
+                       ["Foo (Konflikt).md", "Foo.md"])
+    }
+
+    /// Ist auch der Puffer nicht beschreibbar, darf `save` nicht „gepuffert" melden.
+    func testSchreibfehlerImPufferMeldetFailed() throws {
+        let kaputt = u.wurzel.appendingPathComponent("Puffer-ist-eine-Datei")
+        try Data("x".utf8).write(to: kaputt)
+        let s = u.store(ordner: u.wurzel.appendingPathComponent("Laufwerk"), puffer: kaputt)
+        XCTAssertEqual(s.folderState, .unreachable)
+        var n = Note.blank(); n.body = "Das darf nicht verschwinden"
+        XCTAssertEqual(s.save(n), .failed)
+        XCTAssertEqual(s.notes, [])
+    }
+
+    /// Eine Datei, die aus dem Puffer zurückwandert und danach umbenannt wird,
+    /// darf ihre ID nicht an eine spätere Notiz gleichen Namens vererben.
+    func testRueckwandernderNameVererbtKeineID() throws {
+        let laufwerk = u.wurzel.appendingPathComponent("Laufwerk", isDirectory: true)
+        let s = u.store(ordner: laufwerk)
+        var idee = Note.blank(); idee.body = "Idee"
+        guard case .buffered(var gepuffert) = s.save(idee) else { return XCTFail("nicht gepuffert") }
+
+        try FileManager.default.createDirectory(at: laufwerk, withIntermediateDirectories: true)
+        gepuffert.body = "Idee für morgen früh"
+        let umbenannt = try gesichert(s.save(gepuffert))
+        XCTAssertEqual(umbenannt.fileName, "Idee für morgen früh.md")
+
+        var zweite = Note.blank(); zweite.body = "Idee"
+        _ = try gesichert(s.save(zweite))
+        s.reload()
+        XCTAssertEqual(s.notes.count, 2)
+        XCTAssertEqual(Set(s.notes.map(\.id)).count, 2)
+        XCTAssertEqual(s.notes.first { $0.fileName == "Idee.md" }?.id, zweite.id)
+    }
+
+    /// Ein ausgelagertes Ziel (`.A.md.icloud`) zählt als vorhanden.
+    func testPufferGegenICloudPlatzhalterWirdKonfliktdatei() throws {
+        try FileManager.default.createDirectory(at: u.puffer, withIntermediateDirectories: true)
+        try Data("---\ncreated: 2026-10-05\n---\naus dem Puffer".utf8)
+            .write(to: u.puffer.appendingPathComponent("A.md"))
+        try u.schreibe(".A.md.icloud", "")
+        _ = u.store()
+        XCTAssertEqual(u.dateien(), [".A.md.icloud", "A (Konflikt).md"])
+        XCTAssertEqual(u.text("A (Konflikt).md"), "aus dem Puffer")
+    }
+
+    /// Notizordner auf einem anderen Volume als der Puffer: neue Notiz.
+    func testPufferWandertUeberLaufwerksgrenzeNeueNotiz() throws {
+        let stick = try u.laufwerk()
+        let ziel = stick.appendingPathComponent("Notizen", isDirectory: true)
+        let s = u.store(ordner: ziel)
+        var n = Note.blank(); n.body = "Auf dem Stick vergessen"
+        guard case .buffered(let g) = s.save(n) else { return XCTFail("nicht gepuffert") }
+
+        try FileManager.default.createDirectory(at: ziel, withIntermediateDirectories: true)
+        s.reload()
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: u.puffer.path)) ?? [], [])
+        let text = try String(contentsOf: ziel.appendingPathComponent("Auf dem Stick vergessen.md"), encoding: .utf8)
+        XCTAssertEqual(NoteFile.parse(text).body, "Auf dem Stick vergessen")
+        XCTAssertEqual(s.notes.map(\.id), [n.id])
+        XCTAssertEqual(s.notes[0].modified, g.modified)     // mtime des Puffers übernommen
+    }
+
+    /// Dasselbe für eine vorhandene Notiz: unverändertes Original wird ersetzt.
+    func testPufferWandertUeberLaufwerksgrenzeErsetztOriginal() throws {
+        let stick = try u.laufwerk()
+        let ziel = stick.appendingPathComponent("Notizen", isDirectory: true)
+        try FileManager.default.createDirectory(at: ziel, withIntermediateDirectories: true)
+        let datei = ziel.appendingPathComponent("A.md")
+        try Data("alt".utf8).write(to: datei)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60)],
+                                              ofItemAtPath: datei.path)
+        let s = u.store(ordner: ziel)
+        var n = s.notes[0]
+        let weg = stick.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: ziel, to: weg)
+
+        n.body = "neu unterwegs"
+        guard case .buffered(let g) = s.save(n) else { return XCTFail("nicht gepuffert") }
+        try FileManager.default.moveItem(at: weg, to: ziel)
+        s.reload()
+
+        XCTAssertEqual((try FileManager.default.contentsOfDirectory(atPath: ziel.path)).sorted(), ["A.md"])
+        XCTAssertEqual(NoteFile.parse(try String(contentsOf: datei, encoding: .utf8)).body, "neu unterwegs")
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: u.puffer.path)) ?? [], [])
+        XCTAssertEqual(s.notes[0].modified, g.modified)
+    }
 }

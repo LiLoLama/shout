@@ -209,6 +209,8 @@ targets:
           - SoundCues.swift
           - Theme.swift
           - Backup.swift
+          # Vom Backup gebraucht (eigene Transforms des Scratchpads).
+          - NoteTransforms.swift
     # Explizite Info.plist statt GENERATE_INFOPLIST_FILE — nötig für das
     # URL-Schema „shout://" (CFBundleURLTypes), über das die Tastatur die App öffnet.
     info:

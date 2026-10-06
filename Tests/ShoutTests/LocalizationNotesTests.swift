@@ -140,6 +140,14 @@ final class LocalizationNotesTests: XCTestCase {
         "Das Bild ist größer als 10 MB.",
         "Das Bild lässt sich nicht lesen.",
         "Das Bild konnte nicht gesichert werden.",
+        // Scratchpad: eigene Transforms
+        "Eigene Transforms",
+        "Noch keine eigenen Transforms.",
+        "Erscheinen im Zauberstab und wirken auf die Auswahl oder die ganze Notiz.",
+        "Neuer Transform",
+        "Transform bearbeiten",
+        "Anweisung",
+        "Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“",
     ]
 
     override func setUp() {

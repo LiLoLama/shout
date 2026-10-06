@@ -1054,5 +1054,16 @@ final class Loc: ObservableObject {
         "Das Bild ist größer als 10 MB.": "The image is larger than 10 MB.",
         "Das Bild lässt sich nicht lesen.": "The image can’t be read.",
         "Das Bild konnte nicht gesichert werden.": "The image couldn’t be saved.",
+
+        // Scratchpad: eigene Transforms
+        "Eigene Transforms": "Custom transforms",
+        "Noch keine eigenen Transforms.": "No custom transforms yet.",
+        "Erscheinen im Zauberstab und wirken auf die Auswahl oder die ganze Notiz.":
+            "They appear in the magic wand and work on the selection or the whole note.",
+        "Neuer Transform": "New transform",
+        "Transform bearbeiten": "Edit transform",
+        "Anweisung": "Instruction",
+        "Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“":
+            "What should happen to the text? For example: “Shorten to three sentences.”",
     ]
 }

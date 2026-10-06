@@ -58,6 +58,39 @@ final class ScratchpadSettings: ObservableObject {
         }
     }
 
+    /// Fürs Backup — einfache Werte: Das Backup läuft auch auf iOS und kennt `HotkeyCombo` nicht.
+    struct BackupFields: Equatable {
+        var enabled: Bool
+        var openBehavior: String
+        /// Rolle → `HotkeyCombo` als JSON; leere Daten heißen „Keine“.
+        var keys: [String: Data]
+    }
+
+    var backupFields: BackupFields {
+        // Feste Schlüsselreihenfolge: Gleiche Taste, gleiche Bytes (sonst wäre der Vergleich zufällig).
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return BackupFields(enabled: isEnabled,
+                     openBehavior: openBehavior.rawValue,
+                     keys: Dictionary(uniqueKeysWithValues: Role.allCases.map { rolle in
+                         (rolle.rawValue, combos[rolle].flatMap { try? encoder.encode($0) } ?? Data())
+                     }))
+    }
+
+    /// Aus einem Backup. Unbekanntes oder Beschädigtes bleibt, wie es ist.
+    func apply(_ felder: BackupFields) {
+        if let verhalten = ScratchpadModel.OpenBehavior(rawValue: felder.openBehavior) { openBehavior = verhalten }
+        for rolle in Role.allCases {
+            guard let daten = felder.keys[rolle.rawValue] else { continue }
+            if daten.isEmpty {
+                setCombo(nil, for: rolle)
+            } else if let kombi = try? JSONDecoder().decode(HotkeyCombo.self, from: daten) {
+                setCombo(kombi, for: rolle)
+            }
+        }
+        isEnabled = felder.enabled
+    }
+
     /// Bricht eine laufende Tastenaufnahme ab (z. B. wenn die Zeilen verschwinden)
     /// und lässt über `onChange` beide Tasten neu anmelden.
     func cancelCapture() {

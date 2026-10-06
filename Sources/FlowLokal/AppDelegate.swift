@@ -1020,7 +1020,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Export / Import (lokales „Sync")
 
     private func exportData() -> String {
-        let snapshot = SettingsSnapshot(
+        var snapshot = SettingsSnapshot(
             mode: settings.mode.rawValue,
             autoStop: settings.autoStop,
             silenceSeconds: settings.silenceSeconds,
@@ -1031,8 +1031,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             preferredMicUID: UserDefaults.standard.string(forKey: "preferredMicUID"),
             voiceProfile: UserDefaults.standard.string(forKey: "voiceProfile")
         )
-        let bundle = BackupBundle(dictionary: dictionary.contents, history: history.entries,
+        let felder = scratchpadSettings.backupFields
+        snapshot.scratchpadEnabled = felder.enabled
+        snapshot.scratchpadOpenBehavior = felder.openBehavior
+        snapshot.scratchpadKeys = felder.keys
+        snapshot.notesFolderPath = NotesFolder.current().path
+        snapshot.inboxFileName = UserDefaults.standard.string(forKey: ScratchpadModel.inboxFileNameKey)
+        var bundle = BackupBundle(dictionary: dictionary.contents, history: history.entries,
                                   stats: stats.data, settings: snapshot)
+        bundle.transforms = transformStore.custom
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
         encoder.dateEncodingStrategy = .iso8601
@@ -1088,6 +1095,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let f = s.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let mic = s.preferredMicUID { UserDefaults.standard.set(mic, forKey: "preferredMicUID") }
         if let vp = s.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
+        if let an = s.scratchpadEnabled, let verhalten = s.scratchpadOpenBehavior, let tasten = s.scratchpadKeys {
+            scratchpadSettings.apply(.init(enabled: an, openBehavior: verhalten, keys: tasten))
+        }
+        // Ordner nur, wenn es ihn hier gibt; mit ungesichertem Text bleibt der alte.
+        if let pfad = s.notesFolderPath, FileManager.default.fileExists(atPath: pfad),
+           URL(fileURLWithPath: pfad).standardizedFileURL != NotesFolder.current().standardizedFileURL {
+            notesPage.changeFolder(to: URL(fileURLWithPath: pfad, isDirectory: true))
+        }
+        // Nach dem Ordnerwechsel: Der setzt den Namen der Eingangs-Notiz zurück.
+        if let name = s.inboxFileName { UserDefaults.standard.set(name, forKey: ScratchpadModel.inboxFileNameKey) }
+        if let eigene = bundle.transforms { transformStore.replaceAll(eigene) }
         updateStatusItem()
 
         return Loc.f("Importiert: %d Begriffe, %d Diktate.",

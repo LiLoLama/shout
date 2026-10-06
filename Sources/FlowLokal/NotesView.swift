@@ -27,6 +27,7 @@ struct NotesView: View {
             if einstellungenOffen {
                 folderPanel
                 ScratchpadSettingsSection(settings: scratchpadSettings, onCapture: onScratchpadCapture)
+                if let transforms = tools?.transforms { TransformSettingsSection(store: transforms) }
             }
             if store.folderState == .unreachable {
                 banner(Loc.t("Der Ordner ist nicht erreichbar. Änderungen werden zwischengespeichert und landen dort, sobald er wieder da ist."))

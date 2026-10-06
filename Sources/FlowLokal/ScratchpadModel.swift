@@ -29,6 +29,9 @@ final class ScratchpadModel: ObservableObject {
     private let defaults: UserDefaults
     private var wiederhergestellt = false
 
+    /// Schlüssel des Eingangs-Dateinamens in den UserDefaults (auch fürs Backup).
+    static let inboxFileNameKey = "scratchpad.inboxFileName"
+
     private enum K {
         static let tabs = "scratchpad.tabs"
         /// Dateiname des aktiven Tabs. Nicht die Stelle: Neue Tabs werden nicht
@@ -36,7 +39,7 @@ final class ScratchpadModel: ObservableObject {
         static let aktiv = "scratchpad.activeTabName"
         static let liste = "scratchpad.showsList"
         static let angeheftet = "scratchpad.lastPinned"
-        static let eingang = "scratchpad.inboxFileName"
+        static let eingang = ScratchpadModel.inboxFileNameKey
     }
 
     init(store: NoteStore, registry: NoteSessionRegistry, defaults: UserDefaults = .standard) {

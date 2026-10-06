@@ -48,6 +48,7 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         // Ein Zaun verändert die Darstellung bis zum nächsten — dann alles.
         if hatZaun || hatteZaun {
             Self.apply(to: textStorage)
+            markiereBilder(textStorage, in: NSRange(location: 0, length: ns.length))
             return
         }
         // Ein einzelnes \r trennt für `paragraphRange` Absätze, Kursiv (`[^\n]`)
@@ -55,6 +56,7 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         // Text aus, damit CRLF-Text (ein Zeilenumbruch aus \r\n) absatzweise bleibt.
         if ns.length > 0, alleinstehendesCR.firstMatch(in: textStorage.string, range: NSRange(location: 0, length: ns.length)) != nil {
             Self.apply(to: textStorage)
+            markiereBilder(textStorage, in: NSRange(location: 0, length: ns.length))
             return
         }
         let start = min(editedRange.location, ns.length)
@@ -64,7 +66,41 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         // sonst außerhalb von `paragraphRange(for: editedRange)`.
         let vorn = ns.paragraphRange(for: NSRange(location: start, length: ende - start))
         let hinten = ns.paragraphRange(for: NSRange(location: ende, length: 0))
-        Self.apply(to: textStorage, in: NSUnionRange(vorn, hinten))
+        let bereich = NSUnionRange(vorn, hinten)
+        Self.apply(to: textStorage, in: bereich)
+        markiereBilder(textStorage, in: bereich)
+    }
+
+    private func markiereBilder(_ storage: NSTextStorage, in bereich: NSRange) {
+        guard let imageSize else { return }
+        Self.markImages(in: storage, range: bereich, size: imageSize)
+    }
+
+    /// Größe eines Bildes zum Pfad aus dem Text; `nil` — keine Vorschau. Vom Editor gesetzt.
+    var imageSize: ((String) -> CGSize?)?
+
+    static let imagePreviewMaxWidth: CGFloat = 320
+    private static let imageLine = muster("^!\\[[^\\]\\n]*\\]\\(([^)\\n]+)\\)[ \\t]*$")
+
+    /// Markiert Zeilen, die nur aus einem Bild-Link bestehen, und hält unter
+    /// ihnen Platz für die Vorschau frei. Läuft nach `apply`, das alle Attribute
+    /// des Bereichs zurücksetzt.
+    static func markImages(in storage: NSTextStorage, range bereich: NSRange, size: (String) -> CGSize?) {
+        let ns = storage.string as NSString
+        let absaetze = ns.paragraphRange(for: NSRange(location: min(bereich.location, ns.length),
+                                                      length: min(bereich.length, ns.length - min(bereich.location, ns.length))))
+        imageLine.enumerateMatches(in: storage.string, options: [], range: absaetze) { treffer, _, _ in
+            guard let treffer else { return }
+            let pfad = ns.substring(with: treffer.range(at: 1))
+            guard let original = size(pfad), original.width > 0, original.height > 0 else { return }
+            let breite = min(original.width, imagePreviewMaxWidth)
+            let hoehe = (original.height * breite / original.width).rounded()
+            storage.addAttribute(.notizBild, value: NoteImageMark(path: pfad, size: CGSize(width: breite, height: hoehe)),
+                                 range: treffer.range)
+            let stil = (Style.paragraph.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+            stil.paragraphSpacing = hoehe + 10
+            storage.addAttribute(.paragraphStyle, value: stil, range: ns.paragraphRange(for: treffer.range))
+        }
     }
 
     private let alleinstehendesCR = try! NSRegularExpression(pattern: "\\r(?!\\n)")

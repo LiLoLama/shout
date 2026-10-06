@@ -405,6 +405,7 @@ targets:
       - path: Sources/FlowLokal/NoteHandoff.swift
       - path: Sources/FlowLokal/NoteTransformRunner.swift
       - path: Sources/FlowLokal/NoteAttachments.swift
+      - path: Sources/FlowLokal/NoteLayoutManager.swift
       - path: Sources/FlowLokal/NoteTextView.swift
     settings:
       base:

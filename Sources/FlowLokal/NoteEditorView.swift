@@ -31,7 +31,7 @@ struct NoteEditorView: NSViewRepresentable {
         scroll.autohidesScrollers = true
         // TextKit 1, selbst gebaut: Der Layout-Manager zeichnet später die Bildvorschau.
         let speicher = NSTextStorage()
-        let layout = NSLayoutManager()
+        let layout = NoteLayoutManager()
         speicher.addLayoutManager(layout)
         let behaelter = NSTextContainer(containerSize: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
         behaelter.widthTracksTextView = true
@@ -56,6 +56,10 @@ struct NoteEditorView: NSViewRepresentable {
             MainActor.assumeIsolated { textView?.hasMarkedText() ?? false }
         }
         textView.textStorage?.delegate = highlighter
+        // Vor dem ersten Text: Der löst die Hervorhebung aus, die die Bildgrößen braucht.
+        let c0 = context.coordinator
+        highlighter.imageSize = { [weak c0] pfad in MainActor.assumeIsolated { c0?.image(pfad)?.size } }
+        layout.loadImage = { [weak c0] pfad in MainActor.assumeIsolated { c0?.image(pfad) } }
         textView.string = session.note.body
         textView.isEditable = session.status != .placeholder && !session.isTransforming
         scroll.isHidden = !isFront
@@ -148,6 +152,18 @@ struct NoteEditorView: NSViewRepresentable {
 
         /// Beim selbst gebauten TextKit-1-Stapel hält sonst niemand den Speicher.
         var textStorageRef: NSTextStorage?
+
+        /// Geladene Vorschaubilder je Pfad. Fehlende werden nicht gemerkt — sie
+        /// können noch auftauchen (iCloud lädt nach).
+        private var bilder: [String: NSImage] = [:]
+
+        func image(_ pfad: String) -> NSImage? {
+            if let bild = bilder[pfad] { return bild }
+            guard let url = NoteAttachments.resolve(pfad, in: session.folderURL),
+                  let bild = NSImage(contentsOf: url) else { return nil }
+            bilder[pfad] = bild
+            return bild
+        }
 
         /// Bild aus Zwischenablage oder Drag: nach `Anhänge/`, Link in eigener Zeile
         /// an den Cursor (ein Rückgängig-Schritt). Fehler stehen im Balken.

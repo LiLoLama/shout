@@ -98,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var notesPage: NotesPageModel {
         if let page = notesPageStorage { return page }
         let page = NotesPageModel(store: noteStore, registry: noteRegistry)
+        page.versions = noteVersions
         page.onFolderChanged = { [weak self] in self?.scratchpadStorage?.resetTabs() }
         notesPageStorage = page
         return page

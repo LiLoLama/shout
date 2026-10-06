@@ -28,6 +28,8 @@ final class NotesPageModel: ObservableObject {
     let registry: NoteSessionRegistry
     /// Nach einem Ordnerwechsel — das Panel räumt dann seine Tabs ab.
     var onFolderChanged: (() -> Void)?
+    /// Frühere Stände (vom AppDelegate gesetzt; in Tests eigene).
+    var versions: NoteVersions?
 
     init(store: NoteStore, registry: NoteSessionRegistry? = nil, defaults: UserDefaults = .standard,
          rescueDirectory: URL = NotesPageModel.defaultRescueDirectory) {
@@ -206,6 +208,30 @@ final class NotesPageModel: ObservableObject {
     func discardSession() {
         if let offen = session { registry.discard(offen) }
         session = nil
+    }
+
+    func versionList(for id: UUID) -> [NoteVersions.Version] {
+        guard let versions, let note = store.note(id: id), !note.isNew else { return [] }
+        return versions.list(for: note.fileName)
+    }
+
+    /// Holt einen früheren Stand zurück. Der aktuelle wird vorher selbst als
+    /// Version gesichert. `false`, wenn nichts geändert wurde (Platzhalter,
+    /// laufender Transform, Text, der sich nicht sichern lässt).
+    @discardableResult
+    func restore(_ version: NoteVersions.Version, of id: UUID) -> Bool {
+        guard let versions, let text = version.text() else { return false }
+        let offen: NoteEditorSession? = session?.id == id ? session : registry.session(id: id)
+        guard let sitzung = offen ?? store.note(id: id).map({ registry.acquire($0) }) else { return false }
+        defer { if offen == nil { registry.release(sitzung) } }
+        guard sitzung.status != .placeholder, !sitzung.isTransforming else { return false }
+        sitzung.flush()
+        guard !sitzung.hasUnsavedText else { return false }
+        versions.save(sitzung.note.body, for: sitzung.note.fileName)
+        let ganz = NSRange(location: 0, length: (sitzung.note.body as NSString).length)
+        guard sitzung.replace(ganz, with: text) else { return false }
+        sitzung.flush()
+        return !sitzung.hasUnsavedText
     }
 
     func flush() { session?.flush() }

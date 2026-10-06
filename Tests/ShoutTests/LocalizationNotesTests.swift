@@ -129,6 +129,13 @@ final class LocalizationNotesTests: XCTestCase {
         "Per Sprache …",
         "Zuletzt: %@",
         "Text umarbeiten",
+        // Scratchpad: Versionen
+        "Versionen …",
+        "Versionen von „%@“",
+        "Noch keine Versionen",
+        "Konnte nicht wiederhergestellt werden.",
+        "Wiederherstellen",
+        "Schließen",
     ]
 
     override func setUp() {

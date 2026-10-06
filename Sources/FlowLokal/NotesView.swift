@@ -16,6 +16,7 @@ struct NotesView: View {
     @State private var renaming: UUID?
     @State private var renameText = ""
     @State private var editorFocus = 0
+    @State private var versionenFuer: Note?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -50,6 +51,12 @@ struct NotesView: View {
                 renaming = nil
             }
             Button(Loc.t("Abbrechen"), role: .cancel) { renaming = nil }
+        }
+        .sheet(item: $versionenFuer) { note in
+            NoteVersionsSheet(title: note.title,
+                              versions: model.versionList(for: note.id),
+                              onRestore: { model.restore($0, of: note.id) },
+                              onClose: { versionenFuer = nil })
         }
         .onAppear { model.refreshRescuedFiles() }
         .onDisappear { model.flush() }
@@ -251,6 +258,8 @@ struct NotesView: View {
         Button(Loc.t("Im Finder zeigen")) {
             NSWorkspace.shared.activateFileViewerSelecting([store.url(for: note)])
         }
+        Button(Loc.t("Versionen …")) { versionenFuer = note }
+            .disabled(model.versions == nil)
         Divider()
         Button(Loc.t("Löschen"), role: .destructive) { model.delete(note.id) }
     }
@@ -263,6 +272,7 @@ struct NotesView: View {
                            onRename: { renameText = session.note.title; renaming = session.id },
                            onTogglePin: { model.togglePin(session.id) },
                            onDelete: { model.delete(session.id) },
+                           onVersions: { versionenFuer = session.note },
                            onDiscard: { model.discardSession() })
                 // An das Objekt gebunden, nicht an die Notiz-ID: Eine neue Sitzung
                 // derselben Notiz bekommt so sicher einen frischen Editor, dessen
@@ -353,6 +363,7 @@ private struct NoteEditorPane: View {
     let onRename: () -> Void
     let onTogglePin: () -> Void
     let onDelete: () -> Void
+    let onVersions: () -> Void
     /// Schließt die Sitzung, ohne zu sichern (nach Rückfrage).
     let onDiscard: () -> Void
 
@@ -381,6 +392,9 @@ private struct NoteEditorPane: View {
                         NSWorkspace.shared.activateFileViewerSelecting([store.url(for: session.note)])
                     } label: { Image(systemName: "folder") }
                         .help(Loc.t("Im Finder zeigen"))
+                        .disabled(session.note.isNew)
+                    Button(action: onVersions) { Image(systemName: "clock.arrow.circlepath") }
+                        .help(Loc.t("Versionen …"))
                         .disabled(session.note.isNew)
                     Button(action: onDelete) { Image(systemName: "trash") }
                         .help(Loc.t("Löschen"))

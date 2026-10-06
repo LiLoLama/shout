@@ -1041,5 +1041,13 @@ final class Loc: ObservableObject {
         "Per Sprache …": "By voice…",
         "Zuletzt: %@": "Last: %@",
         "Text umarbeiten": "Rework text",
+
+        // Scratchpad: Versionen
+        "Versionen …": "Versions…",
+        "Versionen von „%@“": "Versions of “%@”",
+        "Noch keine Versionen": "No versions yet",
+        "Konnte nicht wiederhergestellt werden.": "Couldn’t be restored.",
+        "Wiederherstellen": "Restore",
+        "Schließen": "Close",
     ]
 }

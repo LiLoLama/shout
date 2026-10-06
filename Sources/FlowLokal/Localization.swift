@@ -999,5 +999,22 @@ final class Loc: ObservableObject {
         "Keine App zum Ablegen": "No app to send to",
         "Ablegen (⌘⏎)": "Send (⌘⏎)",
         "Kopiert. ⌘V setzt den Text ein.": "Copied. ⌘V pastes the text.",
+
+        // Scratchpad: eingebaute Transforms
+        "Aufräumen": "Clean up",
+        "Als Mail": "As email",
+        "Zusammenfassen": "Summarize",
+        "To-do-Liste": "To-do list",
+        "Ins Englische": "To English",
+        "Räume auf …": "Cleaning up…",
+        "Schreibe als Mail …": "Writing as email…",
+        "Fasse zusammen …": "Summarizing…",
+        "Erstelle To-dos …": "Making to-dos…",
+        "Übersetze …": "Translating…",
+        "Aufgeräumt": "Cleaned up",
+        "Als Mail umgeschrieben": "Rewritten as email",
+        "Zusammengefasst": "Summarized",
+        "To-do-Liste erstellt": "To-do list created",
+        "Übersetzt": "Translated",
     ]
 }

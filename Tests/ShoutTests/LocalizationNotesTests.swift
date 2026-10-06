@@ -96,6 +96,22 @@ final class LocalizationNotesTests: XCTestCase {
         "Abbrechen",
         "Wählen",
         "Verwerfen",
+        // Scratchpad: eingebaute Transforms
+        "Aufräumen",
+        "Als Mail",
+        "Zusammenfassen",
+        "To-do-Liste",
+        "Ins Englische",
+        "Räume auf …",
+        "Schreibe als Mail …",
+        "Fasse zusammen …",
+        "Erstelle To-dos …",
+        "Übersetze …",
+        "Aufgeräumt",
+        "Als Mail umgeschrieben",
+        "Zusammengefasst",
+        "To-do-Liste erstellt",
+        "Übersetzt",
     ]
 
     override func setUp() {

@@ -108,4 +108,24 @@ final class NoteVersionsTests: XCTestCase {
         v.cleanUp(keeping: [])                        // neu verwaist, Frist beginnt neu
         XCTAssertFalse(v.list(for: "N.md").isEmpty)
     }
+
+    func testZwoelfStaendeInDerselbenSekundeOrdinalSortieren() {
+        for i in 0..<12 {
+            v.save(String(i), for: "N.md")
+        }
+        let liste = v.list(for: "N.md")
+        XCTAssertEqual(liste.count, 12)
+        XCTAssertEqual(liste.first?.text(), "11")
+        XCTAssertEqual(liste.last?.text(), "0")
+    }
+
+    func testDreissigAusDreiunddreissigInDerselbenSekunde() {
+        for i in 0..<32 {
+            v.save(String(i), for: "N.md")
+        }
+        let liste = v.list(for: "N.md")
+        XCTAssertEqual(liste.count, NoteVersions.maxCount)
+        XCTAssertEqual(liste.first?.text(), "31")
+        XCTAssertEqual(liste.last?.text(), "2")
+    }
 }

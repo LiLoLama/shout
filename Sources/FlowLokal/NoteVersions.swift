@@ -144,7 +144,12 @@ final class NoteVersions {
                 Self.date(fromFileName: url.deletingPathExtension().lastPathComponent).map { Version(url: url, date: $0) }
             }
             .sorted {
-                $0.date != $1.date ? $0.date > $1.date : $0.url.lastPathComponent < $1.url.lastPathComponent
+                if $0.date != $1.date {
+                    return $0.date > $1.date
+                }
+                let ord0 = Self.ordinal(fromFileName: $0.url.deletingPathExtension().lastPathComponent)
+                let ord1 = Self.ordinal(fromFileName: $1.url.deletingPathExtension().lastPathComponent)
+                return Self.ordinalGreater(ord0, ord1)
             }
     }
 
@@ -168,5 +173,35 @@ final class NoteVersions {
     static func date(fromFileName name: String) -> Date? {
         guard let z = name.firstIndex(of: "Z") else { return nil }
         return formatter().date(from: String(name[...z]))
+    }
+
+    /// Ordinalzähler aus der Dateiendung für Stände in der gleichen Sekunde.
+    /// „2026-10-05T14-32-10Z" → [], „…Z-2" → [2], „…Z-10" → [10], „…Z-2-2" → [2, 2].
+    static func ordinal(fromFileName name: String) -> [Int] {
+        guard let z = name.firstIndex(of: "Z") else { return [] }
+        let suffix = String(name[name.index(after: z)...])
+        guard !suffix.isEmpty else { return [] }
+        return suffix.split(separator: "-").compactMap { Int($0) }
+    }
+
+    /// Vergleicht zwei Ordinalzähler lexikographisch: true wenn lhs > rhs.
+    static func ordinalGreater(_ lhs: [Int], _ rhs: [Int]) -> Bool {
+        for i in 0..<min(lhs.count, rhs.count) {
+            if lhs[i] != rhs[i] {
+                return lhs[i] > rhs[i]
+            }
+        }
+        return lhs.count > rhs.count
+    }
+
+    /// Vergleicht zwei Ordinalzähler: -1 wenn lhs < rhs, 0 wenn gleich, 1 wenn lhs > rhs.
+    static func compareOrdinals(_ lhs: [Int], _ rhs: [Int]) -> Int {
+        for i in 0..<min(lhs.count, rhs.count) {
+            if lhs[i] < rhs[i] { return -1 }
+            if lhs[i] > rhs[i] { return 1 }
+        }
+        if lhs.count < rhs.count { return -1 }
+        if lhs.count > rhs.count { return 1 }
+        return 0
     }
 }

@@ -336,7 +336,12 @@ struct NoteEditorView: NSViewRepresentable {
         /// wieder gesperrt, solange der Transform noch als laufend gilt.
         func replaceText(in range: NSRange, with text: String) -> Bool {
             guard let tv = textView, session.status != .placeholder, istAktuell(tv) else { return false }
+            let bisher = session.note.body
             if tv.hasMarkedText() { tv.unmarkText() }
+            // Das Festschreiben einer offenen Komposition meldet sie und verschiebt
+            // den Text: Dann passt der vorher berechnete Bereich nicht mehr. Ablehnen —
+            // die Sitzung sieht die Änderung und setzt nicht blind ein.
+            guard session.note.body == bisher, tv.string == bisher else { return false }
             guard NSMaxRange(range) <= (tv.string as NSString).length else { return false }
             let warGesperrt = !tv.isEditable
             tv.isEditable = true
@@ -365,9 +370,12 @@ struct NoteEditorView: NSViewRepresentable {
                 tv.textStorage?.replaceCharacters(in: ganz, with: text)
                 tv.didChangeText()
             } else {
-                // Gesperrt (Platzhalter): ohne Rückgängig, aber der Editor zeigt,
-                // was die Sitzung hält — sonst klafften beide still auseinander.
+                // Gesperrt (Platzhalter, laufender Transform): ohne Rückgängig, aber
+                // der Editor zeigt, was die Sitzung hält — sonst klafften beide still
+                // auseinander. Die alten Schritte passen danach nicht mehr zum Text.
                 tv.textStorage?.replaceCharacters(in: ganz, with: text)
+                tv.breakUndoCoalescing()
+                undo.removeAllActions()
             }
             let laenge = (text as NSString).length
             tv.setSelectedRange(NSRange(location: min(auswahl.location, laenge), length: 0))

@@ -227,7 +227,11 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         let ns = note.body as NSString
         guard range.location >= 0, NSMaxRange(range) <= ns.length else { return false }
         let revision = editRevision
+        let bisher = note.body
         if let editor, editor.replaceText(in: range, with: text), editRevision != revision { return true }
+        // Hat der Editor unterwegs etwas gemeldet (eine festgeschriebene
+        // Komposition), passt der Bereich nicht mehr: nicht blind einsetzen.
+        guard note.body == bisher else { return false }
         let neu = ns.replacingCharacters(in: range, with: text)
         guard neu != note.body else { return true }
         let hatEditor = editor != nil

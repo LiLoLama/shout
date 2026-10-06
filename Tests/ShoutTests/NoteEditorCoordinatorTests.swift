@@ -245,6 +245,36 @@ final class NoteEditorCoordinatorTests: XCTestCase {
         XCTAssertFalse(tv.isEditable)
     }
 
+    /// Eine beim Einsetzen offene Komposition wird festgeschrieben und gemeldet —
+    /// der vorher berechnete Bereich passt dann nicht mehr. Nichts Falsches ersetzen.
+    func testErsetzenMitOffenerKompositionErsetztNichtsFalsches() throws {
+        let s = try sitzung("eins zwei")
+        let (c, tv) = editor(s)
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
+        tv.setMarkedText("¨", selectedRange: NSRange(location: 1, length: 0),
+                         replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(s.note.body, "eins zwei")
+        XCTAssertFalse(s.replace(NSRange(location: 5, length: 4), with: "ZWEI"))
+        XCTAssertEqual(s.note.body, "¨eins zwei")
+        XCTAssertEqual(tv.string, s.note.body)
+        withExtendedLifetime(c) {}
+    }
+
+    /// Neuladen von außen im gesperrten Editor geht ohne Rückgängig-Schritt —
+    /// die alten Schritte passen dann nicht mehr und müssen weg.
+    func testNeuladenImGesperrtenEditorLeertRueckgaengig() throws {
+        let s = try sitzung("a")
+        let (c, tv) = editor(s)
+        tv.setSelectedRange(NSRange(location: 1, length: 0))
+        tv.insertText("bc", replacementRange: tv.selectedRange())
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertTrue(c.undo.canUndo)
+        tv.isEditable = false
+        c.replaceText(with: "fremd")
+        XCTAssertEqual(tv.string, "fremd")
+        XCTAssertFalse(c.undo.canUndo)
+    }
+
     func testBildLandetAlsLinkInEigenerZeile() throws {
         let s = try sitzung("Vorher")
         let (c, tv) = editor(s)

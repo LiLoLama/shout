@@ -64,6 +64,35 @@ final class NotesPageModelVersionsTests: XCTestCase {
         XCTAssertEqual(m.session?.note.body, "jetzt")
     }
 
+    /// Alles markiert und gelöscht, die leere Fassung gesichert: Die früheren
+    /// Stände müssen sich zurückholen lassen, obwohl ein leerer Stand nie gesichert wird.
+    func testWiederherstellenInEineLeereNotiz() throws {
+        let m = try seite()
+        let a = m.store.notes[0].id
+        m.select(a)
+        versionen.save("früher", for: "A.md")
+        let offen = try XCTUnwrap(m.session)
+        offen.edit("")
+        offen.flush()
+        XCTAssertEqual(u.text("A.md"), "")
+        let stand = try XCTUnwrap(m.versionList(for: a).first(where: { $0.text() == "früher" }))
+        XCTAssertTrue(m.restore(stand, of: a))
+        XCTAssertEqual(m.session?.note.body, "früher")
+        XCTAssertEqual(u.text("A.md"), "früher")
+    }
+
+    func testWiederherstellenInEineNotizNurAusLeerraum() throws {
+        let m = try seite()
+        let a = m.store.notes[0].id
+        m.select(a)
+        versionen.save("früher", for: "A.md")
+        m.session?.edit("  \n\n")
+        m.session?.flush()
+        let stand = try XCTUnwrap(m.versionList(for: a).first(where: { $0.text() == "früher" }))
+        XCTAssertTrue(m.restore(stand, of: a))
+        XCTAssertEqual(u.text("A.md"), "früher")
+    }
+
     func testOhneVersionenLeereListe() throws {
         let m = try seite()
         m.versions = nil

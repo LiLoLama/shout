@@ -53,6 +53,33 @@ final class NoteTransformRunnerTests: XCTestCase {
         XCTAssertEqual(s.note.body, "eins ZWEI drei")
     }
 
+    /// Dreifachklick wählt den Absatz samt Zeilenumbruch: Der Umbruch bleibt,
+    /// das Modell bekommt nur den Kern.
+    func testLeerraumAmRandDerAuswahlBleibt() async throws {
+        let s = try sitzung("eins\nzwei\ndrei")
+        s.selectionChanged(NSRange(location: 5, length: 5))   // "zwei\n"
+        var gesendet = ""
+        let r = runner { text, _ in gesendet = text; return text.uppercased() }
+        await r.run(instruction: "x", working: "…", done: "ok", on: s)?.value
+        XCTAssertEqual(gesendet, "zwei")
+        XCTAssertEqual(s.note.body, "eins\nZWEI\ndrei")
+    }
+
+    func testEinrueckungBleibt() async throws {
+        let s = try sitzung("  - a")
+        let r = runner { text, _ in text.uppercased() }
+        await r.run(instruction: "x", working: "…", done: "ok", on: s)?.value
+        XCTAssertEqual(s.note.body, "  - A")
+    }
+
+    func testNurLeerraumIstKeinText() throws {
+        let s = try sitzung("eins\n  \nzwei")
+        s.selectionChanged(NSRange(location: 4, length: 4))
+        let r = runner { _, _ in XCTFail("kein Aufruf"); return "" }
+        XCTAssertNil(r.run(instruction: "x", working: "…", done: "ok", on: s))
+        XCTAssertEqual(s.toolNotice, .failed("Kein Text zum Bearbeiten."))
+    }
+
     func testAnweisungKommtAn() async throws {
         let s = try sitzung("Text")
         var anweisung = ""

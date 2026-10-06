@@ -637,6 +637,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Eine offene Komposition steht erst nach dem Festschreiben im Text der Sitzung.
         scratchpadPanelStorage?.commitComposition()
         guard let session = scratchpadStorage?.active else { return }
+        // Während eines Transforms ginge der Stand davor hinaus, obwohl der Nutzer
+        // das Ergebnis erwartet.
+        guard !session.isTransforming else {
+            NSSound.beep()
+            return
+        }
         session.flush()
         guard let text = NoteHandoff.content(body: session.note.body, selection: session.lastSelection) else {
             NSSound.beep()

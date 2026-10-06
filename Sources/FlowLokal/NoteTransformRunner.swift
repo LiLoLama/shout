@@ -50,8 +50,11 @@ final class NoteTransformRunner: ObservableObject {
         let auswahl = session.lastSelection
         let bereich = auswahl.length > 0 && auswahl.location >= 0 && NSMaxRange(auswahl) <= ns.length
             ? auswahl : NSRange(location: 0, length: ns.length)
-        let text = ns.substring(with: bereich)
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        // Leerraum am Rand der Auswahl (Dreifachklick nimmt den Zeilenumbruch mit,
+        // Einrückung) bekommt das Modell nicht — er kommt unverändert um das
+        // Ergebnis herum wieder hinein, sonst klebte der nächste Absatz daran.
+        let (anfang, text, ende) = Self.splitWhitespace(ns.substring(with: bereich))
+        guard !text.isEmpty else {
             session.showToolNotice(.failed(Loc.t("Kein Text zum Bearbeiten.")))
             return nil
         }
@@ -64,7 +67,7 @@ final class NoteTransformRunner: ObservableObject {
         let vorher = session.note.body
         let task = Task { [transform, copy] in
             do {
-                let ergebnis = try await transform(text, instruction)
+                let ergebnis = anfang + (try await transform(text, instruction)) + ende
                 guard !Task.isCancelled else { return }
                 session.endTransform(nil)
                 guard session.note.body == vorher else {
@@ -125,6 +128,15 @@ final class NoteTransformRunner: ObservableObject {
         case .timedOut: return Loc.t("Das Modell hat zu lange gebraucht. Der Text bleibt, wie er war.")
         case .failed, .none: return Loc.t("Das Modell hat nicht geantwortet. Der Text bleibt, wie er war.")
         }
+    }
+
+    /// Teilt in führenden Leerraum, Kern und folgenden Leerraum. Ist alles
+    /// Leerraum, ist der Kern leer (und der Leerraum steht vorne).
+    nonisolated static func splitWhitespace(_ s: String) -> (leading: String, core: String, trailing: String) {
+        guard let start = s.firstIndex(where: { !$0.isWhitespace }) else { return (s, "", "") }
+        let letztes = s.lastIndex(where: { !$0.isWhitespace })!
+        let ende = s.index(after: letztes)
+        return (String(s[..<start]), String(s[start..<ende]), String(s[ende...]))
     }
 
     /// Für Menü und Balken: höchstens 40 Zeichen.

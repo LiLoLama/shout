@@ -255,10 +255,14 @@ final class NotesPageModel: ObservableObject {
         sitzung.flush()
         guard !sitzung.hasUnsavedText else { return false }
         // Der Ist-Stand muss als Version vorliegen (neu gesichert oder schon der
-        // neueste), sonst ginge er beim Ersetzen verloren.
+        // neueste), sonst ginge er beim Ersetzen verloren. Eine leere (oder nur
+        // aus Leerraum bestehende) Notiz hat nichts zu verlieren — und leere
+        // Stände sichert `NoteVersions` nie; genau dann soll Wiederherstellen gehen.
         let bisher = sitzung.note.body
-        versions.save(bisher, for: sitzung.note.fileName)
-        guard versions.list(for: sitzung.note.fileName).first?.text() == bisher else { return false }
+        if !bisher.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            versions.save(bisher, for: sitzung.note.fileName)
+            guard versions.list(for: sitzung.note.fileName).first?.text() == bisher else { return false }
+        }
         let ganz = NSRange(location: 0, length: (bisher as NSString).length)
         guard sitzung.replace(ganz, with: text) else { return false }
         sitzung.flush()

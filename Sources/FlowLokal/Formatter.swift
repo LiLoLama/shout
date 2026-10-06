@@ -1,6 +1,16 @@
 import Foundation
 import OSLog
 
+/// Warum ein Transform nichts geliefert hat. Der Text der Notiz bleibt dann, wie er war.
+enum TransformError: Error, Equatable {
+    case noModel
+    case tooLong
+    case emptyResult
+    case timedOut
+    /// Kurzform fürs Log (`RemoteProviderError.logDescription` o. ä.).
+    case failed(String)
+}
+
 /// Der Formatting-Layer (v3): **Router** über einem austauschbaren Textmodell.
 /// Ob das Modell im eigenen Prozess läuft (`LocalTextEngine`, MLX auf Apple
 /// Silicon) oder bei einem selbst gewählten Anbieter (`RemoteTextEngine`), weiß
@@ -325,6 +335,41 @@ actor Formatter {
         Keine Aufzählung, kein Vorwort, keine Anführungszeichen — nur die Beschreibung.
         """
         return await respond(system: system, user: sample, temperature: 0.6)
+    }
+
+    /// Arbeitet `text` nach `instruction` um (Zauberstab im Scratchpad). Kein
+    /// `FormattingGuard` — eine abweichende Antwort ist hier gewollt. Ein zweiter
+    /// Versuch nur bei vorübergehenden Fehlern, Zeitlimit wie bei der Hintergrundarbeit.
+    func transform(_ text: String, instruction: String) async throws -> String {
+        guard let engine, await engine.isReady else { throw TransformError.noModel }
+        guard text.count <= TransformPrompt.maxLength else { throw TransformError.tooLong }
+        let system = TransformPrompt.system(instruction: instruction)
+        let user = TransformPrompt.user(for: text)
+        let deadline = await backgroundTimeout(engine)
+        for versuch in 0...1 {
+            do {
+                let roh = try await withDeadline(deadline) {
+                    try await engine.respond(system: system, user: user, temperature: 0.3)
+                }
+                let ergebnis = TransformPrompt.clean(roh)
+                guard !ergebnis.isEmpty else { throw TransformError.emptyResult }
+                return ergebnis
+            } catch let fehler as RemoteProviderError where versuch == 0 && fehler.isTransient {
+                try Task.checkCancellation()
+                if case .rateLimited(let after) = fehler, let after {
+                    try await Task.sleep(nanoseconds: UInt64(min(after, 10) * 1_000_000_000))
+                }
+            } catch let fehler as RemoteProviderError {
+                throw fehler == .timedOut ? TransformError.timedOut : TransformError.failed(fehler.logDescription)
+            } catch let fehler as TransformError {
+                throw fehler
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw TransformError.failed(String(describing: error))
+            }
+        }
+        throw TransformError.timedOut
     }
 
     /// Manche Modelle verpacken die Antwort in ```-Blöcke oder Anführungszeichen.

@@ -154,4 +154,32 @@ final class NoteVersionsTests: XCTestCase {
         let liste = v.list(for: nfd)
         XCTAssertEqual(liste.first?.text(), "test1")
     }
+
+    func testAufraeumenOhneNameTxt() {
+        // Speichern und danach name.txt löschen
+        v.save("Stand", for: "Notiz.md")
+        let ordner = v.folder(for: "Notiz.md")
+        try? FileManager.default.removeItem(at: ordner.appendingPathComponent("name.txt"))
+
+        // 31 Tage später
+        uhr.jetzt += 31 * 24 * 60 * 60
+
+        // cleanUp mit Notiz im keeping sollte Stände behalten
+        v.cleanUp(keeping: ["Notiz.md"])
+        let liste = v.list(for: "Notiz.md")
+        XCTAssertFalse(liste.isEmpty)
+    }
+
+    func testAufraeumenMitiCloudPlatzhalter() {
+        // Versionen für N.md speichern
+        v.save("Stand", for: "N.md")
+
+        // 31 Tage + 1 Minute später
+        uhr.jetzt += 31 * 24 * 60 * 60 + 60
+
+        // cleanUp mit Platzhalter sollte N.md's Versionen behalten
+        v.cleanUp(keeping: [".N.md.icloud"])
+        let liste = v.list(for: "N.md")
+        XCTAssertFalse(liste.isEmpty)
+    }
 }

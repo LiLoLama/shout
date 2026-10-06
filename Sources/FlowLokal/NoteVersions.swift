@@ -241,4 +241,15 @@ final class NoteVersions {
         }
         return lhs.count > rhs.count
     }
+
+    /// Hängt die Versionen an den Store: ein Stand vor dem Überschreiben
+    /// (höchstens alle zehn Minuten), und Umbenennen nimmt die Stände mit.
+    func attach(to store: NoteStore) {
+        store.beforeOverwrite = { [weak self] bisher in
+            self?.saveIfDue(bisher.body, for: bisher.fileName)
+        }
+        store.observeRenames { [weak self] alt, neu in
+            self?.moveVersions(from: alt, to: neu)
+        }
+    }
 }

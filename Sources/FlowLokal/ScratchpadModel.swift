@@ -45,7 +45,7 @@ final class ScratchpadModel: ObservableObject {
         self.defaults = defaults
         showsList = defaults.object(forKey: K.liste) as? Bool ?? true
         registry.onDiscard { [weak self] id in self?.dropTab(id) }
-        store.onRename = { [weak self] alt, neu in
+        store.observeRenames { [weak self] alt, neu in
             guard let self, alt.lowercased() == self.inboxFileName.lowercased() else { return }
             self.inboxFileName = neu
         }

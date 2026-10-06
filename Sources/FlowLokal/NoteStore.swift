@@ -29,9 +29,22 @@ final class NoteStore: ObservableObject {
 
     @Published private(set) var notes: [Note] = []
     @Published private(set) var folderState: FolderState = .ok
-    /// Nach jedem Umbenennen über `rename(_:to:)`: alter und neuer Dateiname.
-    /// Das Panel folgt so der umbenannten Eingangs-Notiz.
-    var onRename: ((String, String) -> Void)?
+    /// Wer erfahren muss, dass eine Datei umbenannt wurde (alter, neuer Name):
+    /// das Scratchpad (Eingangs-Notiz), die Versionen. Gemeldet wird nach dem
+    /// Umbenennen von Hand und nach einem Namenswechsel über die Titelregel.
+    private var renameObservers: [(String, String) -> Void] = []
+
+    func observeRenames(_ handler: @escaping (_ old: String, _ new: String) -> Void) {
+        renameObservers.append(handler)
+    }
+
+    private func notifyRename(_ alt: String, _ neu: String) {
+        for beobachter in renameObservers { beobachter(alt, neu) }
+    }
+
+    /// Bekommt die zuletzt bekannte Fassung, bevor `save` eine vorhandene Datei
+    /// mit anderem Text überschreibt — für die Versionen.
+    var beforeOverwrite: ((Note) -> Void)?
     /// Für diese Platzhalter wurde der iCloud-Download schon angestoßen.
     private var angestosseneDownloads = Set<String>()
     /// Für Tests: Platzhalter, deren Download angefordert ist und die noch ausgelagert sind.
@@ -198,6 +211,10 @@ final class NoteStore: ObservableObject {
             }
         }
 
+        if !input.isNew, let bisher = cache[note.fileName], bisher.body != note.body {
+            beforeOverwrite?(bisher)
+        }
+
         let alt = note.fileName
         var neu = targetFileName(for: note)
         if !note.isNew && neu != alt && !move(alt, to: neu) { neu = alt }
@@ -218,6 +235,7 @@ final class NoteStore: ObservableObject {
         if alt != note.fileName { cache[alt] = nil }
         cache[note.fileName] = note
         publish()
+        if !input.isNew, alt != note.fileName { notifyRename(alt, note.fileName) }
         return .saved(note)
     }
 
@@ -648,7 +666,7 @@ extension NoteStore {
         note.titleIsFixed = true
         cache[note.fileName] = note
         publish()
-        if alterName != note.fileName { onRename?(alterName, note.fileName) }
+        if alterName != note.fileName { notifyRename(alterName, note.fileName) }
         return note
     }
 

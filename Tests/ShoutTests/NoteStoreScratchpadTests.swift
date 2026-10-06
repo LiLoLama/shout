@@ -47,7 +47,7 @@ final class NoteStoreScratchpadTests: XCTestCase {
         try u.schreibe("Eingang.md", "x")
         let s = u.store()
         var gemeldet: [(String, String)] = []
-        s.onRename = { gemeldet.append(($0, $1)) }
+        s.observeRenames { gemeldet.append(($0, $1)) }
         s.rename(s.notes[0].id, to: "Sammelstelle")
         XCTAssertEqual(gemeldet.count, 1)
         XCTAssertEqual(gemeldet.first?.0, "Eingang.md")
@@ -101,7 +101,7 @@ final class NoteStoreScratchpadTests: XCTestCase {
         try u.schreibe("Eingang.md", "x")
         let s = u.store()
         var gemeldet = 0
-        s.onRename = { _, _ in gemeldet += 1 }
+        s.observeRenames { _, _ in gemeldet += 1 }
         s.rename(s.notes[0].id, to: "Eingang")
         XCTAssertEqual(gemeldet, 0)
     }

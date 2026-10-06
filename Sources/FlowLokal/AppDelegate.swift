@@ -49,11 +49,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // Alles entsteht erst beim ersten Zugriff. Der Ordner in „Dokumente“ entsteht
     // sogar erst mit der ersten gesicherten Notiz.
 
+    let noteVersions = NoteVersions()
     private var notesStoreStorage: NoteStore?
     private var noteStore: NoteStore {
         if let store = notesStoreStorage { return store }
         let store = NoteStore(folder: NotesFolder.current())
         notesStoreStorage = store
+        noteVersions.attach(to: store)
+        // Stände ohne Datei nach 30 Tagen weg — nur mit erreichbarem Ordner, sonst
+        // sähe jede Notiz verwaist aus.
+        if store.folderState == .ok {
+            noteVersions.cleanUp(keeping: Set(store.notes.map(\.fileName)))
+        }
         // Mit dem Ordner entsteht auch das Scratchpad-Modell (ohne Panel): Es hört auf
         // Umbenennungen. Würde „Eingang“ sonst zuerst auf der Seite umbenannt, legte
         // ⌃⌥I danach eine zweite Eingangs-Notiz an. Nicht schon beim Start — das läse

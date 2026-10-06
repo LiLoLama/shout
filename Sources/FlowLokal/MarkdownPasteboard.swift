@@ -10,15 +10,17 @@ enum MarkdownPasteboard {
     private static let indent: CGFloat = 18
     private static let headingSizes: [CGFloat] = [20, 17, 15, 14, 13, 13]
 
-    /// Schreibt Klartext und RTF. `extraTypes` bekommen den Wert „1" — für die
+    /// Schreibt Klartext und RTF. `extraTypes` bekommen den Wert "1" — für die
     /// Marker, an denen Zwischenablage-Verläufe erkennen, dass sie den Inhalt
     /// nicht aufnehmen sollen.
     static func write(_ markdown: String, to pasteboard: NSPasteboard,
                       extraTypes: [NSPasteboard.PasteboardType] = []) {
         pasteboard.clearContents()
-        pasteboard.declareTypes([.string, .rtf] + extraTypes, owner: nil)
+        let rtf = rtf(from: markdown)
+        let typen: [NSPasteboard.PasteboardType] = [.string] + (rtf != nil ? [.rtf] : []) + extraTypes
+        pasteboard.declareTypes(typen, owner: nil)
         pasteboard.setString(markdown, forType: .string)
-        if let rtf = rtf(from: markdown) { pasteboard.setData(rtf, forType: .rtf) }
+        if let rtf = rtf { pasteboard.setData(rtf, forType: .rtf) }
         for typ in extraTypes { pasteboard.setData(Data("1".utf8), forType: typ) }
     }
 
@@ -37,9 +39,14 @@ enum MarkdownPasteboard {
         var imCode = false
         for (index, zeile) in zeilen.enumerated() {
             let ende = index < zeilen.count - 1 ? "\n" : ""
-            if zeile.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                imCode.toggle()
-                continue
+            let trimmed = zeile.trimmingCharacters(in: .whitespaces)
+            // Zaun nur, wenn die Zeile mit ``` beginnt und kein weiteres ``` danach hat
+            if trimmed.hasPrefix("```") {
+                let afterOpen = trimmed.dropFirst(3)
+                if !afterOpen.contains("```") {
+                    imCode.toggle()
+                    continue
+                }
             }
             if imCode {
                 ergebnis.append(NSAttributedString(string: zeile + ende,
@@ -72,7 +79,7 @@ enum MarkdownPasteboard {
         for marke in ["- ", "* ", "+ "] where rest.hasPrefix(marke) {
             return listItem("•", String(rest.dropFirst(marke.count)), ebene: ebene, ende: ende)
         }
-        let ziffern = rest.prefix(while: { $0.isNumber })
+        let ziffern = rest.prefix(while: { $0.isASCII && $0.isNumber })
         if !ziffern.isEmpty {
             let danach = rest.dropFirst(ziffern.count)
             if danach.hasPrefix(". ") || danach.hasPrefix(") ") {
@@ -111,7 +118,8 @@ enum MarkdownPasteboard {
         var grund: [NSAttributedString.Key: Any] = [.font: basis, .paragraphStyle: absatz]
         if let farbe { grund[.foregroundColor] = farbe }
         // Bild-Links bleiben Text — der Parser machte sonst nur den Alt-Text daraus.
-        guard !text.contains("!["),
+        // Inline-Dreifach-Backticks bleiben Text — sie sollen nicht als Codeblock-Zaun gelten.
+        guard !text.contains("!["), !text.contains("```"),
               let geparst = try? AttributedString(
                 markdown: text,
                 options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
@@ -122,7 +130,7 @@ enum MarkdownPasteboard {
             var attribute = grund
             var schrift = basis
             if let absicht = lauf.inlinePresentationIntent {
-                if absicht.contains(.code) { schrift = mono }
+                if absicht.contains(.code) { schrift = monoFont(basedOn: schrift) }
                 if absicht.contains(.stronglyEmphasized) { schrift = bold(schrift) }
                 if absicht.contains(.emphasized) { schrift = italic(schrift) }
                 if absicht.contains(.strikethrough) {
@@ -140,6 +148,9 @@ enum MarkdownPasteboard {
 
     private static var body: NSFont { NSFont.systemFont(ofSize: bodySize) }
     private static var mono: NSFont { NSFont.monospacedSystemFont(ofSize: bodySize - 1, weight: .regular) }
+    private static func monoFont(basedOn schrift: NSFont) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: schrift.pointSize, weight: .regular)
+    }
     private static func bold(_ f: NSFont) -> NSFont { NSFontManager.shared.convert(f, toHaveTrait: .boldFontMask) }
     private static func italic(_ f: NSFont) -> NSFont { NSFontManager.shared.convert(f, toHaveTrait: .italicFontMask) }
 }

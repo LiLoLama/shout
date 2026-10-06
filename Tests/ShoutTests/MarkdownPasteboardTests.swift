@@ -73,4 +73,27 @@ final class MarkdownPasteboardTests: XCTestCase {
         XCTAssertNotNil(pb.data(forType: .rtf))
         XCTAssertEqual(pb.data(forType: marke), Data("1".utf8))
     }
+
+    func testZaunInDersebenZeileBleibtTextKeinMonospace() {
+        // Inline-Backticks sollten nicht als Zaun gelten
+        let md = "```inline``` danach\nnormal"
+        XCTAssertEqual(text(md), "```inline``` danach\nnormal")
+        XCTAssertFalse(schrift(md, bei: 0)?.isFixedPitch ?? false)
+    }
+
+    func testRTFNurAngekuendigt() {
+        // Wenn RTF nicht gesetzt wird, sollte es auch nicht in der Typenliste deklariert sein
+        let pb = NSPasteboard(name: NSPasteboard.Name("shout-test-\(UUID().uuidString)"))
+        defer { pb.releaseGlobally() }
+        let md = "Test"
+        MarkdownPasteboard.write(md, to: pb, extraTypes: [])
+        XCTAssertEqual(pb.string(forType: .string), md)
+        // Wenn RTF generiert wurde, ist es da; wenn nicht (Fehler), ist es nicht deklariert
+        let typen = pb.types ?? []
+        if pb.data(forType: .rtf) == nil {
+            XCTAssertFalse(typen.contains(.rtf))
+        } else {
+            XCTAssertTrue(typen.contains(.rtf))
+        }
+    }
 }

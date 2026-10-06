@@ -167,6 +167,8 @@ final class ScratchpadModel: ObservableObject {
         tabs = []
         activeIndex = nil
         persist()
+        // Der gemerkte Name gehört zum alten Ordner; im neuen gilt wieder die Vorgabe.
+        defaults.removeObject(forKey: K.eingang)
     }
 
     /// Verwirft eine Sitzung ohne zu sichern (Hinweis „Verwerfen …“).

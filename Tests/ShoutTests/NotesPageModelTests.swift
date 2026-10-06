@@ -329,4 +329,26 @@ final class NotesPageModelTests: XCTestCase {
         XCTAssertNotNil(m.writeRescueCopyIfNeeded(in: m.rescueDirectory))
         XCTAssertEqual(m.rescuedFiles.count, 1)
     }
+
+    func testBlockierterOrdnerwechselSagtWarum() throws {
+        let m = try sitzungMitScheiterndemSichern()
+        let anderer = u.wurzel.appendingPathComponent("Anderer", isDirectory: true)
+        try FileManager.default.createDirectory(at: anderer, withIntermediateDirectories: true)
+        XCTAssertFalse(m.changeFolder(to: anderer))
+        XCTAssertNotNil(m.blockedNotice)
+        m.dismissBlockedNotice()
+        XCTAssertNil(m.blockedNotice)
+    }
+
+    func testLoeschenEinerNurImPanelOffenenNotizSagtWarum() throws {
+        let m = try dreiNotizen()
+        let b = id(m, "B")
+        let panel = m.registry.acquire(try XCTUnwrap(m.store.note(id: b)))
+        panel.edit("im Panel getippt")
+        try Data([0x47, 0xFC, 0x6E]).write(to: u.ordner.appendingPathComponent("B.md"))
+        m.delete(b)
+        XCTAssertNil(m.lastDeleted)
+        XCTAssertNotNil(m.blockedNotice)
+        XCTAssertEqual(panel.note.body, "im Panel getippt")
+    }
 }

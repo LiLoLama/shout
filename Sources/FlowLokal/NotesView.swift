@@ -8,6 +8,7 @@ struct NotesView: View {
     @ObservedObject var scratchpadSettings: ScratchpadSettings
     var onScratchpadCapture: (ScratchpadSettings.Role) -> Void = { _ in }
     var tools: NoteToolbox? = nil
+    var onOpenInPanel: ((UUID) -> Void)? = nil
     @AppStorage("notes.settingsExpanded") private var einstellungenOffen = true
     @AppStorage("scratchpad.hintSeen") private var hinweisGesehen = false
 
@@ -31,6 +32,17 @@ struct NotesView: View {
             }
             if store.folderState == .unreachable {
                 banner(Loc.t("Der Ordner ist nicht erreichbar. Änderungen werden zwischengespeichert und landen dort, sobald er wieder da ist."))
+            }
+            if let grund = model.blockedNotice {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.shoutLive).font(.system(size: 11))
+                    Text(grund).font(.system(size: 12)).foregroundStyle(Color(white: 0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button(Loc.t("OK")) { model.dismissBlockedNotice() }.buttonStyle(ConsoleButtonStyle())
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.shoutLive.opacity(0.10)))
             }
             HStack(spacing: 0) {
                 list.frame(width: 250)
@@ -254,6 +266,11 @@ struct NotesView: View {
     }
 
     @ViewBuilder private func menu(for note: Note) -> some View {
+        if let onOpenInPanel {
+            Button(Loc.t("Im Panel öffnen")) { onOpenInPanel(note.id) }
+                .disabled(note.isPlaceholder)
+            Divider()
+        }
         Button(note.pinned ? Loc.t("Lösen") : Loc.t("Anheften")) { model.togglePin(note.id) }
         Button(Loc.t("Umbenennen …")) { renameText = note.title; renaming = note.id }
         Button(Loc.t("Im Finder zeigen")) {
@@ -274,6 +291,7 @@ struct NotesView: View {
                            onTogglePin: { model.togglePin(session.id) },
                            onDelete: { model.delete(session.id) },
                            onVersions: { versionenFuer = session.note },
+                           onOpenInPanel: onOpenInPanel.map { öffnen in { öffnen(session.id) } },
                            onDiscard: { model.discardSession() })
                 // An das Objekt gebunden, nicht an die Notiz-ID: Eine neue Sitzung
                 // derselben Notiz bekommt so sicher einen frischen Editor, dessen
@@ -365,6 +383,7 @@ private struct NoteEditorPane: View {
     let onTogglePin: () -> Void
     let onDelete: () -> Void
     let onVersions: () -> Void
+    let onOpenInPanel: (() -> Void)?
     /// Schließt die Sitzung, ohne zu sichern (nach Rückfrage).
     let onDiscard: () -> Void
 
@@ -387,6 +406,11 @@ private struct NoteEditorPane: View {
                 Spacer()
                 Group {
                     if let tools { TransformMenu(tools: tools, session: session) }
+                    if let onOpenInPanel {
+                        Button(action: onOpenInPanel) { Image(systemName: "rectangle.on.rectangle") }
+                            .help(Loc.t("Im Panel öffnen"))
+                            .disabled(session.note.isNew)
+                    }
                     Button(action: onTogglePin) { Image(systemName: session.note.pinned ? "pin.fill" : "pin") }
                         .help(session.note.pinned ? Loc.t("Lösen") : Loc.t("Anheften"))
                     Button {

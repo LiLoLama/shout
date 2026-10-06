@@ -1069,5 +1069,12 @@ final class Loc: ObservableObject {
         "Notizordner nicht übernommen: Es gibt ungesicherten Text.": "Notes folder not imported: there is unsaved text.",
         "Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“":
             "What should happen to the text? For example: “Shorten to three sentences.”",
+
+        // Scratchpad: lose Enden
+        "Im Panel öffnen": "Open in Panel",
+        "Eine offene Notiz lässt sich gerade nicht sichern. Der Ordner bleibt, bis sie gesichert ist.":
+            "An open note can’t be saved right now. The folder stays until it is saved.",
+        "Diese Notiz ist im Scratchpad offen und lässt sich gerade nicht sichern. Gelöscht wird sie erst danach.":
+            "This note is open in the Scratchpad and can’t be saved right now. It will only be deleted after that.",
     ]
 }

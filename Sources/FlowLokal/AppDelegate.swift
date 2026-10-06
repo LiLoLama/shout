@@ -99,7 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let page = notesPageStorage { return page }
         let page = NotesPageModel(store: noteStore, registry: noteRegistry)
         page.versions = noteVersions
-        page.onFolderChanged = { [weak self] in self?.scratchpadStorage?.resetTabs() }
+        page.onFolderChanged = { [weak self] in
+            self?.scratchpadStorage?.resetTabs()
+            // Auch ohne schon angelegtes Scratchpad-Modell: Der Name gehört zum alten Ordner.
+            UserDefaults.standard.removeObject(forKey: ScratchpadModel.inboxFileNameKey)
+        }
         notesPageStorage = page
         return page
     }
@@ -934,6 +938,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
     }
 
+    /// „Im Panel öffnen“ auf der Seite: dieselbe Sitzung, ein Tab im Panel.
+    private func openNoteInPanel(_ id: UUID) {
+        guard scratchpadSettings.isEnabled else { NSSound.beep(); return }
+        scratchpad.open(id, inNewTab: true)
+        scratchpadPanel.show(focus: true, prepare: false)
+    }
+
     private func openDashboard(_ tab: DashboardModel.Tab) {
         dashboardModel.tab = tab
         if dashboardWindow == nil {
@@ -956,6 +967,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 scratchpadSettings: scratchpadSettings,
                 onScratchpadCapture: { [weak self] rolle in self?.beginScratchpadCapture(rolle) },
                 noteTools: noteTools,
+                onOpenNoteInPanel: { [weak self] id in self?.openNoteInPanel(id) },
                 onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
                 onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
                 updates: updateBridge
@@ -2098,8 +2110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 sounds.play(.done)
                 toast.showInfo(Loc.t("Im Eingang notiert"), actionTitle: Loc.t("Öffnen")) { [weak self] in
                     guard let self else { return }
-                    self.scratchpadPanel.show(focus: true)
                     self.scratchpad.openInbox()
+                    self.scratchpadPanel.show(focus: true, prepare: false)
                 }
             } else {
                 injector.copyConcealed(final)

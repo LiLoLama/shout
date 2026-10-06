@@ -128,10 +128,12 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
     }
 
     /// Blendet ein, ohne den Fokus zu nehmen — außer `focus` (Klick auf den Toast).
-    func show(focus: Bool) {
+    /// `prepare: false`, wenn der Aufrufer selbst schon eine Notiz geöffnet hat —
+    /// sonst legte das Öffnen-Verhalten womöglich noch einen leeren Tab dazu.
+    func show(focus: Bool, prepare: Bool = true) {
         let fenster = panel ?? baue()
         if !fenster.isVisible {
-            model.prepareForShowing(behavior: settings.openBehavior)
+            if prepare { model.prepareForShowing(behavior: settings.openBehavior) }
             setztRahmen = true
             fenster.setFrame(gespeicherterRahmen(), display: false)
             setztRahmen = false

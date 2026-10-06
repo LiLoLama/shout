@@ -14,6 +14,8 @@ final class NotesPageModel: ObservableObject {
     @Published var query = ""
     @Published private(set) var session: NoteEditorSession?
     @Published private(set) var lastDeleted: UndoDelete?
+    /// Warum gerade etwas nicht ging — die Seite zeigt es als Balken.
+    @Published private(set) var blockedNotice: String?
     private let defaults: UserDefaults
     /// Hierhin rettet das Beenden ungesicherten Text (`NoteSessionRegistry.writeRescueCopies`).
     let rescueDirectory: URL
@@ -152,7 +154,14 @@ final class NotesPageModel: ObservableObject {
         let offen = istOffen ? session : registry.session(id: id)
         if let offen {
             offen.flush()
-            if offen.hasUnsavedText { return }
+            if offen.hasUnsavedText {
+                // Die eigene Sitzung zeigt das schon („Konnte nicht gesichert werden …“);
+                // eine nur im Panel offene nicht.
+                if !istOffen {
+                    blockedNotice = Loc.t("Diese Notiz ist im Scratchpad offen und lässt sich gerade nicht sichern. Gelöscht wird sie erst danach.")
+                }
+                return
+            }
             // Nie gesichert und leer geblieben: keine Datei, nichts zurückzuholen.
             // (Getippter Text wurde eben gesichert und geht regulär in den Papierkorb.)
             if offen.note.isNew {
@@ -186,13 +195,18 @@ final class NotesPageModel: ObservableObject {
 
     func dismissUndo() { lastDeleted = nil }
 
+    func dismissBlockedNotice() { blockedNotice = nil }
+
     /// `true`, wenn der Ordner gewechselt wurde. Bleibt Text irgendeiner offenen
     /// Notiz ungesichert, bleibt alles, wie es ist.
     @discardableResult
     func changeFolder(to url: URL) -> Bool {
         // Alle Sitzungen, auch die Tabs des Panels: Bleibt irgendwo Text
         // ungesichert, bleibt alles, wie es ist.
-        guard registry.flushAll().isEmpty else { return false }
+        guard registry.flushAll().isEmpty else {
+            blockedNotice = Loc.t("Eine offene Notiz lässt sich gerade nicht sichern. Der Ordner bleibt, bis sie gesichert ist.")
+            return false
+        }
         registry.removeAll()
         session = nil
         lastDeleted = nil

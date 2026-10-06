@@ -152,6 +152,9 @@ final class LocalizationNotesTests: XCTestCase {
         "Notizordner nicht übernommen: Ordner nicht gefunden.",
         "Notizordner nicht übernommen: Es gibt ungesicherten Text.",
         "Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“",
+        "Im Panel öffnen",
+        "Eine offene Notiz lässt sich gerade nicht sichern. Der Ordner bleibt, bis sie gesichert ist.",
+        "Diese Notiz ist im Scratchpad offen und lässt sich gerade nicht sichern. Gelöscht wird sie erst danach.",
     ]
 
     override func setUp() {

@@ -292,4 +292,11 @@ final class ScratchpadModelTests: XCTestCase {
         XCTAssertTrue(m.tabs.isEmpty)
         XCTAssertNil(m.activeIndex)
     }
+
+    func testOrdnerwechselVergisstDenNamenDerEingangsNotiz() {
+        let m = modell()
+        m.inboxFileName = "Inbox 2.md"
+        m.resetTabs()
+        XCTAssertEqual(m.inboxFileName, Loc.t("Eingang.md"))
+    }
 }

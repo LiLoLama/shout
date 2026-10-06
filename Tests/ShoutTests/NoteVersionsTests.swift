@@ -143,6 +143,13 @@ final class NoteVersionsTests: XCTestCase {
         XCTAssertEqual(liste.first?.text(), "neu")
     }
 
+    func testUhrRueckwaertsBlockiertDasSichernBeimBearbeitenNicht() {
+        XCTAssertNotNil(v.saveIfDue("A", for: "N.md"))
+        uhr.jetzt -= 60 * 60
+        XCTAssertNotNil(v.saveIfDue("B", for: "N.md"))
+        XCTAssertEqual(v.list(for: "N.md").first?.text(), "B")
+    }
+
     func testUnicodeNormalisierung() {
         // NFC und NFD sollten denselben Ordner ergeben
         let nfc = "Ä.md"  // Precomposed

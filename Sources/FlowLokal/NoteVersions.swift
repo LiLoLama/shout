@@ -78,8 +78,11 @@ final class NoteVersions {
     /// Beim Bearbeiten: höchstens alle zehn Minuten ein Stand.
     @discardableResult
     func saveIfDue(_ text: String, for fileName: String) -> URL? {
-        if let neueste = list(for: fileName).first, now().timeIntervalSince(neueste.date) < Self.minInterval {
-            return nil
+        if let neueste = list(for: fileName).first {
+            let abstand = now().timeIntervalSince(neueste.date)
+            if abstand >= 0 && abstand < Self.minInterval {
+                return nil
+            }
         }
         return save(text, for: fileName)
     }
@@ -98,14 +101,18 @@ final class NoteVersions {
                 return
             }
         } else {
-            for stand in versions(in: alt) {
+            for stand in versions(in: alt).reversed() {
                 let standBase = stand.url.deletingPathExtension().lastPathComponent
                 if let date = Self.date(fromFileName: standBase) {
                     let stempel = Self.stamp(date)
                     let maxOrd = maxOrdinalForStamp(stempel, in: neu)
                     let zielName = maxOrd == 0 ? stempel + ".md" : "\(stempel)-\(maxOrd + 1).md"
                     let ziel = neu.appendingPathComponent(zielName)
-                    try? fileManager.moveItem(at: stand.url, to: ziel)
+                    do {
+                        try fileManager.moveItem(at: stand.url, to: ziel)
+                    } catch {
+                        NSLog("shout: Notizversion nicht zusammengelegt: \(error)")
+                    }
                 }
             }
             // Nur löschen wenn keine .md Dateien mehr im alten Ordner sind
@@ -201,6 +208,7 @@ final class NoteVersions {
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyy-MM-dd'T'HH-mm-ss'Z'"

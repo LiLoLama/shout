@@ -161,6 +161,9 @@ final class NoteVersionsTests: XCTestCase {
         let ordner = v.folder(for: "Notiz.md")
         try? FileManager.default.removeItem(at: ordner.appendingPathComponent("name.txt"))
 
+        // cleanUp(keeping: []) setzt die Verwaist-Marke
+        v.cleanUp(keeping: [])
+
         // 31 Tage später
         uhr.jetzt += 31 * 24 * 60 * 60
 
@@ -173,6 +176,9 @@ final class NoteVersionsTests: XCTestCase {
     func testAufraeumenMitiCloudPlatzhalter() {
         // Versionen für N.md speichern
         v.save("Stand", for: "N.md")
+
+        // cleanUp(keeping: []) setzt die Verwaist-Marke
+        v.cleanUp(keeping: [])
 
         // 31 Tage + 1 Minute später
         uhr.jetzt += 31 * 24 * 60 * 60 + 60

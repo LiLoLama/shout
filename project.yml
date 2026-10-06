@@ -399,6 +399,7 @@ targets:
       # Beenden wartet auf ein laufendes Diktat: genau eine Antwort an AppKit.
       - path: Sources/FlowLokal/DeferredTermination.swift
       # Scratchpad, Teil 3
+      - path: Sources/FlowLokal/NoteVersions.swift
       - path: Sources/FlowLokal/NoteTransforms.swift
       - path: Sources/FlowLokal/MarkdownPasteboard.swift
       - path: Sources/FlowLokal/NoteHandoff.swift

@@ -43,6 +43,9 @@ final class NoteTransformRunner: ObservableObject {
     func run(instruction: String, working: String, done: String,
              on session: NoteEditorSession) -> Task<Void, Never>? {
         guard !session.isTransforming, session.status != .placeholder else { return nil }
+        // Erst sichern: Ein Konflikt oder Neuladen beim Sichern ersetzt den Text.
+        // Bereich und Text kommen deshalb aus dem Stand danach.
+        session.flush()
         let ns = session.note.body as NSString
         let auswahl = session.lastSelection
         let bereich = auswahl.length > 0 && auswahl.location >= 0 && NSMaxRange(auswahl) <= ns.length
@@ -56,9 +59,7 @@ final class NoteTransformRunner: ObservableObject {
             session.showToolNotice(.failed(Self.message(for: TransformError.tooLong)))
             return nil
         }
-        // Erst sichern, dann den Stand ablegen: Die Version ist, was vor dem
-        // Transform in der Datei stand.
-        session.flush()
+        // Die Version ist, was vor dem Transform in der Datei stand.
         saveVersion(session)
         let vorher = session.note.body
         let task = Task { [transform, copy] in
@@ -78,9 +79,17 @@ final class NoteTransformRunner: ObservableObject {
                     session.showToolNotice(.failed(Loc.t("Das Ergebnis ließ sich nicht einsetzen. Es liegt in der Zwischenablage.")))
                     return
                 }
+                // Wurde der Tab inzwischen geschlossen, läuft kein Zeitgeber mehr:
+                // sofort sichern, sonst ginge das Ergebnis verloren.
+                session.flush()
+                if session.hasUnsavedText {
+                    copy(ergebnis)
+                    session.showToolNotice(.failed(Loc.t("Das Ergebnis ließ sich nicht sichern. Es liegt in der Zwischenablage.")))
+                    return
+                }
                 session.showToolNotice(.done(done, undo: NoteEditorSession.ToolUndo(before: vorher, after: session.note.body)))
             } catch {
-                guard !Task.isCancelled, !(error is CancellationError) else { return }
+                guard !Task.isCancelled else { return }
                 session.endTransform(.failed(Self.message(for: error)))
             }
         }

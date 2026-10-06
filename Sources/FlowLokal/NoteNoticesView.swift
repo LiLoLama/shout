@@ -109,7 +109,6 @@ private extension NoteNoticesView {
                 Spacer()
                 Button(Loc.t("Abbrechen")) { session.cancelTransformIfRunning() }
                     .buttonStyle(ConsoleButtonStyle())
-                    .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(Color.white.opacity(0.04))

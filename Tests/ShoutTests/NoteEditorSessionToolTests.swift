@@ -26,7 +26,7 @@ final class NoteEditorSessionToolTests: XCTestCase {
         let s = try sitzung("eins zwei drei")
         XCTAssertTrue(s.replace(NSRange(location: 5, length: 4), with: "ZWEI"))
         XCTAssertEqual(s.note.body, "eins ZWEI drei")
-        XCTAssertEqual(s.lastSelection, NSRange(location: 5, length: 4))
+        XCTAssertEqual(s.lastSelection, NSRange(location: 9, length: 0), "Cursor hinter dem Ergebnis")
     }
 
     func testErsetzenAusserhalbDesTextesScheitert() throws {

@@ -65,10 +65,16 @@ final class NoteTransformRunnerTests: XCTestCase {
         let s = try sitzung("roh")
         s.edit("roh, ungesichert")
         var gesichert: [String] = []
-        let r = runner(versionen: { gesichert.append($0.note.body) }) { _, _ in "neu" }
+        var dateiBeimStand: String?
+        let r = runner(versionen: { [u] in
+            gesichert.append($0.note.body)
+            dateiBeimStand = u?.text("X.md")
+        }) { _, _ in "neu" }
         await r.run(instruction: "x", working: "…", done: "ok", on: s)?.value
         XCTAssertEqual(gesichert, ["roh, ungesichert"])
-        XCTAssertEqual(u.text("X.md"), "roh, ungesichert", "vor dem Transform gesichert")
+        // Nach dem Transform steht das Ergebnis in der Datei (sofort gesichert);
+        // zum Zeitpunkt des Stands stand dort noch der Text davor.
+        XCTAssertEqual(dateiBeimStand, "roh, ungesichert", "vor dem Transform gesichert")
     }
 
     func testZuLangOhneAufruf() throws {
@@ -133,5 +139,30 @@ final class NoteTransformRunnerTests: XCTestCase {
     func testKurzform() {
         XCTAssertEqual(NoteTransformRunner.short("kurz"), "kurz")
         XCTAssertEqual(NoteTransformRunner.short(String(repeating: "x", count: 60)).count, 40)
+    }
+
+    func testErgebnisIstSofortGesichertAuchOhneZeitgeber() async throws {
+        // Die Sitzung hat 60 s Verzögerung und keinen Editor, wie nach dem
+        // Schließen des Tabs: ohne sofortiges Sichern ginge das Ergebnis verloren.
+        let s = try sitzung("alt")
+        let r = runner { _, _ in
+            try? await Task.sleep(for: .milliseconds(50))
+            return "neu"
+        }
+        await r.run(instruction: "x", working: "…", done: "ok", on: s)?.value
+        XCTAssertEqual(u.text("X.md"), "neu")
+        XCTAssertFalse(s.hasUnsavedText)
+    }
+
+    func testBereichKommtAusDemStandNachDemSichern() async throws {
+        let s = try sitzung("eins zwei drei")
+        // Eigene, ungesicherte Eingabe; die Auswahl liegt auf dem ganzen Wort.
+        s.edit("eins zwei drei vier")
+        s.selectionChanged(NSRange(location: 5, length: 4))
+        var gesehen = ""
+        let r = runner { text, _ in gesehen = text; return "ZWEI" }
+        await r.run(instruction: "x", working: "…", done: "ok", on: s)?.value
+        XCTAssertEqual(gesehen, "zwei")
+        XCTAssertEqual(s.note.body, "eins ZWEI drei vier")
     }
 }

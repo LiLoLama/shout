@@ -121,6 +121,7 @@ final class LocalizationNotesTests: XCTestCase {
         "Das Modell hat nicht geantwortet. Der Text bleibt, wie er war.",
         "Der Text hat sich inzwischen geändert. Das Ergebnis liegt in der Zwischenablage.",
         "Das Ergebnis ließ sich nicht einsetzen. Es liegt in der Zwischenablage.",
+        "Das Ergebnis ließ sich nicht sichern. Es liegt in der Zwischenablage.",
         "„%@“ wird angewendet …",
         "„%@“ angewendet",
         "Anweisung angewendet",

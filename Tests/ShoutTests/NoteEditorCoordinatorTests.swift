@@ -227,6 +227,14 @@ final class NoteEditorCoordinatorTests: XCTestCase {
         XCTAssertEqual(tv.string, "eins zwei drei")
     }
 
+    func testNachErsetzenStehtDerCursorHinterDemErgebnis() throws {
+        let s = try sitzung("eins zwei drei")
+        let (_, tv) = editor(s)
+        XCTAssertTrue(s.replace(NSRange(location: 5, length: 4), with: "ZWEI"))
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 9, length: 0))
+        XCTAssertEqual(s.lastSelection, NSRange(location: 9, length: 0))
+    }
+
     func testErsetzenGehtAuchImGesperrtenEditorUndLaesstIhnGesperrt() throws {
         let s = try sitzung("alt")
         let (_, tv) = editor(s)

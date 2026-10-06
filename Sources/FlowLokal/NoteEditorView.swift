@@ -238,9 +238,10 @@ struct NoteEditorView: NSViewRepresentable {
             tv.textStorage?.replaceCharacters(in: range, with: text)
             tv.didChangeText()
             tv.breakUndoCoalescing()
-            let neu = NSRange(location: range.location, length: (text as NSString).length)
-            tv.setSelectedRange(neu)
-            tv.scrollRangeToVisible(neu)
+            // Der Cursor steht hinter dem Ergebnis; markiert, ersetzte es das nächste Diktat.
+            let ende = NSRange(location: range.location + (text as NSString).length, length: 0)
+            tv.setSelectedRange(ende)
+            tv.scrollRangeToVisible(ende)
             return true
         }
 

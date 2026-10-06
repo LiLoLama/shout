@@ -1031,6 +1031,8 @@ final class Loc: ObservableObject {
             "The text changed in the meantime. The result is on the clipboard.",
         "Das Ergebnis ließ sich nicht einsetzen. Es liegt in der Zwischenablage.":
             "The result couldn’t be inserted. It’s on the clipboard.",
+        "Das Ergebnis ließ sich nicht sichern. Es liegt in der Zwischenablage.":
+            "The result couldn’t be saved. It’s on the clipboard.",
         "„%@“ wird angewendet …": "Applying “%@”…",
         "„%@“ angewendet": "Applied “%@”",
         "Anweisung angewendet": "Instruction applied",

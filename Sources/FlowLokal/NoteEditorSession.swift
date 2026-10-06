@@ -231,7 +231,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         let neu = ns.replacingCharacters(in: range, with: text)
         guard neu != note.body else { return true }
         let hatEditor = editor != nil
-        lastSelection = NSRange(location: range.location, length: (text as NSString).length)
+        lastSelection = NSRange(location: range.location + (text as NSString).length, length: 0)
         edit(neu)
         // Wie bei `insert`: Der Editor kennt die Änderung nicht und lädt neu.
         if hatEditor { editorMustReload() }

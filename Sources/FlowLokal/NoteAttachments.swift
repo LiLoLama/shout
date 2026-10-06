@@ -7,7 +7,11 @@ enum NoteAttachments {
 
     /// Fest, nicht übersetzt: Der Ordner steht in den Links der Dateien.
     static let folderName = "Anhänge"
+    /// Grenze für die gespeicherte PNG — sie liegt im (synchronisierten) Notizordner.
     static let maxBytes = 10 * 1024 * 1024
+    /// Härtere Grenze für die Quelle, damit riesige Daten gar nicht erst dekodiert
+    /// werden. Ein TIFF aus der Zwischenablage ist roh groß, als PNG oft winzig.
+    static let maxSourceBytes = 50 * 1024 * 1024
 
     enum Failure: Error, Equatable {
         case tooLarge
@@ -73,12 +77,13 @@ enum NoteAttachments {
             roh = daten
         case .file(let url):
             let groesse = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-            guard groesse <= maxBytes else { return .failure(.tooLarge) }
+            guard groesse <= maxSourceBytes else { return .failure(.tooLarge) }
             guard let daten = try? Data(contentsOf: url) else { return .failure(.unreadable) }
             roh = daten
         }
-        guard roh.count <= maxBytes else { return .failure(.tooLarge) }
+        guard roh.count <= maxSourceBytes else { return .failure(.tooLarge) }
         guard let png = pngData(from: roh) else { return .failure(.unreadable) }
+        guard png.count <= maxBytes else { return .failure(.tooLarge) }
         let ordner = noteFolder.appendingPathComponent(folderName, isDirectory: true)
         do {
             try fileManager.createDirectory(at: ordner, withIntermediateDirectories: true)

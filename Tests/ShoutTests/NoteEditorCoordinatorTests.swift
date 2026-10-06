@@ -259,7 +259,7 @@ final class NoteEditorCoordinatorTests: XCTestCase {
     func testZuGrossesBildMeldetUndLaesstDenText() throws {
         let s = try sitzung("Text")
         let (c, _) = editor(s)
-        XCTAssertTrue(c.insertImage(.data(Data(count: NoteAttachments.maxBytes + 1))))
+        XCTAssertTrue(c.insertImage(.data(Data(count: NoteAttachments.maxSourceBytes + 1))))
         XCTAssertEqual(s.note.body, "Text")
         XCTAssertEqual(s.toolNotice, .failed(Loc.t("Das Bild ist größer als 10 MB.")))
     }

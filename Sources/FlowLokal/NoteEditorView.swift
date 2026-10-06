@@ -42,9 +42,9 @@ struct NoteEditorView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
-        textView.registerForDraggedTypes(textView.registeredDraggedTypes + [.fileURL, .png, .tiff])
         scroll.documentView = textView
-        // Selbst gebaut hält niemand sonst den Speicher.
+        // Selbst gebaut hält niemand sonst den Speicher: die View und der Coordinator.
+        textView.ownedStorage = speicher
         context.coordinator.textStorageRef = speicher
         textView.onImage = { [weak c = context.coordinator] quelle in c?.insertImage(quelle) ?? false }
         Self.configure(textView)

@@ -71,35 +71,59 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         markiereBilder(textStorage, in: bereich)
     }
 
-    private func markiereBilder(_ storage: NSTextStorage, in bereich: NSRange) {
+    /// Setzt die Bildmarken im Bereich (neu). Ohne `imageSize` passiert nichts.
+    func markiereBilder(_ storage: NSTextStorage, in bereich: NSRange) {
         guard let imageSize else { return }
-        Self.markImages(in: storage, range: bereich, size: imageSize)
+        Self.markImages(in: storage, range: bereich, maxWidth: imageMaxWidth?() ?? Self.imagePreviewMaxWidth,
+                        size: imageSize)
     }
 
     /// Größe eines Bildes zum Pfad aus dem Text; `nil` — keine Vorschau. Vom Editor gesetzt.
     var imageSize: ((String) -> CGSize?)?
+
+    /// Höchstbreite der Vorschau im Moment — der Editor kennt die Textbreite.
+    /// Ohne Angabe gilt `imagePreviewMaxWidth`.
+    var imageMaxWidth: (() -> CGFloat)?
 
     static let imagePreviewMaxWidth: CGFloat = 320
     private static let imageLine = muster("^!\\[[^\\]\\n]*\\]\\(([^)\\n]+)\\)[ \\t]*$")
 
     /// Markiert Zeilen, die nur aus einem Bild-Link bestehen, und hält unter
     /// ihnen Platz für die Vorschau frei. Läuft nach `apply`, das alle Attribute
-    /// des Bereichs zurücksetzt.
-    static func markImages(in storage: NSTextStorage, range bereich: NSRange, size: (String) -> CGSize?) {
+    /// des Bereichs zurücksetzt; alte Marken im Bereich werden vorher entfernt
+    /// (auch bei Aufrufen ohne `apply`, etwa nach einer Breitenänderung).
+    /// Nur Zeilen mit Zeilenumbruch dahinter: TextKit gibt dem letzten Absatz
+    /// ohne Abschlusszeichen keinen Absatzabstand. Bilder in Codeblöcken bleiben
+    /// Text.
+    static func markImages(in storage: NSTextStorage, range bereich: NSRange,
+                           maxWidth: CGFloat = imagePreviewMaxWidth, size: (String) -> CGSize?) {
         let ns = storage.string as NSString
-        let absaetze = ns.paragraphRange(for: NSRange(location: min(bereich.location, ns.length),
-                                                      length: min(bereich.length, ns.length - min(bereich.location, ns.length))))
+        let start = min(bereich.location, ns.length)
+        let absaetze = ns.paragraphRange(for: NSRange(location: start, length: min(bereich.length, ns.length - start)))
+        // Alte Marken weg, Absatzstil zurück.
+        var alte: [NSRange] = []
+        storage.enumerateAttribute(.notizBild, in: absaetze) { wert, r, _ in
+            if wert != nil { alte.append(r) }
+        }
+        for r in alte {
+            storage.removeAttribute(.notizBild, range: r)
+            storage.addAttribute(.paragraphStyle, value: Style.paragraph, range: ns.paragraphRange(for: r))
+        }
+        let bloecke = fence.matches(in: storage.string, range: absaetze).map(\.range)
         imageLine.enumerateMatches(in: storage.string, options: [], range: absaetze) { treffer, _, _ in
             guard let treffer else { return }
+            let absatz = ns.paragraphRange(for: treffer.range)
+            guard NSMaxRange(absatz) > NSMaxRange(treffer.range) else { return }
+            guard !bloecke.contains(where: { NSIntersectionRange($0, treffer.range).length > 0 }) else { return }
             let pfad = ns.substring(with: treffer.range(at: 1))
             guard let original = size(pfad), original.width > 0, original.height > 0 else { return }
-            let breite = min(original.width, imagePreviewMaxWidth)
+            let breite = min(original.width, maxWidth)
             let hoehe = (original.height * breite / original.width).rounded()
             storage.addAttribute(.notizBild, value: NoteImageMark(path: pfad, size: CGSize(width: breite, height: hoehe)),
                                  range: treffer.range)
             let stil = (Style.paragraph.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
             stil.paragraphSpacing = hoehe + 10
-            storage.addAttribute(.paragraphStyle, value: stil, range: ns.paragraphRange(for: treffer.range))
+            storage.addAttribute(.paragraphStyle, value: stil, range: absatz)
         }
     }
 

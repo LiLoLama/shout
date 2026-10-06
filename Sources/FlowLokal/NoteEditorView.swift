@@ -59,6 +59,8 @@ struct NoteEditorView: NSViewRepresentable {
         // Vor dem ersten Text: Der löst die Hervorhebung aus, die die Bildgrößen braucht.
         let c0 = context.coordinator
         highlighter.imageSize = { [weak c0] pfad in MainActor.assumeIsolated { c0?.image(pfad)?.size } }
+        highlighter.imageMaxWidth = { [weak c0] in MainActor.assumeIsolated { c0?.previewWidth() ?? MarkdownHighlighter.imagePreviewMaxWidth } }
+        c0.beobachteBreite(von: textView)
         layout.loadImage = { [weak c0] pfad in MainActor.assumeIsolated { c0?.image(pfad) } }
         textView.string = session.note.body
         textView.isEditable = session.status != .placeholder && !session.isTransforming
@@ -156,6 +158,41 @@ struct NoteEditorView: NSViewRepresentable {
         /// Geladene Vorschaubilder je Pfad. Fehlende werden nicht gemerkt — sie
         /// können noch auftauchen (iCloud lädt nach).
         private var bilder: [String: NSImage] = [:]
+
+        /// Die Breite, mit der die Vorschauen zuletzt berechnet wurden.
+        private var vorschauBreite: CGFloat = MarkdownHighlighter.imagePreviewMaxWidth
+
+        /// Höchstbreite der Vorschau: Spec-Grenze, aber nicht breiter als der Text.
+        /// Noch ohne Layout (Breite 0) gilt die Spec-Grenze; die erste Größenänderung
+        /// rechnet nach.
+        func previewWidth() -> CGFloat {
+            vorschauBreite = aktuelleVorschauBreite()
+            return vorschauBreite
+        }
+
+        private func aktuelleVorschauBreite() -> CGFloat {
+            var breite = MarkdownHighlighter.imagePreviewMaxWidth
+            if let behaelter = textView?.textContainer {
+                let verfuegbar = behaelter.size.width - 2 * behaelter.lineFragmentPadding
+                if verfuegbar > 0 { breite = max(40, min(breite, verfuegbar)) }
+            }
+            return breite
+        }
+
+        func beobachteBreite(von tv: NSTextView) {
+            tv.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(self, selector: #selector(textViewFrameChanged(_:)),
+                                                   name: NSView.frameDidChangeNotification, object: tv)
+        }
+
+        /// Ändert sich die nutzbare Breite, werden die Vorschauen neu bemessen.
+        @objc private func textViewFrameChanged(_ n: Notification) {
+            guard let tv = textView, let speicher = textStorageRef, !tv.hasMarkedText() else { return }
+            guard abs(aktuelleVorschauBreite() - vorschauBreite) > 1 else { return }
+            speicher.beginEditing()
+            highlighter.markiereBilder(speicher, in: NSRange(location: 0, length: speicher.length))
+            speicher.endEditing()
+        }
 
         func image(_ pfad: String) -> NSImage? {
             if let bild = bilder[pfad] { return bild }

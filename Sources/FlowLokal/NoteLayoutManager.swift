@@ -39,7 +39,9 @@ final class NoteLayoutManager: NSLayoutManager {
             let glyphen = glyphRange(forCharacterRange: bereich, actualCharacterRange: nil)
             guard glyphen.length > 0 else { return }
             let zeile = lineFragmentUsedRect(forGlyphAt: NSMaxRange(glyphen) - 1, effectiveRange: nil)
-            let ziel = NSRect(x: origin.x + zeile.minX, y: origin.y + zeile.maxY + 4,
+            // Auf der Höhe des Textes, nicht des Containerrands.
+            let rand = textContainer(forGlyphAt: glyphen.location, effectiveRange: nil)?.lineFragmentPadding ?? 0
+            let ziel = NSRect(x: origin.x + zeile.minX + rand, y: origin.y + zeile.maxY + 4,
                               width: marke.size.width, height: marke.size.height)
             bild.draw(in: ziel, from: .zero, operation: .sourceOver, fraction: 1,
                       respectFlipped: true, hints: nil)

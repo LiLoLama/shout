@@ -23,6 +23,9 @@ struct NoteNoticesView: View {
 
 private extension NoteNoticesView {
     @ViewBuilder var notices: some View {
+        if let werkzeug = session.toolNotice {
+            toolNoticeView(werkzeug)
+        }
         if session.saveFailed {
             saveFailedNotice
         }
@@ -95,5 +98,39 @@ private extension NoteNoticesView {
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(Color.shoutLive.opacity(0.10))
+    }
+
+    @ViewBuilder func toolNoticeView(_ hinweis: NoteEditorSession.ToolNotice) -> some View {
+        switch hinweis {
+        case .working(let text):
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text(text).font(.system(size: 12)).foregroundStyle(Color(white: 0.85))
+                Spacer()
+                Button(Loc.t("Abbrechen")) { session.cancelTransformIfRunning() }
+                    .buttonStyle(ConsoleButtonStyle())
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(Color.white.opacity(0.04))
+        case .done(let text, _):
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.shoutLive).font(.system(size: 11))
+                Text(text).font(.system(size: 12)).foregroundStyle(Color(white: 0.85))
+                Spacer()
+                if session.canUndoTool {
+                    Button(Loc.t("Rückgängig")) { session.undoTool() }.buttonStyle(ConsoleButtonStyle())
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(Color.white.opacity(0.04))
+            .task(id: hinweis) {
+                try? await Task.sleep(for: .seconds(8))
+                guard !Task.isCancelled else { return }
+                if session.toolNotice == hinweis { session.dismissToolNotice() }
+            }
+        case .failed(let text):
+            notice(text, button: Loc.t("OK"), action: session.dismissToolNotice)
+        }
     }
 }

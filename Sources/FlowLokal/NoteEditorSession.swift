@@ -7,6 +7,9 @@ import Combine
 protocol NoteTextEditing: AnyObject {
     /// `false`, wenn der Editor gerade nichts annehmen kann; dann fügt die Sitzung selbst ein.
     func insertText(_ text: String, at point: NoteEditorSession.InsertionPoint) -> Bool
+    /// Ersetzt einen Bereich in einem Rückgängig-Schritt (Transform, Bild,
+    /// Wiederherstellen). Auch während der Sperre eines Transforms.
+    func replaceText(in range: NSRange, with text: String) -> Bool
 }
 
 /// Eine geöffnete Notiz: nimmt Eingaben an, sichert eine Sekunde nach der
@@ -121,10 +124,10 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     /// Fügt Text ein — über den angehängten Editor (ein Rückgängig-Schritt) oder,
     /// ohne Editor, direkt in den Text. `.cursor` setzt bei Bedarf ein Leerzeichen
     /// davor (`DictationInsertion`), `.end` hängt wörtlich an. `false` nur bei
-    /// einem iCloud-Platzhalter oder leerem Text.
+    /// einem iCloud-Platzhalter, während eines Transforms oder bei leerem Text.
     @discardableResult
     func insert(_ text: String, at point: InsertionPoint) -> Bool {
-        guard status != .placeholder, !text.isEmpty else { return false }
+        guard status != .placeholder, !isTransforming, !text.isEmpty else { return false }
         // Ein Editor gilt nur als angenommen, wenn er die Änderung auch gemeldet hat
         // (`edit` hebt `editRevision`). Sonst stünde der Text nirgends.
         let revision = editRevision
@@ -146,6 +149,91 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         edit(neu)
         // Der angehängte Editor kennt die Einfügung nicht: Er muss neu laden, sonst
         // überschriebe seine nächste Eingabe sie.
+        if hatEditor { editorMustReload() }
+        return true
+    }
+
+    // MARK: - Werkzeuge (Transforms, Bilder)
+
+    /// Rückgängig für einen Transform: gilt nur, solange der Text seitdem unverändert ist.
+    struct ToolUndo: Equatable {
+        let before: String
+        let after: String
+    }
+
+    /// Der Balken über dem Editor für Transforms und Bilder.
+    enum ToolNotice: Equatable {
+        case working(String)
+        case done(String, undo: ToolUndo?)
+        case failed(String)
+    }
+
+    @Published private(set) var toolNotice: ToolNotice?
+    /// Während ein Transform läuft, ist der Text gesperrt (Editor und Diktat).
+    @Published private(set) var isTransforming = false
+    private var cancelTool: (() -> Void)?
+
+    /// Der Notizordner — Bilder landen in seinem Unterordner `Anhänge`.
+    var folderURL: URL { store.folder }
+
+    func beginTransform(_ label: String, cancel: @escaping () -> Void) {
+        isTransforming = true
+        cancelTool = cancel
+        toolNotice = .working(label)
+    }
+
+    func endTransform(_ notice: ToolNotice?) {
+        isTransforming = false
+        cancelTool = nil
+        toolNotice = notice
+    }
+
+    func showToolNotice(_ notice: ToolNotice?) { toolNotice = notice }
+
+    func dismissToolNotice() { toolNotice = nil }
+
+    /// Esc oder „Abbrechen“. `false`, wenn nichts läuft.
+    @discardableResult
+    func cancelTransformIfRunning() -> Bool {
+        guard isTransforming else { return false }
+        let abbrechen = cancelTool
+        endTransform(nil)
+        abbrechen?()
+        return true
+    }
+
+    var canUndoTool: Bool {
+        if case .done(_, let undo?) = toolNotice { return undo.after == note.body }
+        return false
+    }
+
+    /// „Rückgängig“ im Balken: stellt den Text vor dem Transform her — nur, wenn
+    /// seitdem nichts geändert wurde (sonst ginge die eigene Eingabe verloren).
+    func undoTool() {
+        guard case .done(_, let undo?) = toolNotice, undo.after == note.body else {
+            toolNotice = nil
+            return
+        }
+        toolNotice = nil
+        replace(NSRange(location: 0, length: (note.body as NSString).length), with: undo.before)
+    }
+
+    /// Ersetzt einen Bereich — über den angehängten Editor (ein Rückgängig-Schritt)
+    /// oder, ohne Editor, direkt im Text. `false` bei einem Platzhalter oder einem
+    /// Bereich außerhalb des Textes.
+    @discardableResult
+    func replace(_ range: NSRange, with text: String) -> Bool {
+        guard status != .placeholder else { return false }
+        let ns = note.body as NSString
+        guard range.location >= 0, NSMaxRange(range) <= ns.length else { return false }
+        let revision = editRevision
+        if let editor, editor.replaceText(in: range, with: text), editRevision != revision { return true }
+        let neu = ns.replacingCharacters(in: range, with: text)
+        guard neu != note.body else { return true }
+        let hatEditor = editor != nil
+        lastSelection = NSRange(location: range.location, length: (text as NSString).length)
+        edit(neu)
+        // Wie bei `insert`: Der Editor kennt die Änderung nicht und lädt neu.
         if hatEditor { editorMustReload() }
         return true
     }

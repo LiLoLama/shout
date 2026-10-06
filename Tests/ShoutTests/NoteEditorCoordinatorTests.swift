@@ -216,4 +216,24 @@ final class NoteEditorCoordinatorTests: XCTestCase {
         XCTAssertFalse(eins.undo === zwei.undo)
         XCTAssertTrue(tv1.undoManager === eins.undo)
     }
+
+    func testErsetzenUeberDenEditorIstEinRueckgaengigSchritt() throws {
+        let s = try sitzung("eins zwei drei")
+        let (c, tv) = editor(s)
+        XCTAssertTrue(s.replace(NSRange(location: 5, length: 4), with: "ZWEI"))
+        XCTAssertEqual(tv.string, "eins ZWEI drei")
+        XCTAssertEqual(s.note.body, "eins ZWEI drei")
+        c.undo.undo()
+        XCTAssertEqual(tv.string, "eins zwei drei")
+    }
+
+    func testErsetzenGehtAuchImGesperrtenEditorUndLaesstIhnGesperrt() throws {
+        let s = try sitzung("alt")
+        let (_, tv) = editor(s)
+        s.beginTransform("…") {}
+        tv.isEditable = false
+        XCTAssertTrue(s.replace(NSRange(location: 0, length: 3), with: "neu"))
+        XCTAssertEqual(tv.string, "neu")
+        XCTAssertFalse(tv.isEditable)
+    }
 }

@@ -403,6 +403,7 @@ targets:
       - path: Sources/FlowLokal/NoteTransforms.swift
       - path: Sources/FlowLokal/MarkdownPasteboard.swift
       - path: Sources/FlowLokal/NoteHandoff.swift
+      - path: Sources/FlowLokal/NoteTransformRunner.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

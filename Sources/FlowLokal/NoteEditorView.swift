@@ -40,7 +40,7 @@ struct NoteEditorView: NSViewRepresentable {
         }
         textView.textStorage?.delegate = highlighter
         textView.string = session.note.body
-        textView.isEditable = session.status != .placeholder
+        textView.isEditable = session.status != .placeholder && !session.isTransforming
         scroll.isHidden = !isFront
 
         let c = context.coordinator
@@ -72,7 +72,7 @@ struct NoteEditorView: NSViewRepresentable {
         // Erst freigeben, dann ersetzen: Kommt eine Notiz aus iCloud an, wechseln
         // Text und Sperre im selben Durchlauf — ein gesperrter Editor nähme den
         // Text sonst nicht an.
-        textView.isEditable = session.status != .placeholder
+        textView.isEditable = session.status != .placeholder && !session.isTransforming
         if c.revision != session.externalRevision {
             c.revision = session.externalRevision
             c.editRevision = session.editRevision
@@ -174,8 +174,10 @@ struct NoteEditorView: NSViewRepresentable {
 
         /// Esc im Panel blendet es aus, statt die Wortvervollständigung zu öffnen.
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            guard commandSelector == #selector(NSResponder.cancelOperation(_:)),
-                  let fenster = textView.window as? HidesOnEscape else { return false }
+            guard commandSelector == #selector(NSResponder.cancelOperation(_:)) else { return false }
+            // Läuft ein Transform, bricht Esc ihn ab, statt das Panel auszublenden.
+            if session.cancelTransformIfRunning() { return true }
+            guard let fenster = textView.window as? HidesOnEscape else { return false }
             fenster.hideOnEscape()
             return true
         }
@@ -218,6 +220,27 @@ struct NoteEditorView: NSViewRepresentable {
                 // stimmt der gemerkte Cursor der Sitzung wieder.
                 session.selectionChanged(auswahlVorher)
             }
+            return true
+        }
+
+        /// Ersetzt einen Bereich in einem Rückgängig-Schritt. Während eines
+        /// Transforms ist der Editor gesperrt — für das Ergebnis kurz frei, danach
+        /// wieder gesperrt, solange der Transform noch als laufend gilt.
+        func replaceText(in range: NSRange, with text: String) -> Bool {
+            guard let tv = textView, session.status != .placeholder, istAktuell(tv) else { return false }
+            if tv.hasMarkedText() { tv.unmarkText() }
+            guard NSMaxRange(range) <= (tv.string as NSString).length else { return false }
+            let warGesperrt = !tv.isEditable
+            tv.isEditable = true
+            defer { if warGesperrt && session.isTransforming { tv.isEditable = false } }
+            tv.breakUndoCoalescing()
+            guard tv.shouldChangeText(in: range, replacementString: text) else { return false }
+            tv.textStorage?.replaceCharacters(in: range, with: text)
+            tv.didChangeText()
+            tv.breakUndoCoalescing()
+            let neu = NSRange(location: range.location, length: (text as NSString).length)
+            tv.setSelectedRange(neu)
+            tv.scrollRangeToVisible(neu)
             return true
         }
 

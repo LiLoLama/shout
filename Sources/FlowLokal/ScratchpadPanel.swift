@@ -17,8 +17,19 @@ final class ScratchpadPanel: NSPanel, HidesOnEscape {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-    override func cancelOperation(_ sender: Any?) { onHide?() }
-    func hideOnEscape() { onHide?() }
+    /// Vor dem Ausblenden gefragt: `true` heißt, Esc wurde schon verbraucht
+    /// (ein laufender Transform wurde abgebrochen).
+    var onEscape: (() -> Bool)?
+
+    override func cancelOperation(_ sender: Any?) {
+        if onEscape?() == true { return }
+        onHide?()
+    }
+
+    func hideOnEscape() {
+        if onEscape?() == true { return }
+        onHide?()
+    }
 
     /// ⌃⇥ / ⌃⇧⇥ hier statt als SwiftUI-Kürzel: Der Editor nähme ⌃⇥ sonst als
     /// „nächstes Bedienelement“ und sprünge ins Suchfeld, und ein echtes ⌃⇧⇥
@@ -180,6 +191,7 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
         fenster.delegate = self
         fenster.onHide = { [weak self] in self?.hide() }
         fenster.onCycleTab = { [weak self] schritt in self?.model.selectNext(schritt) }
+        fenster.onEscape = { [weak self] in self?.model.active?.cancelTransformIfRunning() ?? false }
         let ansicht = ScratchpadView(model: model, store: model.store, mic: mic, onMic: onMic,
                                      handoff: handoff, onHandoff: onHandoff,
                                      onActivate: { [weak fenster] in fenster?.makeKey() },

@@ -30,6 +30,7 @@ final class NoteEditorSessionInsertTests: XCTestCase {
             if meldet, let sitzung { sitzung.edit(sitzung.note.body + text, from: self) }
             return true
         }
+        func replaceText(in range: NSRange, with text: String) -> Bool { false }
     }
 
     private func sitzung(_ text: String) throws -> NoteEditorSession {

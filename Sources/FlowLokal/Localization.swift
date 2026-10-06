@@ -1016,5 +1016,23 @@ final class Loc: ObservableObject {
         "Zusammengefasst": "Summarized",
         "To-do-Liste erstellt": "To-do list created",
         "Übersetzt": "Translated",
+
+        // Scratchpad: Transforms
+        "Kein Text zum Bearbeiten.": "No text to work on.",
+        "Zu lang für das gewählte Modell": "Too long for the selected model",
+        "Unter Modelle ein Textmodell wählen": "Choose a text model under Models",
+        "Das Modell hat nichts zurückgegeben. Der Text bleibt, wie er war.":
+            "The model returned nothing. The text is unchanged.",
+        "Das Modell hat zu lange gebraucht. Der Text bleibt, wie er war.":
+            "The model took too long. The text is unchanged.",
+        "Das Modell hat nicht geantwortet. Der Text bleibt, wie er war.":
+            "The model didn’t respond. The text is unchanged.",
+        "Der Text hat sich inzwischen geändert. Das Ergebnis liegt in der Zwischenablage.":
+            "The text changed in the meantime. The result is on the clipboard.",
+        "Das Ergebnis ließ sich nicht einsetzen. Es liegt in der Zwischenablage.":
+            "The result couldn’t be inserted. It’s on the clipboard.",
+        "„%@“ wird angewendet …": "Applying “%@”…",
+        "„%@“ angewendet": "Applied “%@”",
+        "Anweisung angewendet": "Instruction applied",
     ]
 }

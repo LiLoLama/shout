@@ -112,6 +112,18 @@ final class LocalizationNotesTests: XCTestCase {
         "Zusammengefasst",
         "To-do-Liste erstellt",
         "Übersetzt",
+        // Scratchpad: Transforms
+        "Kein Text zum Bearbeiten.",
+        "Zu lang für das gewählte Modell",
+        "Unter Modelle ein Textmodell wählen",
+        "Das Modell hat nichts zurückgegeben. Der Text bleibt, wie er war.",
+        "Das Modell hat zu lange gebraucht. Der Text bleibt, wie er war.",
+        "Das Modell hat nicht geantwortet. Der Text bleibt, wie er war.",
+        "Der Text hat sich inzwischen geändert. Das Ergebnis liegt in der Zwischenablage.",
+        "Das Ergebnis ließ sich nicht einsetzen. Es liegt in der Zwischenablage.",
+        "„%@“ wird angewendet …",
+        "„%@“ angewendet",
+        "Anweisung angewendet",
     ]
 
     override func setUp() {

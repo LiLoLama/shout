@@ -351,21 +351,24 @@ actor Formatter {
                 let roh = try await withDeadline(deadline) {
                     try await engine.respond(system: system, user: user, temperature: 0.3)
                 }
+                try Task.checkCancellation()
                 let ergebnis = TransformPrompt.clean(roh)
                 guard !ergebnis.isEmpty else { throw TransformError.emptyResult }
                 return ergebnis
+            } catch is CancellationError {
+                throw CancellationError()
             } catch let fehler as RemoteProviderError where versuch == 0 && fehler.isTransient {
                 try Task.checkCancellation()
                 if case .rateLimited(let after) = fehler, let after {
                     try await Task.sleep(nanoseconds: UInt64(min(after, 10) * 1_000_000_000))
                 }
             } catch let fehler as RemoteProviderError {
+                if Task.isCancelled { throw CancellationError() }
                 throw fehler == .timedOut ? TransformError.timedOut : TransformError.failed(fehler.logDescription)
             } catch let fehler as TransformError {
                 throw fehler
-            } catch is CancellationError {
-                throw CancellationError()
             } catch {
+                if Task.isCancelled { throw CancellationError() }
                 throw TransformError.failed(String(describing: error))
             }
         }

@@ -132,8 +132,10 @@ enum TransformPrompt {
     /// Zeile („Hier ist …:") fallen weg.
     static func clean(_ answer: String) -> String {
         var t = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let anfang = t.range(of: begin) { t = String(t[anfang.upperBound...]) }
-        if let ende = t.range(of: end) { t = String(t[..<ende.lowerBound]) }
+        // Marker nur am Rand (Anfang/Ende nach Trimmen) entfernen, nicht in der Mitte.
+        if t.hasPrefix(begin) { t = String(t.dropFirst(begin.count)) }
+        t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasSuffix(end) { t = String(t.dropLast(end.count)) }
         t = t.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("```"), t.hasSuffix("```"), t.count > 6, let umbruch = t.firstIndex(of: "\n") {
             t = String(t[t.index(after: umbruch)...].dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -156,6 +158,20 @@ enum TransformPrompt {
         let z = zeile.trimmingCharacters(in: .whitespaces)
         guard z.hasSuffix(":"), z.count <= 80 else { return false }
         let klein = z.lowercased()
-        return preambleStarts.contains { klein.hasPrefix($0) }
+        // Präfix muss an Wortgrenze enden (nächstes Zeichen kein Buchstabe).
+        for prefix in preambleStarts {
+            if klein.hasPrefix(prefix) {
+                // Prüfe, ob nach dem Präfix ein Nichtbuchstabe kommt.
+                if prefix.count >= klein.count {
+                    return true  // Präfix ist die ganze Zeile (bis zum `:`)
+                }
+                let nextIndex = klein.index(klein.startIndex, offsetBy: prefix.count)
+                let nextChar = klein[nextIndex]
+                if !nextChar.isLetter {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }

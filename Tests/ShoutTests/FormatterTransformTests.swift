@@ -114,4 +114,30 @@ final class FormatterTransformTests: XCTestCase {
     func testNormaleErsteZeileMitDoppelpunktBleibt() {
         XCTAssertEqual(TransformPrompt.clean("Einkauf:\n- Milch"), "Einkauf:\n- Milch")
     }
+
+    func testAbbruchWaehrendAntwortWirftCancellationError() async {
+        let engine = StubTextEngine(answers: ["x"], delay: .milliseconds(300))
+        let f = await formatter(engine)
+        let task = Task { try await f.transform("Text", instruction: "x") }
+        try? await Task.sleep(nanoseconds: 10_000_000)  // 10 ms, gib dem Task Zeit zu starten
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("hätte CancellationError werfen müssen")
+        } catch is CancellationError {
+            // Erwartet
+        } catch {
+            XCTFail("falscher Fehler: \(error)")
+        }
+    }
+
+    func testEndMarkerImErgebnisBleibtErhalten() async throws {
+        let f = await formatter(StubTextEngine(answers: ["Liste:\n- a\n---TEXT ENDE---\n- b"]))
+        let ergebnis = try await f.transform("Text", instruction: "x")
+        XCTAssertEqual(ergebnis, "Liste:\n- a\n---TEXT ENDE---\n- b")
+    }
+
+    func testSicherheitAuchMitZweiterZeileBleibt() {
+        XCTAssertEqual(TransformPrompt.clean("Sicherheit:\n- Helm"), "Sicherheit:\n- Helm")
+    }
 }

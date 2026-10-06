@@ -43,7 +43,8 @@ final class NoteVersions {
     }
 
     func folder(for fileName: String) -> URL {
-        let hash = Insecure.SHA1.hash(data: Data(fileName.lowercased().utf8))
+        let normalized = fileName.precomposedStringWithCanonicalMapping.lowercased()
+        let hash = Insecure.SHA1.hash(data: Data(normalized.utf8))
             .map { String(format: "%02x", $0) }.joined()
         return root.appendingPathComponent(hash, isDirectory: true)
     }
@@ -57,7 +58,11 @@ final class NoteVersions {
         do {
             try fileManager.createDirectory(at: ordner, withIntermediateDirectories: true)
             try Data(fileName.utf8).write(to: ordner.appendingPathComponent(Self.nameFile), options: .atomic)
-            let stempel = Self.stamp(now())
+            var stempel = Self.stamp(now())
+            // Wenn die Uhr zurückgeht: neuer Stand kriegt den Stempel des neuesten + nächste Ordnung
+            if let neuester = versions(in: ordner).first, now() < neuester.date {
+                stempel = Self.stamp(neuester.date)
+            }
             let maxOrd = maxOrdinalForStamp(stempel, in: ordner)
             let name = maxOrd == 0 ? stempel + ".md" : "\(stempel)-\(maxOrd + 1).md"
             let url = ordner.appendingPathComponent(name)
@@ -103,7 +108,11 @@ final class NoteVersions {
                     try? fileManager.moveItem(at: stand.url, to: ziel)
                 }
             }
-            try? fileManager.removeItem(at: alt)
+            // Nur löschen wenn keine .md Dateien mehr im alten Ordner sind
+            let altUrls = (try? fileManager.contentsOfDirectory(at: alt, includingPropertiesForKeys: nil)) ?? []
+            if !altUrls.contains(where: { $0.pathExtension == "md" }) {
+                try? fileManager.removeItem(at: alt)
+            }
             prune(neu)
         }
         try? fileManager.removeItem(at: neu.appendingPathComponent(Self.orphanFile))
@@ -113,16 +122,30 @@ final class NoteVersions {
     /// Beim Start: Stände ohne zugehörige Datei fallen nach 30 Tagen weg.
     /// `fileNames` sind die Dateinamen im Notizordner.
     func cleanUp(keeping fileNames: Set<String>) {
-        let bekannt = Set(fileNames.map { $0.lowercased() })
+        var hashesToKeep = Set<String>()
+        for fileName in fileNames {
+            hashesToKeep.insert(folder(for: fileName).lastPathComponent)
+            // iCloud Placeholder: ".X.md.icloud" → auch X.md behalten
+            if fileName.hasPrefix(".") && fileName.hasSuffix(".icloud") {
+                if let target = NoteFile.placeholderTarget(fileName) {
+                    hashesToKeep.insert(folder(for: target).lastPathComponent)
+                }
+            }
+        }
+
         let inhalt = (try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         for ordner in inhalt {
             guard (try? ordner.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
+            let ordnerHash = ordner.lastPathComponent
             let marke = ordner.appendingPathComponent(Self.orphanFile)
-            let name = (try? String(contentsOf: ordner.appendingPathComponent(Self.nameFile), encoding: .utf8))?.lowercased()
-            if let name, bekannt.contains(name) {
+
+            // Hauptprüfung: Ordner-Hash stimmt mit einem bekannten Dateinamen überein
+            if hashesToKeep.contains(ordnerHash) {
                 try? fileManager.removeItem(at: marke)
                 continue
             }
+
+            // Aufräumen wenn zu lange verwaist
             if let text = try? String(contentsOf: marke, encoding: .utf8),
                let seit = ISO8601DateFormatter().date(from: text) {
                 if now().timeIntervalSince(seit) > Self.orphanAge { try? fileManager.removeItem(at: ordner) }
@@ -176,20 +199,20 @@ final class NoteVersions {
         return maxOrd
     }
 
-    private static func formatter() -> DateFormatter {
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyy-MM-dd'T'HH-mm-ss'Z'"
         return f
-    }
+    }()
 
-    static func stamp(_ date: Date) -> String { formatter().string(from: date) }
+    static func stamp(_ date: Date) -> String { dateFormatter.string(from: date) }
 
     /// „2026-10-05T14-32-10Z" oder „…Z-2".
     static func date(fromFileName name: String) -> Date? {
         guard let z = name.firstIndex(of: "Z") else { return nil }
-        return formatter().date(from: String(name[...z]))
+        return dateFormatter.date(from: String(name[...z]))
     }
 
     /// Ordinalzähler aus der Dateiendung für Stände in der gleichen Sekunde.
@@ -209,16 +232,5 @@ final class NoteVersions {
             }
         }
         return lhs.count > rhs.count
-    }
-
-    /// Vergleicht zwei Ordinalzähler: -1 wenn lhs < rhs, 0 wenn gleich, 1 wenn lhs > rhs.
-    static func compareOrdinals(_ lhs: [Int], _ rhs: [Int]) -> Int {
-        for i in 0..<min(lhs.count, rhs.count) {
-            if lhs[i] < rhs[i] { return -1 }
-            if lhs[i] > rhs[i] { return 1 }
-        }
-        if lhs.count < rhs.count { return -1 }
-        if lhs.count > rhs.count { return 1 }
-        return 0
     }
 }

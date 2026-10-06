@@ -119,7 +119,7 @@ final class NoteVersionsTests: XCTestCase {
         XCTAssertEqual(liste.last?.text(), "0")
     }
 
-    func testDreissigAusDreiunddreissigInDerselbenSekunde() {
+    func testDreissigAusZweiunddreissigInDerselbenSekunde() {
         for i in 0..<32 {
             v.save(String(i), for: "N.md")
         }
@@ -127,5 +127,31 @@ final class NoteVersionsTests: XCTestCase {
         XCTAssertEqual(liste.count, NoteVersions.maxCount)
         XCTAssertEqual(liste.first?.text(), "31")
         XCTAssertEqual(liste.last?.text(), "2")
+    }
+
+    func testUhrRueckwaerts() {
+        // 30 Stände speichern
+        for i in 0..<30 {
+            v.save(String(i), for: "N.md")
+            uhr.jetzt += 1
+        }
+        // Uhr um 1 Stunde zurückdrehen
+        uhr.jetzt -= 60 * 60
+        // Neuer Stand wird trotzdem als neuer erkannt (bekommt Stempel des neuesten + Ordnung)
+        v.save("neu", for: "N.md")
+        let liste = v.list(for: "N.md")
+        XCTAssertEqual(liste.first?.text(), "neu")
+    }
+
+    func testUnicodeNormalisierung() {
+        // NFC und NFD sollten denselben Ordner ergeben
+        let nfc = "Ä.md"  // Precomposed
+        let nfd = "A\u{0308}.md"  // Decomposed (A + combining diaeresis)
+        XCTAssertEqual(v.folder(for: nfc), v.folder(for: nfd))
+
+        // Speichern unter NFC und auslesen unter NFD sollte funktionieren
+        v.save("test1", for: nfc)
+        let liste = v.list(for: nfd)
+        XCTAssertEqual(liste.first?.text(), "test1")
     }
 }

@@ -165,4 +165,19 @@ final class NoteTransformRunnerTests: XCTestCase {
         XCTAssertEqual(gesehen, "zwei")
         XCTAssertEqual(s.note.body, "eins ZWEI drei vier")
     }
+
+    func testKonfliktBeimSichernKeinRueckgaengig() async throws {
+        let s = try sitzung("alt")
+        let r = runner { [u] _, _ in
+            // Während des Laufs ändert jemand anders die Datei.
+            try u!.schreibe("X.md", "fremd", zeit: Date().addingTimeInterval(100))
+            return "neu"
+        }
+        await r.run(instruction: "x", working: "…", done: "ok", on: s)?.value
+        XCTAssertEqual(s.note.body, "fremd", "die Sitzung zeigt die fremde Fassung")
+        XCTAssertFalse(s.canUndoTool, "Rückgängig würde die fremde Fassung überschreiben")
+        XCTAssertNotNil(s.conflictNotice)
+        let konflikt = try XCTUnwrap(u.dateien().first { $0.contains(Loc.t("(Konflikt)")) })
+        XCTAssertEqual(u.text(konflikt), "neu")
+    }
 }

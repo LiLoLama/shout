@@ -80,14 +80,22 @@ final class NoteTransformRunner: ObservableObject {
                     return
                 }
                 // Wurde der Tab inzwischen geschlossen, läuft kein Zeitgeber mehr:
-                // sofort sichern, sonst ginge das Ergebnis verloren.
-                session.flush()
+                // sofort sichern, sonst ginge das Ergebnis verloren. Nur bei
+                // ungesichertem Text — eine gelöschte oder umbenannte Notiz
+                // würde das Sichern sonst neu anlegen.
+                let nachher = session.note.body
+                if session.status == .dirty { session.flush() }
                 if session.hasUnsavedText {
                     copy(ergebnis)
                     session.showToolNotice(.failed(Loc.t("Das Ergebnis ließ sich nicht sichern. Es liegt in der Zwischenablage.")))
                     return
                 }
-                session.showToolNotice(.done(done, undo: NoteEditorSession.ToolUndo(before: vorher, after: session.note.body)))
+                // Ein Konflikt beim Sichern hat den Text durch die fremde Fassung
+                // ersetzt: Rückgängig würde sie überschreiben, ohne Stand dafür.
+                // Der Konflikthinweis der Sitzung nennt die Datei mit dem Ergebnis.
+                let undo = session.note.body == nachher
+                    ? NoteEditorSession.ToolUndo(before: vorher, after: nachher) : nil
+                session.showToolNotice(.done(done, undo: undo))
             } catch {
                 guard !Task.isCancelled else { return }
                 session.endTransform(.failed(Self.message(for: error)))

@@ -95,7 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var scratchpadPanel: ScratchpadPanelController {
         if let controller = scratchpadPanelStorage { return controller }
         let controller = ScratchpadPanelController(model: scratchpad, settings: scratchpadSettings, mic: scratchpadMic,
-                                                   onMic: { [weak self] in self?.toggleScratchpadMic() })
+                                                   handoff: handoffTarget,
+                                                   onMic: { [weak self] in self?.toggleScratchpadMic() },
+                                                   onHandoff: { [weak self] in self?.handoffFromScratchpad() })
         scratchpadPanelStorage = controller
         return controller
     }
@@ -195,6 +197,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Zuletzt aktive Fremd-App (nicht shout.) — Ziel fürs Einfügen aus dem Verlauf.
     private var lastExternalApp: NSRunningApplication?
+    /// Ziel von „Ablegen“ im Scratchpad — spiegelt `lastExternalApp` für den Knopf.
+    private let handoffTarget = HandoffTarget()
 
     /// „In der Zwischenablage behalten" (wie Windows). Standard AUS — die Mac-App
     /// hat den vorherigen Inhalt bisher immer wiederhergestellt.
@@ -406,7 +410,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func externalAppActivated(_ note: Notification) {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-        if app.bundleIdentifier != Bundle.main.bundleIdentifier { lastExternalApp = app }
+        if app.bundleIdentifier != Bundle.main.bundleIdentifier {
+            lastExternalApp = app
+            handoffTarget.update(app)
+        }
     }
 
     // MARK: - Meeting-Erkennung
@@ -559,6 +566,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // Kein (lebendes) Ziel bekannt → wenigstens in die Zwischenablage, aber
             // als vertraulich markiert (kein Leak in Clipboard-Historien).
             injector.copyConcealed(trimmed)
+        }
+    }
+
+    /// Ablegen aus dem Scratchpad: Auswahl oder Notiz formatiert in die App davor.
+    /// Die Notiz bleibt. Ohne Bedienungshilfen nur kopieren — mit dem Hinweis wie beim Diktat.
+    private func handoffFromScratchpad() {
+        guard let session = scratchpadStorage?.active else { return }
+        session.flush()
+        guard let text = NoteHandoff.content(body: session.note.body, selection: session.lastSelection),
+              let app = lastExternalApp, !app.isTerminated else {
+            NSSound.beep()
+            return
+        }
+        guard AXIsProcessTrusted() else {
+            MarkdownPasteboard.write(text, to: .general)
+            toast.showInfo(Loc.t("Kopiert. ⌘V setzt den Text ein."))
+            warnAboutMissingAccessibility()
+            return
+        }
+        scratchpadPanel.hide()
+        app.activate()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            self.injector.paste(markdown: text, keepInClipboard: self.keepInClipboard)
         }
     }
 

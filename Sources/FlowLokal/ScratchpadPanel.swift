@@ -86,20 +86,24 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
     private let model: ScratchpadModel
     private let settings: ScratchpadSettings
     private let mic: ScratchpadMicState
+    private let handoff: HandoffTarget
     private let defaults: UserDefaults
     private let onMic: () -> Void
+    private let onHandoff: () -> Void
     private var panel: ScratchpadPanel?
     /// Während `show()` den Rahmen selbst setzt: nicht merken. Sonst ersetzte ein
     /// auf einen kleineren Bildschirm geklemmter Rahmen den gemerkten.
     private var setztRahmen = false
 
-    init(model: ScratchpadModel, settings: ScratchpadSettings, mic: ScratchpadMicState,
-         defaults: UserDefaults = .standard, onMic: @escaping () -> Void) {
+    init(model: ScratchpadModel, settings: ScratchpadSettings, mic: ScratchpadMicState, handoff: HandoffTarget,
+         defaults: UserDefaults = .standard, onMic: @escaping () -> Void, onHandoff: @escaping () -> Void) {
         self.model = model
         self.settings = settings
         self.mic = mic
+        self.handoff = handoff
         self.defaults = defaults
         self.onMic = onMic
+        self.onHandoff = onHandoff
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -168,6 +172,7 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
         fenster.onHide = { [weak self] in self?.hide() }
         fenster.onCycleTab = { [weak self] schritt in self?.model.selectNext(schritt) }
         let ansicht = ScratchpadView(model: model, store: model.store, mic: mic, onMic: onMic,
+                                     handoff: handoff, onHandoff: onHandoff,
                                      onActivate: { [weak fenster] in fenster?.makeKey() },
                                      onHide: { [weak self] in self?.hide() })
         fenster.contentView = NSHostingView(rootView: ansicht)

@@ -78,6 +78,12 @@ final class LocalizationNotesTests: XCTestCase {
         "Keine",
         "Neu: das Scratchpad",
         "%@ antippen blendet einen schwebenden Notizblock ein, halten diktiert hinein. %@ diktiert in die Eingangs-Notiz, ohne ein Fenster zu öffnen.",
+        // Scratchpad: Ablegen
+        "In %@ ablegen",
+        "Ablegen",
+        "Keine App zum Ablegen",
+        "Ablegen (⌘⏎)",
+        "Kopiert. ⌘V setzt den Text ein.",
         "Einstellungen",
         "Ändern",
         "Entfernen",

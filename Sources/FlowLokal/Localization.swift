@@ -993,5 +993,11 @@ final class Loc: ObservableObject {
         "Neu: das Scratchpad": "New: the Scratchpad",
         "%@ antippen blendet einen schwebenden Notizblock ein, halten diktiert hinein. %@ diktiert in die Eingangs-Notiz, ohne ein Fenster zu öffnen.":
             "Tap %@ to show a floating notepad, hold it to dictate into it. %@ dictates into the inbox note without opening a window.",
+        // Scratchpad: Ablegen
+        "In %@ ablegen": "Send to %@",
+        "Ablegen": "Send",
+        "Keine App zum Ablegen": "No app to send to",
+        "Ablegen (⌘⏎)": "Send (⌘⏎)",
+        "Kopiert. ⌘V setzt den Text ein.": "Copied. ⌘V pastes the text.",
     ]
 }

@@ -8,6 +8,9 @@ struct ScratchpadView: View {
     @ObservedObject var store: NoteStore
     @ObservedObject var mic: ScratchpadMicState
     let onMic: () -> Void
+    @ObservedObject var handoff: HandoffTarget
+    /// Legt die Auswahl bzw. die Notiz in die App davor (⌘⏎).
+    let onHandoff: () -> Void
     /// Macht das Panel zum Key-Fenster. Ein Klick auf Tab oder Listenzeile soll es
     /// dazu machen — sonst wirken ⌘N/⌘W nicht, und Tasten gingen an die App dahinter.
     var onActivate: () -> Void = {}
@@ -163,6 +166,7 @@ struct ScratchpadView: View {
             .buttonStyle(.borderless)
             .help(mic.isRecording ? Loc.t("Diktat beenden") : Loc.t("In diese Notiz diktieren"))
             if let vorne = model.active { PinButton(session: vorne, onActivate: onActivate) }
+            HandoffButton(handoff: handoff, enabled: model.active != nil) { onActivate(); onHandoff() }
             Spacer()
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
@@ -174,6 +178,7 @@ struct ScratchpadView: View {
     private var shortcuts: some View {
         ZStack {
             Button("") { model.newTab() }.keyboardShortcut("n", modifiers: .command)
+            Button("") { onHandoff() }.keyboardShortcut(.return, modifiers: .command)
             Button("") { if let i = model.activeIndex { model.close(i) } }.keyboardShortcut("w", modifiers: .command)
             ForEach(0..<ScratchpadModel.maxTabs, id: \.self) { i in
                 Button("") { waehle(i) }.keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
@@ -236,5 +241,28 @@ private struct PinButton: View {
         .buttonStyle(.borderless)
         .foregroundStyle(session.note.pinned ? Color.shoutLive : Color(white: 0.7))
         .help(session.note.pinned ? Loc.t("Lösen") : Loc.t("Anheften"))
+    }
+}
+
+/// „In Mail ablegen“ — mit dem Symbol der Ziel-App. Ohne Ziel aus.
+private struct HandoffButton: View {
+    @ObservedObject var handoff: HandoffTarget
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let symbol = handoff.app?.icon {
+                    Image(nsImage: symbol).resizable().frame(width: 14, height: 14)
+                }
+                Text(handoff.app?.localizedName.map { Loc.f("In %@ ablegen", $0) } ?? Loc.t("Ablegen"))
+                    .font(.system(size: 11.5))
+            }
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(Color(white: 0.75))
+        .disabled(handoff.app == nil || !enabled)
+        .help(handoff.app == nil ? Loc.t("Keine App zum Ablegen") : Loc.t("Ablegen (⌘⏎)"))
     }
 }

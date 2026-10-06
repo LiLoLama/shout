@@ -30,6 +30,31 @@ final class TextInjector {
     /// behalten"); sonst wird der vorherige Inhalt wiederhergestellt und das
     /// Diktat als vertraulich/transient markiert.
     func paste(_ text: String, keepInClipboard: Bool = false) {
+        pasteWriting(keepInClipboard: keepInClipboard) { pasteboard, markiert in
+            if markiert {
+                pasteboard.declareTypes([.string, self.concealedType, self.transientType], owner: nil)
+                pasteboard.setString(text, forType: .string)
+                // Diktatinhalt als vertraulich/transient kennzeichnen → kein Leak in Clipboard-Historien.
+                pasteboard.setData(Data("1".utf8), forType: self.concealedType)
+                pasteboard.setData(Data("1".utf8), forType: self.transientType)
+            } else {
+                pasteboard.setString(text, forType: .string)
+            }
+        }
+    }
+
+    /// Wie `paste`, aber mit Klartext (das Markdown) und RTF — fürs Ablegen aus
+    /// dem Scratchpad. Mail & Co. zeigen dann echte Formatierung.
+    func paste(markdown: String, keepInClipboard: Bool = false) {
+        pasteWriting(keepInClipboard: keepInClipboard) { pasteboard, markiert in
+            MarkdownPasteboard.write(markdown, to: pasteboard,
+                                     extraTypes: markiert ? [self.concealedType, self.transientType] : [])
+        }
+    }
+
+    /// Gemeinsamer Ablauf. `write` bekommt die geleerte Zwischenablage und ob
+    /// der Inhalt als vertraulich markiert werden soll (nur ohne `keepInClipboard`).
+    private func pasteWriting(keepInClipboard: Bool, write: (NSPasteboard, Bool) -> Void) {
         let pasteboard = NSPasteboard.general
 
         if keepInClipboard {
@@ -41,7 +66,7 @@ final class TextInjector {
             restorePending = false
 
             pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
+            write(pasteboard, false)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
                 self?.postCommandV()
             }
@@ -68,11 +93,7 @@ final class TextInjector {
         restorePending = true
 
         pasteboard.clearContents()
-        pasteboard.declareTypes([.string, concealedType, transientType], owner: nil)
-        pasteboard.setString(text, forType: .string)
-        // Diktatinhalt als vertraulich/transient kennzeichnen → kein Leak in Clipboard-Historien.
-        pasteboard.setData(Data("1".utf8), forType: concealedType)
-        pasteboard.setData(Data("1".utf8), forType: transientType)
+        write(pasteboard, true)
 
         // Kurze Pause, damit die Zwischenablage sicher übernommen ist, bevor ⌘V kommt
         // (behebt das gelegentliche „Einfügen kommt nicht an").

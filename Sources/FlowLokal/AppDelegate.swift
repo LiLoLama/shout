@@ -219,6 +219,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// erledigen das über Loc.shared selbst).
     private var languageObserver: AnyCancellable?
 
+    /// Der Schalter auf der Einstellungsseite (`@AppStorage`) und der Backup-Import
+    /// schreiben „formattingEnabled“ direkt in die UserDefaults und umgehen den
+    /// Setter — ohne Beobachter bliebe der Zauberstab auf altem Stand.
+    private var formattingObserver: AnyCancellable?
+
     /// Zuletzt aktive Fremd-App (nicht shout.) — Ziel fürs Einfügen aus dem Verlauf.
     private var lastExternalApp: NSRunningApplication?
     /// Ziel von „Ablegen“ im Scratchpad — spiegelt `lastExternalApp` für den Knopf.
@@ -268,6 +273,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
+        formattingObserver = UserDefaults.standard.publisher(for: \.formattingEnabled)
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.updateFormatterMenu() }
+            }
         // Oberflächensprache umgestellt → Menütexte nachziehen.
         languageObserver = Loc.shared.$language
             .dropFirst()
@@ -2094,4 +2104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         fileQueue.add([url], start: false)
         dashboardModel.modelNote = Loc.t("Die Erkennung ist fehlgeschlagen. Die Aufnahme liegt unter „Dateien“ und lässt sich dort erneut versuchen.")
     }
+}
+
+extension UserDefaults {
+    /// KVO-Zugang zum Schlüssel „formattingEnabled“ (Name muss dem Schlüssel entsprechen).
+    @objc dynamic var formattingEnabled: Bool { bool(forKey: "formattingEnabled") }
 }

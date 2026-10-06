@@ -81,6 +81,14 @@ final class HotkeyTests: XCTestCase {
         XCTAssertFalse(DictationTarget.inbox.isFrontApp)
     }
 
+    func testAnweisungHatKeinenFormatiererUndIstKeinDiktat() {
+        let ziel = DictationTarget.instruction(noteID: UUID())
+        XCTAssertNil(ziel.formatterBundleID)
+        XCTAssertTrue(ziel.isInstruction)
+        XCTAssertFalse(DictationTarget.inbox.isInstruction)
+        XCTAssertFalse(DictationTarget.frontApp(bundleID: "x").isInstruction)
+    }
+
     // MARK: - Einstellungen
 
     private func einstellungen() -> (ScratchpadSettings, UserDefaults, String) {

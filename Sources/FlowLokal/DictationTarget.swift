@@ -9,6 +9,8 @@ enum DictationTarget: Equatable {
     case scratchpad(noteID: UUID)
     /// Angehängt an die Eingangs-Notiz.
     case inbox
+    /// Eine gesprochene Anweisung für den Zauberstab dieser Notiz — kein Diktat.
+    case instruction(noteID: UUID)
 
     /// Ziel der normalen Diktiertaste: ins Panel, wenn es den Tastatur-Fokus hat
     /// und eine Notiz offen ist; sonst in die App davor.
@@ -25,6 +27,11 @@ enum DictationTarget: Equatable {
 
     var isFrontApp: Bool {
         if case .frontApp = self { return true }
+        return false
+    }
+
+    var isInstruction: Bool {
+        if case .instruction = self { return true }
         return false
     }
 }

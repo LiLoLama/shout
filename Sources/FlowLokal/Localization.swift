@@ -969,6 +969,8 @@ final class Loc: ObservableObject {
         "Im Eingang notiert": "Added to Inbox",
         "Der Eingang ist gerade nicht erreichbar. Der Text liegt in der Zwischenablage.":
             "The inbox can’t be reached right now. The text is on the clipboard.",
+        "Die Notiz ist nicht mehr offen. Die Anweisung liegt in der Zwischenablage.":
+            "The note is no longer open. The instruction is on the clipboard.",
         // Scratchpad-Panel
         "Eingang.md": "Inbox.md",
         "Neuer Tab": "New Tab",

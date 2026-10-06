@@ -55,6 +55,7 @@ final class LocalizationNotesTests: XCTestCase {
         "Die Notiz nimmt gerade nichts an. Der Text liegt in der Zwischenablage.",
         "Im Eingang notiert",
         "Der Eingang ist gerade nicht erreichbar. Der Text liegt in der Zwischenablage.",
+        "Die Notiz ist nicht mehr offen. Die Anweisung liegt in der Zwischenablage.",
         // Scratchpad-Panel
         "Eingang.md",
         "Neuer Tab",

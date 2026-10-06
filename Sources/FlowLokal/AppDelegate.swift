@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         saveVersion: { [weak self] session in self?.saveVersionBeforeTransform(session) },
         transform: { [formatter] text, anweisung in try await formatter.transform(text, instruction: anweisung) })
     private var noteTools: NoteToolbox {
-        NoteToolbox(runner: transformRunner, transforms: transformStore, onVoiceInstruction: nil)
+        NoteToolbox(runner: transformRunner, transforms: transformStore, onVoiceInstruction: { [weak self] session in self?.beginVoiceInstruction(for: session) })
     }
 
     /// Vor jedem Transform ein Stand — unabhängig von der Zehn-Minuten-Frist.
@@ -1823,6 +1823,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         startRecording(target: .scratchpad(noteID: tab.id))
     }
 
+    /// „Per Sprache …“ im Zauberstab: nimmt die Anweisung mit der Pille auf.
+    /// Läuft schon eine Aufnahme oder Verarbeitung (auch eine Anweisung), wird nichts
+    /// umgewidmet: Der Druck auf eine andere Taste ändert das Ziel einer laufenden
+    /// Aufnahme nie, hier ebenso wenig.
+    private func beginVoiceInstruction(for session: NoteEditorSession) {
+        guard state == .idle, !session.isTransforming else {
+            NSSound.beep()
+            return
+        }
+        startRecording(target: .instruction(noteID: session.id))
+    }
+
     /// Eingangs-Taste: folgt dem Modus der Diktiertaste. Doppeltipp gibt es für
     /// Carbon-Tasten nicht; dort gilt wie bei „Umschalten“: Tippen startet, erneutes Tippen stoppt.
     private func inboxKeyDown() {
@@ -1954,8 +1966,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let ziel = dictationTarget
         // Notizen bekommen den neutralen Ton der Aufbereitung.
         let bundleID = ziel.formatterBundleID
-        let useFormatting = formattingEnabled
-        let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled")
+        // Eine Anweisung wird weder aufbereitet noch nach Sprachbefehlen durchsucht.
+        let useFormatting = formattingEnabled && !ziel.isInstruction
+        let useCommands = UserDefaults.standard.bool(forKey: "speechCommandsEnabled") && !ziel.isInstruction
 
         Task {
             defer {
@@ -1973,7 +1986,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
                 // Gesprochene Befehle („Komma", „neue Zeile" …) vor der Formatierung anwenden.
                 if useCommands { output = SpeechCommands.apply(to: output) }
-                processingText = (output, raw)
+                // Eine Anweisung ist kein Diktat: Beim Beenden gehört sie nicht in den Verlauf.
+                if !ziel.isInstruction { processingText = (output, raw) }
 
                 if useFormatting {
                     output = await formatter.format(output, bundleID: bundleID, termHint: dictionary.termHint)
@@ -2056,6 +2070,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 toast.showInfo(Loc.t("Der Eingang ist gerade nicht erreichbar. Der Text liegt in der Zwischenablage."))
             }
             recordDelivered(final, raw: raw, seconds: seconds)
+        case .instruction(let id):
+            // Eine Anweisung, kein Diktat: nicht in den Verlauf, nicht in die Statistik.
+            guard !final.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            guard let session = noteRegistryStorage?.session(id: id) else {
+                injector.copyConcealed(final)
+                sounds.play(.error)
+                toast.showInfo(Loc.t("Die Notiz ist nicht mehr offen. Die Anweisung liegt in der Zwischenablage."))
+                return
+            }
+            // Startet sie nicht (Grund steht im Balken), bleibt sie unter „Zuletzt“.
+            sounds.play(transformRunner.runInstruction(final, on: session) != nil ? .done : .error)
         }
     }
 

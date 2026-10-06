@@ -83,13 +83,17 @@ final class NoteStore: ObservableObject {
          fileManager: FileManager = .default,
          watch: Bool = true,
          createIfMissing: Bool? = nil,
-         trash: ((URL) throws -> URL)? = nil) {
+         trash: ((URL) throws -> URL)? = nil,
+         beforeOverwrite: ((Note) -> Void)? = nil) {
         self.folder = folder
         self.bufferFolder = bufferFolder
         self.fileManager = fileManager
         self.watch = watch
         self.createIfMissing = createIfMissing ?? NotesFolder.isDefault(folder)
         self.trash = trash ?? NoteStore.moveToTrash
+        // Vor dem ersten `reload()`: schon das erste Zurückholen aus dem Puffer
+        // überschreibt Dateien.
+        self.beforeOverwrite = beforeOverwrite
         reload()
     }
 
@@ -211,7 +215,7 @@ final class NoteStore: ObservableObject {
             }
         }
 
-        if !input.isNew, let bisher = cache[note.fileName], bisher.body != note.body {
+        if !input.isNew, let bisher = lastKnownNote(note.fileName), bisher.body != note.body {
             beforeOverwrite?(bisher)
         }
 
@@ -237,6 +241,17 @@ final class NoteStore: ObservableObject {
         publish()
         if !input.isNew, alt != note.fileName { notifyRename(alt, note.fileName) }
         return .saved(note)
+    }
+
+    /// Die Fassung, die jetzt unter diesem Namen auf der Platte liegt. Der Cache
+    /// gilt nur, solange das mtime passt — `flushBuffer` kann die Datei davor
+    /// ersetzt haben.
+    private func lastKnownNote(_ name: String) -> Note? {
+        let gemerkt = cache[name]
+        if let gemerkt, modificationDate(of: folder.appendingPathComponent(name)) == gemerkt.modified {
+            return gemerkt
+        }
+        return read(name, keepingID: gemerkt?.id) ?? gemerkt
     }
 
     /// Beide Seiten haben geändert. Die eigene Fassung wird daneben gesichert,
@@ -406,6 +421,14 @@ final class NoteStore: ObservableObject {
                 }
                 let zielURL = folder.appendingPathComponent(zielName)
                 if !schonGeschrieben {
+                    // Ersetzt die Datei im Ordner durch den gepufferten Text: vorher
+                    // einen Stand des Textes sichern, der jetzt auf der Platte liegt.
+                    if zurueck, fileManager.fileExists(atPath: zielURL.path),
+                       let platte = read(zielName, keepingID: nil),
+                       let gepuffert = String(data: daten, encoding: .utf8),
+                       platte.body != NoteFile.parse(gepuffert).body {
+                        beforeOverwrite?(platte)
+                    }
                     try daten.write(to: zielURL, options: .atomic)
                     // mtime der Pufferdatei übernehmen: so passt `Note.modified` der Sitzung.
                     adoptModificationTime(of: quelle, onto: zielURL)

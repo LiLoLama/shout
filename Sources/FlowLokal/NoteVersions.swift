@@ -242,12 +242,18 @@ final class NoteVersions {
         return lhs.count > rhs.count
     }
 
-    /// Hängt die Versionen an den Store: ein Stand vor dem Überschreiben
-    /// (höchstens alle zehn Minuten), und Umbenennen nimmt die Stände mit.
+    /// Der Haken für `NoteStore.beforeOverwrite`: ein Stand vor dem Überschreiben
+    /// (höchstens alle zehn Minuten). Hält `self` nur schwach.
+    var overwriteHook: (Note) -> Void {
+        { [weak self] bisher in self?.saveIfDue(bisher.body, for: bisher.fileName) }
+    }
+
+    /// Hängt die Versionen an den Store: der Haken vor dem Überschreiben (wer den
+    /// Store selbst anlegt, übergibt ihn besser schon `init`, damit auch das erste
+    /// Zurückholen aus dem Puffer einen Stand sichert), und Umbenennen nimmt die
+    /// Stände mit.
     func attach(to store: NoteStore) {
-        store.beforeOverwrite = { [weak self] bisher in
-            self?.saveIfDue(bisher.body, for: bisher.fileName)
-        }
+        store.beforeOverwrite = overwriteHook
         store.observeRenames { [weak self] alt, neu in
             self?.moveVersions(from: alt, to: neu)
         }

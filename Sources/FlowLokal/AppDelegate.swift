@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var notesStoreStorage: NoteStore?
     private var noteStore: NoteStore {
         if let store = notesStoreStorage { return store }
-        let store = NoteStore(folder: NotesFolder.current())
+        let store = NoteStore(folder: NotesFolder.current(), beforeOverwrite: noteVersions.overwriteHook)
         notesStoreStorage = store
         noteVersions.attach(to: store)
         // Stände ohne Datei nach 30 Tagen weg — nur mit erreichbarem Ordner, sonst

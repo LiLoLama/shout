@@ -24,7 +24,10 @@ final class NoteStoreVersionsTests: XCTestCase {
     }
 
     private func gesichert(_ ergebnis: NoteStore.SaveResult) throws -> Note {
-        guard case .saved(let note) = ergebnis else { throw XCTSkip("nicht gesichert: \(ergebnis)") }
+        guard case .saved(let note) = ergebnis else {
+            XCTFail("nicht gesichert: \(ergebnis)")
+            throw CocoaError(.fileWriteUnknown)
+        }
         return note
     }
 
@@ -93,5 +96,53 @@ final class NoteStoreVersionsTests: XCTestCase {
         XCTAssertNotNil(s.rename(s.notes[0].id, to: "Zwei"))
         XCTAssertEqual(a, 1)
         XCTAssertEqual(b, 1)
+    }
+
+    /// Der Ordner ist weg, der Text landet im Puffer; beim Zurückholen ersetzt er
+    /// die Datei — vorher kommt der Text von der Platte in die Stände.
+    func testZurueckholenAusDemPufferSichertDenStandVorDemAusfall() throws {
+        try u.schreibe("A.md", "vor dem Ausfall", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        versionen.attach(to: s)
+        var n = s.notes[0]
+        let weg = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: u.ordner, to: weg)
+        n.body = "nach dem Ausfall"
+        guard case .buffered = s.save(n) else { return XCTFail("nicht gepuffert") }
+        try FileManager.default.moveItem(at: weg, to: u.ordner)
+        s.reload()
+        XCTAssertEqual(u.text("A.md"), "nach dem Ausfall")
+        XCTAssertEqual(versionen.list(for: "A.md").compactMap { $0.text() }, ["vor dem Ausfall"])
+    }
+
+    /// Holt `save` den Puffer selbst zurück, ist „bisher“ der Text, der danach auf
+    /// der Platte liegt — nicht der veraltete aus dem Cache.
+    func testSichernNachDemZurueckholenNimmtDenTextVonDerPlatte() throws {
+        try u.schreibe("A.md", "vor dem Ausfall", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        var gesehen: [String] = []
+        s.beforeOverwrite = { gesehen.append($0.body) }
+        var n = s.notes[0]
+        let weg = u.wurzel.appendingPathComponent("abgesteckt", isDirectory: true)
+        try FileManager.default.moveItem(at: u.ordner, to: weg)
+        n.body = "gepuffert unterwegs"
+        guard case .buffered(let gepuffert) = s.save(n) else { return XCTFail("nicht gepuffert") }
+        try FileManager.default.moveItem(at: weg, to: u.ordner)
+        var weiter = gepuffert
+        weiter.body = "danach weitergeschrieben"
+        _ = try gesichert(s.save(weiter))
+        XCTAssertEqual(gesehen, ["vor dem Ausfall", "gepuffert unterwegs"])
+        XCTAssertEqual(u.text("A.md"), "danach weitergeschrieben")
+    }
+
+    /// Der Haken über den Init-Parameter gilt von Anfang an, ohne `attach`.
+    func testHakenAusDemInitSichertBeimUeberschreiben() throws {
+        try u.schreibe("A.md", "vor der Änderung", zeit: Date().addingTimeInterval(-60))
+        let s = NoteStore(folder: u.ordner, bufferFolder: u.puffer, watch: false,
+                          beforeOverwrite: versionen.overwriteHook)
+        var n = s.notes[0]
+        n.body = "nach der Änderung"
+        _ = try gesichert(s.save(n))
+        XCTAssertEqual(versionen.list(for: "A.md").compactMap { $0.text() }, ["vor der Änderung"])
     }
 }

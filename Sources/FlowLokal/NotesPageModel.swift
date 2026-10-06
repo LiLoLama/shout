@@ -216,22 +216,36 @@ final class NotesPageModel: ObservableObject {
     }
 
     /// Holt einen früheren Stand zurück. Der aktuelle wird vorher selbst als
-    /// Version gesichert. `false`, wenn nichts geändert wurde (Platzhalter,
-    /// laufender Transform, Text, der sich nicht sichern lässt).
+    /// Version gesichert — gelingt das nicht, bleibt alles, wie es ist. `false`,
+    /// wenn nichts (oder nicht der gewählte Stand) in der Notiz steht: Platzhalter,
+    /// laufender Transform, Text, der sich nicht sichern lässt, Konflikt beim
+    /// Sichern. Bei einem Konflikt einer nur für das Wiederherstellen geholten
+    /// Sitzung wird sie die der Seite, damit der Hinweis auf die Konfliktdatei
+    /// sichtbar bleibt.
     @discardableResult
     func restore(_ version: NoteVersions.Version, of id: UUID) -> Bool {
         guard let versions, let text = version.text() else { return false }
         let offen: NoteEditorSession? = session?.id == id ? session : registry.session(id: id)
         guard let sitzung = offen ?? store.note(id: id).map({ registry.acquire($0) }) else { return false }
-        defer { if offen == nil { registry.release(sitzung) } }
+        var behalten = false
+        defer { if offen == nil, !behalten { registry.release(sitzung) } }
         guard sitzung.status != .placeholder, !sitzung.isTransforming else { return false }
         sitzung.flush()
         guard !sitzung.hasUnsavedText else { return false }
-        versions.save(sitzung.note.body, for: sitzung.note.fileName)
-        let ganz = NSRange(location: 0, length: (sitzung.note.body as NSString).length)
+        // Der Ist-Stand muss als Version vorliegen (neu gesichert oder schon der
+        // neueste), sonst ginge er beim Ersetzen verloren.
+        let bisher = sitzung.note.body
+        versions.save(bisher, for: sitzung.note.fileName)
+        guard versions.list(for: sitzung.note.fileName).first?.text() == bisher else { return false }
+        let ganz = NSRange(location: 0, length: (bisher as NSString).length)
         guard sitzung.replace(ganz, with: text) else { return false }
         sitzung.flush()
-        return !sitzung.hasUnsavedText
+        if sitzung.note.body == text, sitzung.conflictNotice == nil, !sitzung.hasUnsavedText { return true }
+        if offen == nil, sitzung.conflictNotice != nil, leaveSession() {
+            session = sitzung
+            behalten = true
+        }
+        return false
     }
 
     func flush() { session?.flush() }

@@ -69,4 +69,35 @@ final class NotesPageModelVersionsTests: XCTestCase {
         m.versions = nil
         XCTAssertTrue(m.versionList(for: m.store.notes[0].id).isEmpty)
     }
+
+    func testNichtSicherbarerIststandVerhindertDasErsetzen() throws {
+        let m = try seite()
+        let a = m.store.notes[0].id
+        m.select(a)
+        versionen.save("früher", for: "A.md")
+        let stand = try XCTUnwrap(m.versionList(for: a).first)
+        // Die Wurzel ist eine Datei: Darin lässt sich nichts sichern.
+        let kaputt = u.wurzel.appendingPathComponent("KeinOrdner")
+        try Data("x".utf8).write(to: kaputt)
+        m.versions = NoteVersions(root: kaputt)
+        XCTAssertFalse(m.restore(stand, of: a))
+        XCTAssertEqual(m.session?.note.body, "jetzt")
+        XCTAssertEqual(u.text("A.md"), "jetzt")
+    }
+
+    func testKonfliktBeimWiederherstellenIstKeinErfolg() throws {
+        let m = try seite()
+        let a = m.store.notes[0].id
+        m.select(a)
+        versionen.save("früher", for: "A.md")
+        let stand = try XCTUnwrap(m.versionList(for: a).first)
+        // Von außen geändert, nachdem die Notiz geöffnet wurde.
+        try u.schreibe("A.md", "fremd", zeit: Date().addingTimeInterval(60))
+        XCTAssertFalse(m.restore(stand, of: a))
+        let texte = u.dateien().compactMap { u.text($0) }
+        XCTAssertNotNil(m.session?.conflictNotice, "der Hinweis auf die Konfliktdatei bleibt sichtbar")
+        XCTAssertTrue(texte.contains("fremd"), "die fremde Fassung bleibt")
+        XCTAssertTrue(texte.contains("früher") || m.session?.note.body == "früher",
+                      "der wiederhergestellte Text geht nicht verloren")
+    }
 }

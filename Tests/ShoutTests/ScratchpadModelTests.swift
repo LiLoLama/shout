@@ -51,6 +51,22 @@ final class ScratchpadModelTests: XCTestCase {
         XCTAssertEqual(m.activeIndex, 0)
     }
 
+    func testOeffnenMeldetFehlschlagBeiVollemPanelUndUngesichertemTab() throws {
+        try u.schreibe("A.md", "a")
+        try u.schreibe("B.md", "b")
+        let m = modell()
+        for _ in 0..<4 { m.newTab() }
+        XCTAssertTrue(m.open(id(m, "A"), inNewTab: true))
+        XCTAssertEqual(m.tabs.count, 5)
+        m.active?.edit("meins")
+        // Von außen unlesbar (Latin-1): Der Text lebt nur in der Sitzung.
+        try Data([0x47, 0xFC, 0x6E]).write(to: u.ordner.appendingPathComponent("A.md"))
+        XCTAssertFalse(m.open(id(m, "B"), inNewTab: true))
+        XCTAssertEqual(m.tabs.count, 5)
+        XCTAssertEqual(m.active?.note.body, "meins")
+        XCTAssertFalse(m.open(UUID(), inNewTab: true))
+    }
+
     func testSchliessenRuecktDieAuswahl() {
         let m = modell()
         m.newTab(); m.newTab(); m.newTab()

@@ -107,6 +107,7 @@ final class NotesPageModel: ObservableObject {
 
     func select(_ id: UUID) {
         guard session?.id != id, store.note(id: id) != nil, leaveSession() else { return }
+        blockedNotice = nil
         // Erst nach dem Sichern holen: Das kann neu eingelesen haben (Konflikt),
         // eine vorher geholte Fassung wäre dann veraltet.
         guard let note = store.note(id: id) else { return }
@@ -150,6 +151,7 @@ final class NotesPageModel: ObservableObject {
     /// Fassung nur im Speicher zurück. Das gilt auch, wenn die Notiz nur im Panel
     /// offen ist — die Sitzung kommt dann aus der Registry.
     func delete(_ id: UUID) {
+        blockedNotice = nil
         let istOffen = session?.id == id
         let offen = istOffen ? session : registry.session(id: id)
         if let offen {
@@ -201,6 +203,8 @@ final class NotesPageModel: ObservableObject {
     /// Notiz ungesichert, bleibt alles, wie es ist.
     @discardableResult
     func changeFolder(to url: URL) -> Bool {
+        // Ein früherer Hinweis stimmt nach diesem Versuch nicht mehr; scheitert er, wird er neu gesetzt.
+        blockedNotice = nil
         // Alle Sitzungen, auch die Tabs des Panels: Bleibt irgendwo Text
         // ungesichert, bleibt alles, wie es ist.
         guard registry.flushAll().isEmpty else {
@@ -210,9 +214,13 @@ final class NotesPageModel: ObservableObject {
         registry.removeAll()
         session = nil
         lastDeleted = nil
+        let gleicherOrdner = url.standardizedFileURL == store.folder.standardizedFileURL
+        let eingang = defaults.string(forKey: ScratchpadModel.inboxFileNameKey)
         NotesFolder.set(url, defaults: defaults)
         store.setFolder(url)
         onFolderChanged?()
+        // Derselbe Ordner noch einmal gewählt: Der Name der Eingangs-Notiz gilt weiter.
+        if gleicherOrdner, let eingang { defaults.set(eingang, forKey: ScratchpadModel.inboxFileNameKey) }
         return true
     }
 

@@ -340,6 +340,29 @@ final class NotesPageModelTests: XCTestCase {
         XCTAssertNil(m.blockedNotice)
     }
 
+    func testErfolgNimmtDenHinweisZurueck() throws {
+        let m = try dreiNotizen()
+        let b = id(m, "B")
+        let panel = m.registry.acquire(try XCTUnwrap(m.store.note(id: b)))
+        panel.edit("im Panel getippt")
+        try Data([0x47, 0xFC, 0x6E]).write(to: u.ordner.appendingPathComponent("B.md"))
+        let anderer = u.wurzel.appendingPathComponent("Anderer", isDirectory: true)
+        try FileManager.default.createDirectory(at: anderer, withIntermediateDirectories: true)
+        XCTAssertFalse(m.changeFolder(to: anderer))
+        XCTAssertNotNil(m.blockedNotice)
+        // Die Panel-Sitzung wird verworfen: Nichts hindert mehr.
+        m.registry.discard(panel)
+        XCTAssertTrue(m.changeFolder(to: anderer))
+        XCTAssertNil(m.blockedNotice)
+    }
+
+    func testGleicherOrdnerBehaeltDenNamenDerEingangsNotiz() throws {
+        let m = try dreiNotizen()
+        defaults.set("Meine Inbox.md", forKey: ScratchpadModel.inboxFileNameKey)
+        XCTAssertTrue(m.changeFolder(to: m.store.folder))
+        XCTAssertEqual(defaults.string(forKey: ScratchpadModel.inboxFileNameKey), "Meine Inbox.md")
+    }
+
     func testLoeschenEinerNurImPanelOffenenNotizSagtWarum() throws {
         let m = try dreiNotizen()
         let b = id(m, "B")

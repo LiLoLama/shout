@@ -941,8 +941,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// „Im Panel öffnen“ auf der Seite: dieselbe Sitzung, ein Tab im Panel.
     private func openNoteInPanel(_ id: UUID) {
         guard scratchpadSettings.isEnabled else { NSSound.beep(); return }
-        scratchpad.open(id, inNewTab: true)
+        let geoeffnet = scratchpad.open(id, inNewTab: true)
+        // Auch dann einblenden: So sieht man den Tab, der sich nicht sichern lässt.
         scratchpadPanel.show(focus: true, prepare: false)
+        if !geoeffnet {
+            toast.showInfo(Loc.t("Im Panel ist kein Tab frei. Erst den vorderen sichern oder schließen."))
+        }
     }
 
     private func openDashboard(_ tab: DashboardModel.Tab) {
@@ -1127,6 +1131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             } else if notesPage.changeFolder(to: ziel) {
                 ordnerPasst = true
             } else {
+                // Der Import meldet es selbst; kein zweiter Balken auf der Notizseite.
+                notesPage.dismissBlockedNotice()
                 hinweise.append(Loc.t("Notizordner nicht übernommen: Es gibt ungesicherten Text."))
             }
         }
@@ -2110,8 +2116,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 sounds.play(.done)
                 toast.showInfo(Loc.t("Im Eingang notiert"), actionTitle: Loc.t("Öffnen")) { [weak self] in
                     guard let self else { return }
-                    self.scratchpad.openInbox()
-                    self.scratchpadPanel.show(focus: true, prepare: false)
+                    // Ohne Eingangs-Notiz bleibt es beim gewohnten Einblenden (kein leeres Panel).
+                    let geoeffnet = self.scratchpad.openInbox()
+                    self.scratchpadPanel.show(focus: true, prepare: !geoeffnet)
                 }
             } else {
                 injector.copyConcealed(final)

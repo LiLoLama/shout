@@ -268,7 +268,7 @@ struct NotesView: View {
     @ViewBuilder private func menu(for note: Note) -> some View {
         if let onOpenInPanel {
             Button(Loc.t("Im Panel öffnen")) { onOpenInPanel(note.id) }
-                .disabled(note.isPlaceholder)
+                .disabled(note.isPlaceholder || !scratchpadSettings.isEnabled)
             Divider()
         }
         Button(note.pinned ? Loc.t("Lösen") : Loc.t("Anheften")) { model.togglePin(note.id) }
@@ -291,6 +291,7 @@ struct NotesView: View {
                            onTogglePin: { model.togglePin(session.id) },
                            onDelete: { model.delete(session.id) },
                            onVersions: { versionenFuer = session.note },
+                           panelEnabled: scratchpadSettings.isEnabled,
                            onOpenInPanel: onOpenInPanel.map { öffnen in { öffnen(session.id) } },
                            onDiscard: { model.discardSession() })
                 // An das Objekt gebunden, nicht an die Notiz-ID: Eine neue Sitzung
@@ -383,6 +384,7 @@ private struct NoteEditorPane: View {
     let onTogglePin: () -> Void
     let onDelete: () -> Void
     let onVersions: () -> Void
+    let panelEnabled: Bool
     let onOpenInPanel: (() -> Void)?
     /// Schließt die Sitzung, ohne zu sichern (nach Rückfrage).
     let onDiscard: () -> Void
@@ -409,7 +411,7 @@ private struct NoteEditorPane: View {
                     if let onOpenInPanel {
                         Button(action: onOpenInPanel) { Image(systemName: "rectangle.on.rectangle") }
                             .help(Loc.t("Im Panel öffnen"))
-                            .disabled(session.note.isNew)
+                            .disabled(session.note.isNew || session.note.isPlaceholder || !panelEnabled)
                     }
                     Button(action: onTogglePin) { Image(systemName: session.note.pinned ? "pin.fill" : "pin") }
                         .help(session.note.pinned ? Loc.t("Lösen") : Loc.t("Anheften"))

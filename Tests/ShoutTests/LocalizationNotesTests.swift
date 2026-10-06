@@ -153,6 +153,7 @@ final class LocalizationNotesTests: XCTestCase {
         "Notizordner nicht übernommen: Es gibt ungesicherten Text.",
         "Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“",
         "Im Panel öffnen",
+        "Im Panel ist kein Tab frei. Erst den vorderen sichern oder schließen.",
         "Eine offene Notiz lässt sich gerade nicht sichern. Der Ordner bleibt, bis sie gesichert ist.",
         "Diese Notiz ist im Scratchpad offen und lässt sich gerade nicht sichern. Gelöscht wird sie erst danach.",
     ]

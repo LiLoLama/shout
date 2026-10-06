@@ -113,15 +113,22 @@ final class ScratchpadModel: ObservableObject {
     }
 
     /// Öffnet eine Notiz. Ist sie schon in einem Tab, wird der gewählt.
-    func open(_ id: UUID, inNewTab: Bool) {
+    /// `false`, wenn sie nicht in einem Tab gelandet ist (es gibt sie nicht mehr,
+    /// oder alle Tabs sind belegt und der aktive lässt sich nicht sichern).
+    @discardableResult
+    func open(_ id: UUID, inNewTab: Bool) -> Bool {
         restoreTabs()
         if let index = tabs.firstIndex(where: { $0.id == id }) {
             select(index)
-            return
+            return true
         }
-        guard let note = store.note(id: id) else { return }
+        guard let note = store.note(id: id) else { return false }
         let session = registry.acquire(note)
-        if !place(session, inNewTab: inNewTab) { registry.release(session) }
+        guard place(session, inNewTab: inNewTab) else {
+            registry.release(session)
+            return false
+        }
+        return true
     }
 
     func select(_ index: Int) {
@@ -239,9 +246,11 @@ final class ScratchpadModel: ObservableObject {
         return !session.hasUnsavedText && session.conflictNotice == nil
     }
 
-    func openInbox() {
-        guard let note = store.notes.first(where: { $0.fileName.lowercased() == inboxFileName.lowercased() }) else { return }
-        open(note.id, inNewTab: true)
+    /// `false`, wenn es die Eingangs-Notiz nicht gibt oder sie sich nicht öffnen lässt.
+    @discardableResult
+    func openInbox() -> Bool {
+        guard let note = store.notes.first(where: { $0.fileName.lowercased() == inboxFileName.lowercased() }) else { return false }
+        return open(note.id, inNewTab: true)
     }
 
     // MARK: - Intern

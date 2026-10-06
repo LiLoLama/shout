@@ -1072,6 +1072,8 @@ final class Loc: ObservableObject {
 
         // Scratchpad: lose Enden
         "Im Panel öffnen": "Open in Panel",
+        "Im Panel ist kein Tab frei. Erst den vorderen sichern oder schließen.":
+            "No free tab in the panel. Save or close the front tab first.",
         "Eine offene Notiz lässt sich gerade nicht sichern. Der Ordner bleibt, bis sie gesichert ist.":
             "An open note can’t be saved right now. The folder stays until it is saved.",
         "Diese Notiz ist im Scratchpad offen und lässt sich gerade nicht sichern. Gelöscht wird sie erst danach.":

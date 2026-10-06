@@ -4178,3 +4178,12 @@ Prüflisten aus Plan 1 (Aufgabe 14) und Plan 2 (Aufgabe 12):
 - [ ] Eingangs-Toast „Öffnen“ bei Öffnen-Verhalten „Neuer Tab“: kein zusätzlicher leerer Tab.
 - [ ] Backup exportieren, Einstellungen ändern, importieren: Tasten, Öffnen-Verhalten, eigene Transforms sind zurück.
 - [ ] Englische Oberfläche: Zauberstab, Balken, Versionen-Blatt, Einstellungen englisch.
+- [ ] ⌘⏎ in Slack/Teams absichtlich lange halten: es wird abgelegt, aber **nichts gesendet**.
+- [ ] Mit offener Komposition (⌥U, dann noch kein Vokal) ⌘⏎ drücken: das Zeichen fehlt nicht im abgelegten Text.
+- [ ] Ziel-App während des Ablegens beenden: Text liegt in der Zwischenablage, Toast „Kopiert. ⌘V setzt den Text ein.“
+- [ ] Zauberstab-Menü im Panel öffnen, ohne dass vorher ins Panel geklickt wurde: Menü geht auf, die Auswahl im Editor bleibt.
+- [ ] „Text automatisch aufräumen“ in den Einstellungen aus- und wieder einschalten: Zauberstab wird grau bzw. wieder aktiv.
+- [ ] Bild ins Panel ziehen, nachdem ein Transform gelaufen ist (Editor war gesperrt): Ziehen klappt weiter.
+- [ ] Panel mit offener Liste auf Mindestbreite: Vorschau passt in die Textbreite, wird beim Breiterziehen größer (höchstens 320 pt).
+- [ ] HEIC-Foto aus Fotos einfügen: landet als PNG, kein langes Hängen (über 10 MB PNG → Meldung).
+- [ ] Fünf Tabs im Panel, der vordere mit ungesichertem Text (z. B. Ordner weg): „Im Panel öffnen“ auf der Seite zeigt „Im Panel ist kein Tab frei …“.

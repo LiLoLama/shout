@@ -78,17 +78,48 @@ final class ScratchpadSettings: ObservableObject {
     }
 
     /// Aus einem Backup. Unbekanntes oder Beschädigtes bleibt, wie es ist.
-    func apply(_ felder: BackupFields) {
+    /// Jede Taste muss dieselbe Prüfung bestehen wie bei der Aufnahme
+    /// (`rejection`), auch gegen die Taste der anderen Rolle und die Diktier-Taste;
+    /// abgelehnte behalten die jetzige Belegung. Rückgabe: die abgelehnten Rollen.
+    @discardableResult
+    func apply(_ felder: BackupFields,
+               dictationKey: (keyCode: UInt16, modifiers: UInt, isModifierOnly: Bool) = (0, 0, true)) -> [Role] {
         if let verhalten = ScratchpadModel.OpenBehavior(rawValue: felder.openBehavior) { openBehavior = verhalten }
+        // Was nach dem Import gelten soll, soweit lesbar; alles andere bleibt, wie es ist.
+        var gewollt: [Role: HotkeyCombo?] = [:]
         for rolle in Role.allCases {
             guard let daten = felder.keys[rolle.rawValue] else { continue }
             if daten.isEmpty {
-                setCombo(nil, for: rolle)
+                gewollt[rolle] = .some(nil)
             } else if let kombi = try? JSONDecoder().decode(HotkeyCombo.self, from: daten) {
-                setCombo(kombi, for: rolle)
+                gewollt[rolle] = .some(kombi)
             }
         }
+        var abgelehnt: [Role] = []
+        // Der Reihe nach: Eine Rolle wird nur gegen die schon angenommenen früheren geprüft,
+        // sonst scheiterte ein Tausch der beiden Tasten an der jeweils alten Belegung.
+        var geltend: [Role: HotkeyCombo] = [:]
+        for rolle in Role.allCases {
+            guard let wunsch = gewollt[rolle] else { geltend[rolle] = combos[rolle]; continue }
+            if let kombi = wunsch,
+               rejection(for: kombi, role: rolle, dictationKey: dictationKey, others: geltend) != nil {
+                abgelehnt.append(rolle)
+                geltend[rolle] = combos[rolle]
+            } else {
+                geltend[rolle] = wunsch
+            }
+        }
+        // Eine behaltene alte Taste darf nicht mit einer neuen zusammenfallen: dann „Keine“.
+        for rolle in abgelehnt {
+            if let k = geltend[rolle], Role.allCases.contains(where: { $0 != rolle && geltend[$0] == k }) {
+                geltend[rolle] = nil
+            }
+        }
+        for rolle in Role.allCases where geltend[rolle] != combos[rolle] {
+            setCombo(geltend[rolle], for: rolle)
+        }
         isEnabled = felder.enabled
+        return abgelehnt
     }
 
     /// Bricht eine laufende Tastenaufnahme ab (z. B. wenn die Zeilen verschwinden)
@@ -117,12 +148,19 @@ final class ScratchpadSettings: ObservableObject {
     /// Warum eine Kombination für `rolle` nicht taugt — oder `nil`.
     func rejection(for kombi: HotkeyCombo, role rolle: Role,
                    dictationKey: (keyCode: UInt16, modifiers: UInt, isModifierOnly: Bool)) -> String? {
+        rejection(for: kombi, role: rolle, dictationKey: dictationKey, others: combos)
+    }
+
+    /// Wie oben, aber gegen die Tasten in `others` statt gegen die jetzigen (fürs Backup).
+    private func rejection(for kombi: HotkeyCombo, role rolle: Role,
+                           dictationKey: (keyCode: UInt16, modifiers: UInt, isModifierOnly: Bool),
+                           others: [Role: HotkeyCombo]) -> String? {
         // Ohne ⌃ oder ⌥ finge die Taste Kürzel anderer Apps ab (⌘N, ⌘⇧N …).
         guard !kombi.flags.intersection([.control, .option]).isEmpty else {
             return Loc.t("Mit ⌃ oder ⌥ kombinieren")
         }
         if Self.reserved.contains(kombi) { return Loc.t("Schon belegt") }
-        for andere in Role.allCases where andere != rolle && combos[andere] == kombi {
+        for andere in Role.allCases where andere != rolle && others[andere] == kombi {
             return Loc.t("Schon belegt")
         }
         let maske = NSEvent.ModifierFlags([.command, .option, .control, .shift]).rawValue

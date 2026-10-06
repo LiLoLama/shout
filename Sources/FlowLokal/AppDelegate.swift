@@ -1095,21 +1095,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let f = s.formattingEnabled { UserDefaults.standard.set(f, forKey: "formattingEnabled") }
         if let mic = s.preferredMicUID { UserDefaults.standard.set(mic, forKey: "preferredMicUID") }
         if let vp = s.voiceProfile { UserDefaults.standard.set(vp, forKey: "voiceProfile") }
+        var hinweise: [String] = []
+        // Nach der Diktier-Taste: Die Scratchpad-Tasten werden gegen sie geprüft.
         if let an = s.scratchpadEnabled, let verhalten = s.scratchpadOpenBehavior, let tasten = s.scratchpadKeys {
-            scratchpadSettings.apply(.init(enabled: an, openBehavior: verhalten, keys: tasten))
+            let diktat = (keyCode: settings.keyCode, modifiers: settings.modifiers, isModifierOnly: settings.isModifierOnly)
+            let abgelehnt = scratchpadSettings.apply(.init(enabled: an, openBehavior: verhalten, keys: tasten),
+                                                     dictationKey: diktat)
+            if !abgelehnt.isEmpty { hinweise.append(Loc.t("Scratchpad-Taste nicht übernommen (belegt oder ungültig).")) }
         }
         // Ordner nur, wenn es ihn hier gibt; mit ungesichertem Text bleibt der alte.
-        if let pfad = s.notesFolderPath, FileManager.default.fileExists(atPath: pfad),
-           URL(fileURLWithPath: pfad).standardizedFileURL != NotesFolder.current().standardizedFileURL {
-            notesPage.changeFolder(to: URL(fileURLWithPath: pfad, isDirectory: true))
+        var ordnerPasst = false
+        if let pfad = s.notesFolderPath {
+            let ziel = URL(fileURLWithPath: pfad, isDirectory: true).standardizedFileURL
+            var istOrdner: ObjCBool = false
+            if ziel == NotesFolder.current().standardizedFileURL {
+                ordnerPasst = true
+            } else if !FileManager.default.fileExists(atPath: pfad, isDirectory: &istOrdner) || !istOrdner.boolValue {
+                hinweise.append(Loc.t("Notizordner nicht übernommen: Ordner nicht gefunden."))
+            } else if notesPage.changeFolder(to: ziel) {
+                ordnerPasst = true
+            } else {
+                hinweise.append(Loc.t("Notizordner nicht übernommen: Es gibt ungesicherten Text."))
+            }
         }
-        // Nach dem Ordnerwechsel: Der setzt den Namen der Eingangs-Notiz zurück.
-        if let name = s.inboxFileName { UserDefaults.standard.set(name, forKey: ScratchpadModel.inboxFileNameKey) }
-        if let eigene = bundle.transforms { transformStore.replaceAll(eigene) }
+        // Der Eingangs-Name gehört zum Ordner des Backups: nur setzen, wenn der jetzt gilt
+        // (sonst entstünde im alten Ordner eine neue, leere Eingangs-Notiz).
+        if ordnerPasst, let name = s.inboxFileName { UserDefaults.standard.set(name, forKey: ScratchpadModel.inboxFileNameKey) }
+        // Zusammenführen statt Ersetzen: Lokal angelegte Transforms bleiben erhalten.
+        if let eigene = bundle.transforms { transformStore.merge(eigene) }
         updateStatusItem()
 
-        return Loc.f("Importiert: %d Begriffe, %d Diktate.",
-                     bundle.dictionary.terms.count, bundle.history.count)
+        let ergebnis = Loc.f("Importiert: %d Begriffe, %d Diktate.",
+                             bundle.dictionary.terms.count, bundle.history.count)
+        return ([ergebnis] + hinweise).joined(separator: " ")
     }
 
     /// Klick aufs Dock-/Launchpad-Icon öffnet das Hauptfenster wieder.

@@ -147,6 +147,10 @@ final class LocalizationNotesTests: XCTestCase {
         "Neuer Transform",
         "Transform bearbeiten",
         "Anweisung",
+        "Konnte nicht gesichert werden.",
+        "Scratchpad-Taste nicht übernommen (belegt oder ungültig).",
+        "Notizordner nicht übernommen: Ordner nicht gefunden.",
+        "Notizordner nicht übernommen: Es gibt ungesicherten Text.",
         "Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“",
     ]
 

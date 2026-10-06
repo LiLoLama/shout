@@ -102,8 +102,14 @@ final class TransformStore: ObservableObject {
         persist()
     }
 
-    /// Aus einem Backup.
-    func replaceAll(_ neu: [NoteTransform]) {
+    /// Aus einem Backup: Einträge des Backups ersetzen lokale mit gleicher `id`,
+    /// lokale ohne Gegenstück bleiben. Reihenfolge: erst das Backup, dann der Rest.
+    /// So geht kein selbst geschriebener Prompt still verloren.
+    func merge(_ aus: [NoteTransform]) {
+        var gesehen = Set<UUID>()
+        var neu: [NoteTransform] = []
+        for t in aus where gesehen.insert(t.id).inserted { neu.append(t) }
+        for t in custom where gesehen.insert(t.id).inserted { neu.append(t) }
         custom = neu
         persist()
     }

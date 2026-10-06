@@ -59,10 +59,30 @@ final class NoteTransformsTests: XCTestCase {
         XCTAssertTrue(TransformStore(url: datei).custom.isEmpty)
     }
 
-    func testAllesErsetzen() {
+    func testZusammenfuehrenNachID() {
         let store = TransformStore(url: datei)
-        let liste = [NoteTransform(id: UUID(), name: "X", prompt: "x")]
-        store.replaceAll(liste)
-        XCTAssertEqual(TransformStore(url: datei).custom, liste)
+        let gemeinsam = store.add(name: "Gemeinsam", prompt: "lokal")!
+        let nurLokal = store.add(name: "Nur lokal", prompt: "l")!
+        let ausBackup = [NoteTransform(id: UUID(), name: "Neu", prompt: "n"),
+                         NoteTransform(id: gemeinsam.id, name: "Gemeinsam", prompt: "Backup")]
+        store.merge(ausBackup)
+        XCTAssertEqual(store.custom, [ausBackup[0], ausBackup[1], nurLokal], "Backup zuerst, dann der lokale Rest")
+        XCTAssertEqual(TransformStore(url: datei).custom, store.custom, "gesichert")
+    }
+
+    func testZusammenfuehrenMitLeeremBackupBehaeltLokales() {
+        let store = TransformStore(url: datei)
+        store.add(name: "A", prompt: "a")
+        let vorher = store.custom
+        store.merge([])
+        XCTAssertEqual(store.custom, vorher)
+    }
+
+    func testZusammenfuehrenEntferntDoppelteIDs() {
+        let store = TransformStore(url: datei)
+        let id = UUID()
+        store.merge([NoteTransform(id: id, name: "A", prompt: "a"), NoteTransform(id: id, name: "B", prompt: "b")])
+        XCTAssertEqual(store.custom.count, 1)
+        XCTAssertEqual(store.custom.first?.name, "A")
     }
 }

@@ -55,6 +55,7 @@ struct TransformSettingsSection: View {
     private struct TransformEditor: View {
         @State var name: String
         @State var prompt: String
+        @State private var fehlgeschlagen = false
         let neu: Bool
         let onSave: (String, String) -> Bool
         let onClose: () -> Void
@@ -84,10 +85,13 @@ struct TransformSettingsSection: View {
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.white.opacity(0.1)))
                 Text(Loc.t("Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“"))
                     .font(.system(size: 11)).foregroundStyle(.secondary)
+                if fehlgeschlagen {
+                    Text(Loc.t("Konnte nicht gesichert werden.")).font(.system(size: 11)).foregroundStyle(.red)
+                }
                 HStack {
                     Spacer()
                     Button(Loc.t("Abbrechen"), action: onClose).keyboardShortcut(.cancelAction)
-                    Button(Loc.t("Sichern")) { if onSave(name, prompt) { onClose() } }
+                    Button(Loc.t("Sichern")) { if onSave(name, prompt) { onClose() } else { fehlgeschlagen = true } }
                         .disabled(leer)
                         .keyboardShortcut(.defaultAction)
                 }

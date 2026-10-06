@@ -1063,6 +1063,10 @@ final class Loc: ObservableObject {
         "Neuer Transform": "New transform",
         "Transform bearbeiten": "Edit transform",
         "Anweisung": "Instruction",
+        "Konnte nicht gesichert werden.": "Couldn’t be saved.",
+        "Scratchpad-Taste nicht übernommen (belegt oder ungültig).": "Scratchpad key not imported (taken or invalid).",
+        "Notizordner nicht übernommen: Ordner nicht gefunden.": "Notes folder not imported: folder not found.",
+        "Notizordner nicht übernommen: Es gibt ungesicherten Text.": "Notes folder not imported: there is unsaved text.",
         "Was soll mit dem Text passieren? Zum Beispiel: „Kürze auf drei Sätze.“":
             "What should happen to the text? For example: “Shorten to three sentences.”",
     ]

@@ -44,4 +44,37 @@ final class ScratchpadSettingsBackupTests: XCTestCase {
         XCTAssertEqual(b.combo(for: .scratchpad), .scratchpadDefault)
         XCTAssertEqual(b.combo(for: .inbox), .inboxDefault)
     }
+
+    private func daten(_ kombi: HotkeyCombo) -> Data { try! JSONEncoder().encode(kombi) }
+
+    func testAbgelehnteTastenBehaltenDieJetzigeBelegung() {
+        let b = ScratchpadSettings(defaults: defaults())
+        let diktat = HotkeyCombo(keyCode: 40, flags: [.control, .option])
+        let ohneModifikator = HotkeyCombo(keyCode: 45, flags: [.command])
+        let abgelehnt = b.apply(.init(enabled: true, openBehavior: "resume",
+                                      keys: ["scratchpad": daten(diktat), "inbox": daten(ohneModifikator)]),
+                                dictationKey: (keyCode: 40, modifiers: diktat.modifiers, isModifierOnly: false))
+        XCTAssertEqual(Set(abgelehnt), [.scratchpad, .inbox])
+        XCTAssertEqual(b.combo(for: .scratchpad), .scratchpadDefault)
+        XCTAssertEqual(b.combo(for: .inbox), .inboxDefault)
+    }
+
+    func testVertauschteTastenWerdenAngenommen() {
+        let b = ScratchpadSettings(defaults: defaults())
+        let abgelehnt = b.apply(.init(enabled: true, openBehavior: "resume",
+                                      keys: ["scratchpad": daten(.inboxDefault), "inbox": daten(.scratchpadDefault)]))
+        XCTAssertTrue(abgelehnt.isEmpty)
+        XCTAssertEqual(b.combo(for: .scratchpad), .inboxDefault)
+        XCTAssertEqual(b.combo(for: .inbox), .scratchpadDefault)
+    }
+
+    func testGleicheTasteFuerBeideRollenNimmtNurDieErsteAn() {
+        let b = ScratchpadSettings(defaults: defaults())
+        let kombi = HotkeyCombo(keyCode: 12, flags: [.control, .option])
+        let abgelehnt = b.apply(.init(enabled: true, openBehavior: "resume",
+                                      keys: ["scratchpad": daten(kombi), "inbox": daten(kombi)]))
+        XCTAssertEqual(abgelehnt, [.inbox])
+        XCTAssertEqual(b.combo(for: .scratchpad), kombi)
+        XCTAssertEqual(b.combo(for: .inbox), .inboxDefault)
+    }
 }

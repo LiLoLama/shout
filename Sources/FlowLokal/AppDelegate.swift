@@ -291,6 +291,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self, selector: #selector(externalAppActivated(_:)),
             name: NSWorkspace.didActivateApplicationNotification, object: nil
         )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(externalAppTerminated(_:)),
+            name: NSWorkspace.didTerminateApplicationNotification, object: nil
+        )
+        // Die App, die beim Start vorne war, ist schon ein Ziel fürs Ablegen.
+        if let vorne = NSWorkspace.shared.frontmostApplication,
+           vorne.bundleIdentifier != Bundle.main.bundleIdentifier {
+            lastExternalApp = vorne
+            handoffTarget.update(vorne)
+        }
 
         setupMeetingDetection()
 
@@ -414,6 +424,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             lastExternalApp = app
             handoffTarget.update(app)
         }
+    }
+
+    /// Eine beendete App ist kein Ziel mehr — sonst bliebe der Ablegen-Knopf auf ihr stehen.
+    @objc private func externalAppTerminated(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              app.processIdentifier == lastExternalApp?.processIdentifier else { return }
+        lastExternalApp = nil
+        handoffTarget.update(nil)
     }
 
     // MARK: - Meeting-Erkennung
@@ -572,16 +590,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Ablegen aus dem Scratchpad: Auswahl oder Notiz formatiert in die App davor.
     /// Die Notiz bleibt. Ohne Bedienungshilfen nur kopieren — mit dem Hinweis wie beim Diktat.
     private func handoffFromScratchpad() {
+        // Eine offene Komposition steht erst nach dem Festschreiben im Text der Sitzung.
+        scratchpadPanelStorage?.commitComposition()
         guard let session = scratchpadStorage?.active else { return }
         session.flush()
-        guard let text = NoteHandoff.content(body: session.note.body, selection: session.lastSelection),
-              let app = lastExternalApp, !app.isTerminated else {
+        guard let text = NoteHandoff.content(body: session.note.body, selection: session.lastSelection) else {
             NSSound.beep()
             return
         }
+        // Ohne lebendes Ziel nicht still scheitern: der Text liegt dann wenigstens bereit.
+        guard let app = lastExternalApp, !app.isTerminated else {
+            copyHandoff(text)
+            return
+        }
         guard AXIsProcessTrusted() else {
-            MarkdownPasteboard.write(text, to: .general)
-            toast.showInfo(Loc.t("Kopiert. ⌘V setzt den Text ein."))
+            copyHandoff(text)
             warnAboutMissingAccessibility()
             return
         }
@@ -589,8 +612,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         app.activate()
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 250_000_000)
+            // ⌘V nur, wenn das Ziel wirklich vorne ist — sonst landet es in irgendeiner App.
+            guard !app.isTerminated,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
+                self.copyHandoff(text)
+                return
+            }
             self.injector.paste(markdown: text, keepInClipboard: self.keepInClipboard)
         }
+    }
+
+    /// Legt den Text formatiert in die Zwischenablage (vertraulich markiert) und sagt es.
+    private func copyHandoff(_ text: String) {
+        injector.copyConcealed(markdown: text)
+        toast.showInfo(Loc.t("Kopiert. ⌘V setzt den Text ein."))
     }
 
     private func learnFromManualEdit(original: String, edited: String) {

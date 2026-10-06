@@ -258,6 +258,7 @@ private struct HandoffButton: View {
                 }
                 Text(handoff.app?.localizedName.map { Loc.f("In %@ ablegen", $0) } ?? Loc.t("Ablegen"))
                     .font(.system(size: 11.5))
+                    .lineLimit(1).truncationMode(.tail)
             }
         }
         .buttonStyle(.borderless)

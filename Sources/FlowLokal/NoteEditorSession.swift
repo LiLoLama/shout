@@ -108,6 +108,16 @@ final class NoteEditorSession: ObservableObject, Identifiable {
 
     func selectionChanged(_ range: NSRange) { lastSelection = range }
 
+    /// Der Text kam von außen (oder an der Sitzung vorbei): Der Editor lädt neu und
+    /// verliert dabei seine Auswahl, meldet das aber nicht. Eine veraltete, nicht
+    /// leere Auswahl würde sonst beim Ablegen einen falschen Ausschnitt senden.
+    /// Ruft man erst nach dem Setzen von `note` auf.
+    private func editorMustReload() {
+        externalRevision += 1
+        lastSelection = NSRange(location: min(max(lastSelection.location, 0), (note.body as NSString).length),
+                                length: 0)
+    }
+
     /// Fügt Text ein — über den angehängten Editor (ein Rückgängig-Schritt) oder,
     /// ohne Editor, direkt in den Text. `.cursor` setzt bei Bedarf ein Leerzeichen
     /// davor (`DictationInsertion`), `.end` hängt wörtlich an. `false` nur bei
@@ -136,7 +146,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         edit(neu)
         // Der angehängte Editor kennt die Einfügung nicht: Er muss neu laden, sonst
         // überschriebe seine nächste Eingabe sie.
-        if hatEditor { externalRevision += 1 }
+        if hatEditor { editorMustReload() }
         return true
     }
 
@@ -201,8 +211,9 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         // nicht umbenennen: `saveFailed` bzw. die Pufferanzeige warnt.
         guard status == .clean, storeMatchesSession else { return false }
         guard let umbenannt = store.rename(id, to: title) else { return false }
-        if umbenannt.body != note.body { externalRevision += 1 }
+        let textGeaendert = umbenannt.body != note.body
         note = umbenannt
+        if textGeaendert { editorMustReload() }
         return true
     }
 
@@ -256,8 +267,9 @@ final class NoteEditorSession: ObservableObject, Identifiable {
     private func apply(_ result: NoteStore.SaveResult, restoring: Bool) {
         switch result {
         case .saved(let gesichert), .buffered(let gesichert):
-            if gesichert.body != note.body { externalRevision += 1 }
+            let textGeaendert = gesichert.body != note.body
             note = gesichert
+            if textGeaendert { editorMustReload() }
             markSaved()
         case .skippedEmpty:
             markSaved()
@@ -267,7 +279,7 @@ final class NoteEditorSession: ObservableObject, Identifiable {
             note = extern
             markSaved()
             conflictNotice = dateiname
-            externalRevision += 1
+            editorMustReload()
         case .failed:
             // Nichts geschrieben: Status bleibt, wie er ist (ungesichert bzw. fehlend).
             // Ein Versuch später noch einmal; die nächste Eingabe oder `flush()` ersetzt ihn.
@@ -347,6 +359,6 @@ final class NoteEditorSession: ObservableObject, Identifiable {
         status = frisch.isPlaceholder ? .placeholder : .clean
         unsavedWhileMissing = false
         saveFailed = false
-        if textGeaendert { externalRevision += 1 }
+        if textGeaendert { editorMustReload() }
     }
 }

@@ -49,6 +49,21 @@ final class NoteEditorSessionTests: XCTestCase {
         XCTAssertEqual(sitzung.status, .clean)
     }
 
+    /// Der Editor verliert beim Neuladen seine Auswahl, meldet es aber nicht: Eine
+    /// veraltete, nicht leere Auswahl dürfte sonst beim Ablegen einen falschen
+    /// Ausschnitt senden.
+    func testNeuladenVonAussenKuerztDieAuswahl() throws {
+        try u.schreibe("X.md", "ein langer alter Text", zeit: Date().addingTimeInterval(-60))
+        let s = u.store()
+        let sitzung = NoteEditorSession(note: s.notes[0], store: s)
+        sitzung.selectionChanged(NSRange(location: 12, length: 5))
+        try u.schreibe("X.md", "kurz", zeit: Date())
+        s.reload()
+        XCTAssertEqual(sitzung.note.body, "kurz")
+        XCTAssertEqual(sitzung.lastSelection, NSRange(location: 4, length: 0))
+        XCTAssertEqual(NoteHandoff.content(body: sitzung.note.body, selection: sitzung.lastSelection), "kurz")
+    }
+
     /// Ungesicherter Text wird nicht überschrieben. Beim Sichern entsteht die
     /// Konfliktdatei, der Editor zeigt danach die Fassung von außen.
     func testUngesichertPlusAussenGibtKonflikt() throws {

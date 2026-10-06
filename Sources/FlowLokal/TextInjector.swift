@@ -129,6 +129,12 @@ final class TextInjector {
         pb.setData(Data("1".utf8), forType: transientType)
     }
 
+    /// Wie `copyConcealed`, aber mit Klartext und RTF (Ablegen aus dem Scratchpad,
+    /// wenn nicht eingefügt werden kann). Der Notizinhalt landet nicht in Clipboard-Historien.
+    func copyConcealed(markdown: String) {
+        MarkdownPasteboard.write(markdown, to: .general, extraTypes: [concealedType, transientType])
+    }
+
     private func postCommandV() {
         let source = CGEventSource(stateID: .combinedSessionState)
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: virtualKeyV, keyDown: true)

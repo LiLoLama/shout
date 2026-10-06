@@ -34,6 +34,12 @@ final class ScratchpadPanel: NSPanel, HidesOnEscape {
             onCycleTab(event.modifierFlags.contains(.shift) ? -1 : 1)
             return
         }
+        // Hält man ⌘⏎ gedrückt, verschwindet das Panel beim ersten Anschlag, und die
+        // Wiederholungen gingen als „Senden“ an die App dahinter (Slack, Mail …).
+        if event.type == .keyDown, event.isARepeat, event.keyCode == 36,   // kVK_Return
+           event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command {
+            return
+        }
         super.sendEvent(event)
     }
 
@@ -125,6 +131,14 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
             fenster.orderFrontRegardless()
         }
         if focus { fenster.makeKey() }
+    }
+
+    /// Schreibt eine offene Komposition (Eingabemethode, Option+U …) fest, damit sie
+    /// im Text der Notiz steht, bevor etwas ihn liest (Ablegen).
+    func commitComposition() {
+        if let textView = panel?.firstResponder as? NSTextView, textView.hasMarkedText() {
+            textView.unmarkText()
+        }
     }
 
     func hide() {

@@ -398,6 +398,8 @@ targets:
       - path: Sources/FlowLokal/PanelPlacement.swift
       # Beenden wartet auf ein laufendes Diktat: genau eine Antwort an AppKit.
       - path: Sources/FlowLokal/DeferredTermination.swift
+      # Scratchpad, Teil 3
+      - path: Sources/FlowLokal/MarkdownPasteboard.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

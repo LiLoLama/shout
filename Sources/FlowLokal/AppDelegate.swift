@@ -587,9 +587,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    /// Läuft gerade ein Ablegen (es wartet, bis ⏎ losgelassen ist)? Dann ignorieren
+    /// wir Tastenwiederholungen von ⌘⏎.
+    private var handoffRunning = false
+
     /// Ablegen aus dem Scratchpad: Auswahl oder Notiz formatiert in die App davor.
     /// Die Notiz bleibt. Ohne Bedienungshilfen nur kopieren — mit dem Hinweis wie beim Diktat.
     private func handoffFromScratchpad() {
+        guard !handoffRunning else { return }
         // Eine offene Komposition steht erst nach dem Festschreiben im Text der Sitzung.
         scratchpadPanelStorage?.commitComposition()
         guard let session = scratchpadStorage?.active else { return }
@@ -608,9 +613,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             warnAboutMissingAccessibility()
             return
         }
-        scratchpadPanel.hide()
-        app.activate()
+        handoffRunning = true
         Task { @MainActor in
+            defer { self.handoffRunning = false }
+            // Erst loslassen lassen: Wiederholungen von ⌘⏎ gingen sonst nach dem
+            // Ausblenden als „Senden“ an die Ziel-App (Slack, Teams, Notion …).
+            guard await self.waitForReturnReleased() else {
+                self.copyHandoff(text)
+                return
+            }
+            self.scratchpadPanel.hide()
+            app.activate()
             try? await Task.sleep(nanoseconds: 250_000_000)
             // ⌘V nur, wenn das Ziel wirklich vorne ist — sonst landet es in irgendeiner App.
             guard !app.isTerminated,
@@ -620,6 +633,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
             self.injector.paste(markdown: text, keepInClipboard: self.keepInClipboard)
         }
+    }
+
+    /// Wartet (höchstens 1,5 s), bis ⏎ und ⌘ losgelassen sind. `false`, wenn sie
+    /// danach noch gedrückt sind.
+    private func waitForReturnReleased() async -> Bool {
+        func gehalten() -> Bool {
+            CGEventSource.keyState(.combinedSessionState, key: 0x24)   // kVK_Return
+                || NSEvent.modifierFlags.contains(.command)
+        }
+        let ende = Date().addingTimeInterval(1.5)
+        while gehalten() {
+            if Date() >= ende { return false }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return true
     }
 
     /// Legt den Text formatiert in die Zwischenablage (vertraulich markiert) und sagt es.

@@ -1049,5 +1049,10 @@ final class Loc: ObservableObject {
         "Konnte nicht wiederhergestellt werden.": "Couldn’t be restored.",
         "Wiederherstellen": "Restore",
         "Schließen": "Close",
+
+        // Scratchpad: Bilder
+        "Das Bild ist größer als 10 MB.": "The image is larger than 10 MB.",
+        "Das Bild lässt sich nicht lesen.": "The image can’t be read.",
+        "Das Bild konnte nicht gesichert werden.": "The image couldn’t be saved.",
     ]
 }

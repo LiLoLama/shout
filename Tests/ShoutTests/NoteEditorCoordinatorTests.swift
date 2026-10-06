@@ -244,4 +244,23 @@ final class NoteEditorCoordinatorTests: XCTestCase {
         XCTAssertEqual(tv.string, "neu")
         XCTAssertFalse(tv.isEditable)
     }
+
+    func testBildLandetAlsLinkInEigenerZeile() throws {
+        let s = try sitzung("Vorher")
+        let (c, tv) = editor(s)
+        tv.setSelectedRange(NSRange(location: 6, length: 0))
+        XCTAssertTrue(c.insertImage(.data(NoteAttachmentsTests.bild(.png))))
+        XCTAssertTrue(s.note.body.hasPrefix("Vorher\n![](Anhänge/"))
+        XCTAssertTrue(s.note.body.hasSuffix(".png)\n"))
+        let anhaenge = try FileManager.default.contentsOfDirectory(atPath: u.ordner.appendingPathComponent("Anhänge").path)
+        XCTAssertEqual(anhaenge.count, 1)
+    }
+
+    func testZuGrossesBildMeldetUndLaesstDenText() throws {
+        let s = try sitzung("Text")
+        let (c, _) = editor(s)
+        XCTAssertTrue(c.insertImage(.data(Data(count: NoteAttachments.maxBytes + 1))))
+        XCTAssertEqual(s.note.body, "Text")
+        XCTAssertEqual(s.toolNotice, .failed(Loc.t("Das Bild ist größer als 10 MB.")))
+    }
 }

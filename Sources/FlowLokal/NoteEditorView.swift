@@ -25,11 +25,28 @@ struct NoteEditorView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
+        let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        let textView = scroll.documentView as! NSTextView
+        // TextKit 1, selbst gebaut: Der Layout-Manager zeichnet später die Bildvorschau.
+        let speicher = NSTextStorage()
+        let layout = NSLayoutManager()
+        speicher.addLayoutManager(layout)
+        let behaelter = NSTextContainer(containerSize: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        behaelter.widthTracksTextView = true
+        layout.addTextContainer(behaelter)
+        let textView = NoteTextView(frame: .zero, textContainer: behaelter)
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.registerForDraggedTypes(textView.registeredDraggedTypes + [.fileURL, .png, .tiff])
+        scroll.documentView = textView
+        // Selbst gebaut hält niemand sonst den Speicher.
+        context.coordinator.textStorageRef = speicher
+        textView.onImage = { [weak c = context.coordinator] quelle in c?.insertImage(quelle) ?? false }
         Self.configure(textView)
         textView.delegate = context.coordinator
         // `NSTextStorage.delegate` ist schwach; der Coordinator hält die Hervorhebung.
@@ -128,6 +145,44 @@ struct NoteEditorView: NSViewRepresentable {
         private var gleichtAn = false
 
         init(session: NoteEditorSession) { self.session = session }
+
+        /// Beim selbst gebauten TextKit-1-Stapel hält sonst niemand den Speicher.
+        var textStorageRef: NSTextStorage?
+
+        /// Bild aus Zwischenablage oder Drag: nach `Anhänge/`, Link in eigener Zeile
+        /// an den Cursor (ein Rückgängig-Schritt). Fehler stehen im Balken.
+        func insertImage(_ quelle: NoteAttachments.Source) -> Bool {
+            guard let tv = textView, tv.isEditable else { return false }
+            switch NoteAttachments.store(quelle, in: session.folderURL) {
+            case .failure(let fehler):
+                session.showToolNotice(.failed(Self.message(for: fehler)))
+            case .success(let pfad):
+                let ns = tv.string as NSString
+                let auswahl = tv.selectedRange()
+                let vorher: Character? = auswahl.location > 0
+                    ? ns.substring(with: ns.rangeOfComposedCharacterSequence(at: auswahl.location - 1)).last : nil
+                let ende = NSMaxRange(auswahl)
+                let nachher: Character? = ende < ns.length
+                    ? ns.substring(with: ns.rangeOfComposedCharacterSequence(at: ende)).first : nil
+                let text = NoteAttachments.insertion(for: pfad, after: vorher, before: nachher)
+                if session.replace(auswahl, with: text) {
+                    let danach = NSRange(location: auswahl.location + (text as NSString).length, length: 0)
+                    tv.setSelectedRange(danach)
+                    tv.scrollRangeToVisible(danach)
+                } else {
+                    session.showToolNotice(.failed(Self.message(for: .writeFailed)))
+                }
+            }
+            return true
+        }
+
+        static func message(for fehler: NoteAttachments.Failure) -> String {
+            switch fehler {
+            case .tooLarge: return Loc.t("Das Bild ist größer als 10 MB.")
+            case .unreadable: return Loc.t("Das Bild lässt sich nicht lesen.")
+            case .writeFailed: return Loc.t("Das Bild konnte nicht gesichert werden.")
+            }
+        }
 
         /// Der Text ohne offene Komposition (Option+U, Eingabemethoden). Die
         /// meldet `NSTextView` erst, wenn sie festgeschrieben ist; bis dahin

@@ -136,6 +136,10 @@ final class LocalizationNotesTests: XCTestCase {
         "Konnte nicht wiederhergestellt werden.",
         "Wiederherstellen",
         "Schließen",
+        // Scratchpad: Bilder
+        "Das Bild ist größer als 10 MB.",
+        "Das Bild lässt sich nicht lesen.",
+        "Das Bild konnte nicht gesichert werden.",
     ]
 
     override func setUp() {

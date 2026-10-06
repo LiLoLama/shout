@@ -58,12 +58,8 @@ final class NoteVersions {
             try fileManager.createDirectory(at: ordner, withIntermediateDirectories: true)
             try Data(fileName.utf8).write(to: ordner.appendingPathComponent(Self.nameFile), options: .atomic)
             let stempel = Self.stamp(now())
-            var name = stempel + ".md"
-            var zahl = 2
-            while fileManager.fileExists(atPath: ordner.appendingPathComponent(name).path) {
-                name = "\(stempel)-\(zahl).md"
-                zahl += 1
-            }
+            let maxOrd = maxOrdinalForStamp(stempel, in: ordner)
+            let name = maxOrd == 0 ? stempel + ".md" : "\(stempel)-\(maxOrd + 1).md"
             let url = ordner.appendingPathComponent(name)
             try Data(text.utf8).write(to: url, options: .atomic)
             prune(ordner)
@@ -98,13 +94,14 @@ final class NoteVersions {
             }
         } else {
             for stand in versions(in: alt) {
-                var ziel = neu.appendingPathComponent(stand.url.lastPathComponent)
-                var zahl = 2
-                while fileManager.fileExists(atPath: ziel.path) {
-                    ziel = neu.appendingPathComponent("\(stand.url.deletingPathExtension().lastPathComponent)-\(zahl).md")
-                    zahl += 1
+                let standBase = stand.url.deletingPathExtension().lastPathComponent
+                if let date = Self.date(fromFileName: standBase) {
+                    let stempel = Self.stamp(date)
+                    let maxOrd = maxOrdinalForStamp(stempel, in: neu)
+                    let zielName = maxOrd == 0 ? stempel + ".md" : "\(stempel)-\(maxOrd + 1).md"
+                    let ziel = neu.appendingPathComponent(zielName)
+                    try? fileManager.moveItem(at: stand.url, to: ziel)
                 }
-                try? fileManager.moveItem(at: stand.url, to: ziel)
             }
             try? fileManager.removeItem(at: alt)
             prune(neu)
@@ -157,6 +154,26 @@ final class NoteVersions {
         for alt in versions(in: ordner).dropFirst(Self.maxCount) {
             try? fileManager.removeItem(at: alt.url)
         }
+    }
+
+    private func maxOrdinalForStamp(_ stempel: String, in ordner: URL) -> Int {
+        let urls = (try? fileManager.contentsOfDirectory(at: ordner, includingPropertiesForKeys: nil)) ?? []
+        var maxOrd = 0
+        for url in urls where url.pathExtension == "md" {
+            let baseName = url.deletingPathExtension().lastPathComponent
+            if baseName.hasPrefix(stempel) {
+                let suffix = String(baseName.dropFirst(stempel.count))
+                if suffix.isEmpty {
+                    maxOrd = max(maxOrd, 1)
+                } else if suffix.hasPrefix("-") {
+                    let numStr = String(suffix.dropFirst())
+                    if let num = Int(numStr) {
+                        maxOrd = max(maxOrd, num)
+                    }
+                }
+            }
+        }
+        return maxOrd
     }
 
     private static func formatter() -> DateFormatter {

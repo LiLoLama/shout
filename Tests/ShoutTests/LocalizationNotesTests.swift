@@ -125,6 +125,9 @@ final class LocalizationNotesTests: XCTestCase {
         "„%@“ wird angewendet …",
         "„%@“ angewendet",
         "Anweisung angewendet",
+        "Per Sprache …",
+        "Zuletzt: %@",
+        "Text umarbeiten",
     ]
 
     override func setUp() {

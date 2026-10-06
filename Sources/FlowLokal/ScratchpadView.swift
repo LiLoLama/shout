@@ -11,6 +11,7 @@ struct ScratchpadView: View {
     @ObservedObject var handoff: HandoffTarget
     /// Legt die Auswahl bzw. die Notiz in die App davor (⌘⏎).
     let onHandoff: () -> Void
+    let tools: NoteToolbox
     /// Macht das Panel zum Key-Fenster. Ein Klick auf Tab oder Listenzeile soll es
     /// dazu machen — sonst wirken ⌘N/⌘W nicht, und Tasten gingen an die App dahinter.
     var onActivate: () -> Void = {}
@@ -166,6 +167,7 @@ struct ScratchpadView: View {
             .buttonStyle(.borderless)
             .help(mic.isRecording ? Loc.t("Diktat beenden") : Loc.t("In diese Notiz diktieren"))
             if let vorne = model.active { PinButton(session: vorne, onActivate: onActivate) }
+            if let vorne = model.active { TransformMenu(tools: tools, session: vorne, onActivate: onActivate) }
             HandoffButton(handoff: handoff, enabled: model.active != nil) { onActivate(); onHandoff() }
             Spacer()
         }

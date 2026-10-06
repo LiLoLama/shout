@@ -7,6 +7,7 @@ struct NotesView: View {
     @ObservedObject var store: NoteStore
     @ObservedObject var scratchpadSettings: ScratchpadSettings
     var onScratchpadCapture: (ScratchpadSettings.Role) -> Void = { _ in }
+    var tools: NoteToolbox? = nil
     @AppStorage("notes.settingsExpanded") private var einstellungenOffen = true
     @AppStorage("scratchpad.hintSeen") private var hinweisGesehen = false
 
@@ -258,7 +259,7 @@ struct NotesView: View {
 
     @ViewBuilder private var editor: some View {
         if let session = model.session {
-            NoteEditorPane(session: session, store: store, focusRequest: editorFocus,
+            NoteEditorPane(session: session, store: store, focusRequest: editorFocus, tools: tools,
                            onRename: { renameText = session.note.title; renaming = session.id },
                            onTogglePin: { model.togglePin(session.id) },
                            onDelete: { model.delete(session.id) },
@@ -348,6 +349,7 @@ private struct NoteEditorPane: View {
     @ObservedObject var session: NoteEditorSession
     @ObservedObject var store: NoteStore
     let focusRequest: Int
+    let tools: NoteToolbox?
     let onRename: () -> Void
     let onTogglePin: () -> Void
     let onDelete: () -> Void
@@ -372,6 +374,7 @@ private struct NoteEditorPane: View {
                 .help(Loc.t("Umbenennen …"))
                 Spacer()
                 Group {
+                    if let tools { TransformMenu(tools: tools, session: session) }
                     Button(action: onTogglePin) { Image(systemName: session.note.pinned ? "pin.fill" : "pin") }
                         .help(session.note.pinned ? Loc.t("Lösen") : Loc.t("Anheften"))
                     Button {

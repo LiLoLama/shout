@@ -50,6 +50,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // sogar erst mit der ersten gesicherten Notiz.
 
     let noteVersions = NoteVersions()
+
+    /// Eigene Transforms (`transforms.json`) und der Zauberstab.
+    private let transformStore = TransformStore()
+    private lazy var transformRunner = NoteTransformRunner(
+        saveVersion: { [weak self] session in self?.saveVersionBeforeTransform(session) },
+        transform: { [formatter] text, anweisung in try await formatter.transform(text, instruction: anweisung) })
+    private var noteTools: NoteToolbox {
+        NoteToolbox(runner: transformRunner, transforms: transformStore, onVoiceInstruction: nil)
+    }
+
+    /// Vor jedem Transform ein Stand — unabhängig von der Zehn-Minuten-Frist.
+    private func saveVersionBeforeTransform(_ session: NoteEditorSession) {
+        guard !session.note.isNew else { return }
+        noteVersions.save(session.note.body, for: session.note.fileName)
+    }
+
     private var notesStoreStorage: NoteStore?
     private var noteStore: NoteStore {
         if let store = notesStoreStorage { return store }
@@ -103,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let controller = scratchpadPanelStorage { return controller }
         let controller = ScratchpadPanelController(model: scratchpad, settings: scratchpadSettings, mic: scratchpadMic,
                                                    handoff: handoffTarget,
+                                                   tools: noteTools,
                                                    onMic: { [weak self] in self?.toggleScratchpadMic() },
                                                    onHandoff: { [weak self] in self?.handoffFromScratchpad() })
         scratchpadPanelStorage = controller
@@ -860,6 +877,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Formatter ist ein actor → Zustand asynchron lesen und dann das Menü setzen.
         Task {
             let ready = await formatter.isReady
+            self.transformRunner.isAvailable = ready && self.formattingEnabled
             let loading = await formatter.isLoading
             let name = await formatter.activeModelName
             if ready {
@@ -926,6 +944,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 notes: notesPage,
                 scratchpadSettings: scratchpadSettings,
                 onScratchpadCapture: { [weak self] rolle in self?.beginScratchpadCapture(rolle) },
+                noteTools: noteTools,
                 onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
                 onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
                 updates: updateBridge

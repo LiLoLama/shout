@@ -1036,5 +1036,8 @@ final class Loc: ObservableObject {
         "„%@“ wird angewendet …": "Applying “%@”…",
         "„%@“ angewendet": "Applied “%@”",
         "Anweisung angewendet": "Instruction applied",
+        "Per Sprache …": "By voice…",
+        "Zuletzt: %@": "Last: %@",
+        "Text umarbeiten": "Rework text",
     ]
 }

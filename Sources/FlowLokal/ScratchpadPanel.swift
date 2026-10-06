@@ -98,6 +98,7 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
     private let settings: ScratchpadSettings
     private let mic: ScratchpadMicState
     private let handoff: HandoffTarget
+    private let tools: NoteToolbox
     private let defaults: UserDefaults
     private let onMic: () -> Void
     private let onHandoff: () -> Void
@@ -107,11 +108,12 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
     private var setztRahmen = false
 
     init(model: ScratchpadModel, settings: ScratchpadSettings, mic: ScratchpadMicState, handoff: HandoffTarget,
-         defaults: UserDefaults = .standard, onMic: @escaping () -> Void, onHandoff: @escaping () -> Void) {
+         tools: NoteToolbox, defaults: UserDefaults = .standard, onMic: @escaping () -> Void, onHandoff: @escaping () -> Void) {
         self.model = model
         self.settings = settings
         self.mic = mic
         self.handoff = handoff
+        self.tools = tools
         self.defaults = defaults
         self.onMic = onMic
         self.onHandoff = onHandoff
@@ -193,7 +195,7 @@ final class ScratchpadPanelController: NSObject, NSWindowDelegate {
         fenster.onCycleTab = { [weak self] schritt in self?.model.selectNext(schritt) }
         fenster.onEscape = { [weak self] in self?.model.active?.cancelTransformIfRunning() ?? false }
         let ansicht = ScratchpadView(model: model, store: model.store, mic: mic, onMic: onMic,
-                                     handoff: handoff, onHandoff: onHandoff,
+                                     handoff: handoff, onHandoff: onHandoff, tools: tools,
                                      onActivate: { [weak fenster] in fenster?.makeKey() },
                                      onHide: { [weak self] in self?.hide() })
         fenster.contentView = NSHostingView(rootView: ansicht)

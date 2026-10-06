@@ -54,6 +54,7 @@ struct DashboardView: View {
     @ObservedObject var notes: NotesPageModel
     @ObservedObject var scratchpadSettings: ScratchpadSettings
     var onScratchpadCapture: (ScratchpadSettings.Role) -> Void = { _ in }
+    var noteTools: NoteToolbox? = nil
     /// Öffnet bzw. schließt das Ergebnisfenster eines Auftrags. Die Fenster liegen
     /// beim AppDelegate, weil sie das Dashboard überdauern können.
     var onOpenResult: (FileTranscriptionJob) -> Void = { _ in }
@@ -178,7 +179,7 @@ struct DashboardView: View {
                       onOpenResult: onOpenResult, onCloseResult: onCloseResult)
         case .notizen:
             NotesView(model: notes, store: notes.store, scratchpadSettings: scratchpadSettings,
-                      onScratchpadCapture: onScratchpadCapture)
+                      onScratchpadCapture: onScratchpadCapture, tools: noteTools)
         case .woerterbuch:
             DictionaryView(dictionary: dictionary)
         case .verlauf:

@@ -3,7 +3,7 @@ import SwiftUI
 /// Hält die ausgewählte Dashboard-Seite (von Menüpunkten steuerbar).
 @MainActor
 final class DashboardModel: ObservableObject {
-    enum Tab: Hashable { case aufnahme, meeting, dateien, notizen, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen }
+    enum Tab: Hashable { case aufnahme, meeting, dateien, notizen, woerterbuch, verlauf, statistik, modelle, sync, unterstuetzen, neuigkeiten }
     @Published var tab: Tab = .aufnahme
 
     // Modell-Zustand zentral (überlebt Tab-Wechsel, damit Spinner/Auswahl
@@ -61,6 +61,12 @@ struct DashboardView: View {
     var onOpenResult: (FileTranscriptionJob) -> Void = { _ in }
     var onCloseResult: (UUID) -> Void = { _ in }
     var updates: UpdateBridge = .disabled
+    /// Einträge aus `CHANGELOG.md` für die Seite „Neuigkeiten“.
+    var changelog: [ChangelogEntry] = []
+    /// Anzeige der aktuellen Scratchpad- und Eingangs-Taste für die Animation.
+    /// Eine Closure, damit sie bei jedem Aufbau der Seite frisch gelesen wird
+    /// (die Tasten lassen sich ändern, die View entsteht nur einmal).
+    var explainerKeys: () -> [String] = { [] }
 
     /// Sprachwechsel: die Texte stecken in den fertig gebauten Views, daher baut
     /// `.id(loc.language)` den Baum nach dem Umschalten komplett neu auf (wie die
@@ -130,6 +136,7 @@ struct DashboardView: View {
             navRow(.modelle, Loc.t("Modelle"), "cpu")
             navRow(.sync, Loc.t("Sync & Geräte"), "arrow.triangle.2.circlepath")
             navRow(.unterstuetzen, Loc.t("Unterstützen"), "heart.fill")
+            navRow(.neuigkeiten, Loc.t("Neuigkeiten"), "sparkles")
 
             Spacer()
         }
@@ -195,6 +202,8 @@ struct DashboardView: View {
             SyncView(onExport: onExport, onImport: onImport)
         case .unterstuetzen:
             SupportView()
+        case .neuigkeiten:
+            NewsView(entries: changelog, keys: explainerKeys())
         }
     }
 }

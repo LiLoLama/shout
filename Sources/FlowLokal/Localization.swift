@@ -103,6 +103,7 @@ final class Loc: ObservableObject {
         "Wörterbuch …": "Dictionary…",
         "Nach Aktualisierungen suchen …": "Check for updates…",
         "Über shout. …": "About shout.…",
+        "Neuigkeiten …": "What’s New…",
         "Beenden": "Quit",
 
         "Bereit — %@": "Ready — %@",
@@ -914,6 +915,13 @@ final class Loc: ObservableObject {
         // MARK: - Notizen (Scratchpad)
 
         "Notizen": "Notes",
+        "Neuigkeiten": "What’s New",
+        "Video ansehen": "Watch video",
+        "Keine Neuigkeiten gefunden.": "No news found.",
+        "Abspielen": "Play",
+        "Neu starten": "Restart",
+        "Ton an": "Sound on",
+        "Ton aus": "Sound off",
         "Neue Notiz": "New Note",
         "Ordner": "Folder",
         "Jede Notiz ist eine Markdown-Datei in diesem Ordner. Liegt er in iCloud Drive oder einem Obsidian-Vault, findest du die Notizen auch dort.":

@@ -7,6 +7,15 @@ final class LocalizationNotesTests: XCTestCase {
 
     private let schluessel = [
         "Notizen",
+        // Seite „Neuigkeiten“ und Erklär-Player
+        "Neuigkeiten",
+        "Neuigkeiten …",
+        "Video ansehen",
+        "Keine Neuigkeiten gefunden.",
+        "Abspielen",
+        "Neu starten",
+        "Ton an",
+        "Ton aus",
         "Neue Notiz",
         "Ordner",
         "Jede Notiz ist eine Markdown-Datei in diesem Ordner. Liegt er in iCloud Drive oder einem Obsidian-Vault, findest du die Notizen auch dort.",

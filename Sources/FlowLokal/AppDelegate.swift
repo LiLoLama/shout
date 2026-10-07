@@ -257,6 +257,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let appMenu = NSMenu()
         let aboutItem = appMenu.addItem(withTitle: Loc.t("Über shout. …"), action: #selector(openAbout), keyEquivalent: "")
         aboutItem.target = self
+        let newsItem = appMenu.addItem(withTitle: Loc.t("Neuigkeiten …"), action: #selector(openNews), keyEquivalent: "")
+        newsItem.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: Loc.t("shout. beenden"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
@@ -933,6 +935,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardModel.showAbout = true
     }
 
+    /// „Neuigkeiten …“ — die Seite mit dem Update-Log.
+    @objc private func openNews() { openDashboard(.neuigkeiten) }
+
+    /// Einträge aus `CHANGELOG.md`; fehlt die Datei, bleibt die Seite leer statt zu stürzen.
+    lazy var changelog: [ChangelogEntry] = ChangelogParser.loadBundled() ?? []
+
+    /// Die aktuellen Tasten für die Erklär-Animation: Scratchpad, Eingang.
+    /// Leerer String steht für „Keine“.
+    var explainerKeys: [String] {
+        [ScratchpadSettings.Role.scratchpad, .inbox].map { scratchpadSettings.combo(for: $0)?.display ?? "" }
+    }
+
     /// Reicht den Sparkle-Updater als Closures an die Views weiter (kein Sparkle-Import dort).
     private var updateBridge: UpdateBridge {
         let updater = updaterController.updater
@@ -980,7 +994,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 onOpenNoteInPanel: { [weak self] id in self?.openNoteInPanel(id) },
                 onOpenResult: { [weak self] job in self?.openTranscriptWindow(for: job) },
                 onCloseResult: { [weak self] id in self?.closeTranscriptWindow(id) },
-                updates: updateBridge
+                updates: updateBridge,
+                changelog: changelog,
+                explainerKeys: { [weak self] in self?.explainerKeys ?? [] }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "shout."

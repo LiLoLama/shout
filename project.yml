@@ -411,6 +411,7 @@ targets:
       - path: Sources/FlowLokal/NoteTextView.swift
       # Neuigkeiten
       - path: Sources/FlowLokal/Changelog.swift
+      - path: Sources/FlowLokal/WhatsNew.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.shout.tests

@@ -26,7 +26,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private var state: State = .loadingModel {
-        didSet { updateStatusItem() }
+        didSet {
+            updateStatusItem()
+            // Jede Rückkehr nach `.idle` (Modell geladen, Zustellung, Abbruch, Fehler,
+            // verworfene Aufnahme) holt ein aufgeschobenes „Neu in shout.“ nach.
+            if state == .idle, whatsNewPending {
+                whatsNewPending = false
+                DispatchQueue.main.async { [weak self] in self?.showWhatsNewIfNeeded() }
+            }
+        }
     }
 
     // MARK: - Komponenten
@@ -195,6 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dashboardModel = DashboardModel()
     private var dashboardWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    /// Fenster „Neu in shout.“; `nil` heißt: zu oder nie geöffnet. Zugleich die Sperre
+    /// gegen doppeltes Schließen (Knopf und `windowWillClose` führen zum selben Pfad).
+    private var whatsNewWindow: NSWindow?
+    /// Das Fenster sollte erscheinen, aber eine Aufnahme lief gerade.
+    private var whatsNewPending = false
     /// Ergebnisfenster der Datei-Transkription, eines je Auftrag. Ohne dieses
     /// Verzeichnis öffnete jeder Doppelklick ein weiteres Fenster derselben Datei.
     private var transcriptWindows: [UUID: NSWindow] = [:]
@@ -352,6 +365,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             UserDefaults.standard.set(true, forKey: "didShowDashboard")
             openDashboard(.aufnahme)
         }
+
+        // „Neu in shout.“: erst nach dem Start, nie mitten in eine Aufnahme.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.showWhatsNewIfNeeded()
+        }
+    }
+
+    /// Zeigt einmal die Neuigkeiten seit der zuletzt gesehenen Version.
+    func showWhatsNewIfNeeded() {
+        guard let current = AppVersion.running else { return }
+        guard onboardingWindow == nil, whatsNewWindow == nil else { return }
+        guard state == .idle else {
+            whatsNewPending = true
+            return
+        }
+        let onboardingDone = UserDefaults.standard.bool(forKey: "didCompleteOnboarding")
+        let zeigen = WhatsNewDecider.entriesToShow(
+            all: changelog, lastSeen: WhatsNewState().lastSeen,
+            current: current, onboardingDone: onboardingDone)
+        guard !zeigen.isEmpty else {
+            if onboardingDone { WhatsNewState().markSeen(current) }
+            return
+        }
+
+        let view = WhatsNewView(entries: zeigen, keys: explainerKeys) { [weak self] in
+            // Über das Fenster schließen: `windowWillClose` erledigt den Rest genau einmal.
+            self?.whatsNewWindow?.close()
+        }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.title = "shout."
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.delegate = self
+        window.setContentSize(NSSize(width: 760, height: 580))
+        window.center()
+        whatsNewWindow = window
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
     private func openOnboarding() {
@@ -388,6 +444,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func finishOnboarding(_ tab: DashboardModel.Tab) {
         UserDefaults.standard.set(true, forKey: "didCompleteOnboarding")
         UserDefaults.standard.set(true, forKey: "didShowDashboard")
+        // Wer das Onboarding durchlaufen hat, kennt diese Version.
+        if let v = AppVersion.running { WhatsNewState().markSeen(v) }
         onboardingWindow?.close()
         onboardingWindow = nil
         openDashboard(tab)
@@ -1185,6 +1243,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let closing = notification.object as? NSWindow
         if closing === correctionWindow { correctionWindow = nil }   // Retention lösen
         if closing === onboardingWindow { onboardingWindow = nil }
+        if let closing, closing === whatsNewWindow {
+            // Der eine Schließpfad: Knöpfe und das rote Kreuz landen beide hier.
+            whatsNewWindow = nil
+            if let v = AppVersion.running { WhatsNewState().markSeen(v) }
+            // Ansicht abbauen, damit keine Animation (und kein Ton) weiterläuft.
+            DispatchQueue.main.async { closing.contentViewController = nil }
+        }
         if closing === dashboardWindow { notesPageStorage?.flush() }
         if let id = transcriptWindows.first(where: { $0.value === closing })?.key {
             transcriptWindows.removeValue(forKey: id)
@@ -1196,7 +1261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let corrVisible = correctionWindow?.isVisible == true && correctionWindow !== closing
         let onbVisible = onboardingWindow?.isVisible == true && onboardingWindow !== closing
         let transcriptVisible = transcriptWindows.values.contains { $0.isVisible && $0 !== closing }
-        if !dashVisible && !corrVisible && !onbVisible && !transcriptVisible {
+        let newsVisible = whatsNewWindow?.isVisible == true && whatsNewWindow !== closing
+        if !dashVisible && !corrVisible && !onbVisible && !transcriptVisible && !newsVisible {
             NSApp.setActivationPolicy(.accessory)
         }
     }

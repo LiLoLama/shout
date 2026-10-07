@@ -141,11 +141,15 @@ struct NewsView: View {
 
 /// Der Player im Sheet: 720 breit, darunter „Schließen“.
 private struct ExplainerSheet: View {
-    @State private var controller: ExplainerController?
+    let name: String
+    let keys: [String]
     let onClose: () -> Void
+    /// Entsteht erst beim Erscheinen — nicht im `init`, das SwiftUI oft mehrfach aufruft.
+    @State private var controller: ExplainerController?
 
     init(name: String, keys: [String], onClose: @escaping () -> Void) {
-        _controller = State(initialValue: ExplainerController(name: name, german: Loc.isGerman, keys: keys, autoplay: true))
+        self.name = name
+        self.keys = keys
         self.onClose = onClose
     }
 
@@ -165,6 +169,11 @@ private struct ExplainerSheet: View {
         .frame(width: 720)
         .background(Color.shoutWindow)
         .preferredColorScheme(.dark)
+        .onAppear {
+            if controller == nil {
+                controller = ExplainerController(name: name, german: Loc.isGerman, keys: keys, autoplay: true)
+            }
+        }
         .onDisappear { controller?.stop() }
     }
 }

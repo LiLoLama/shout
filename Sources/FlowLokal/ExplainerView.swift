@@ -59,11 +59,6 @@ final class ExplainerController: NSObject, ObservableObject {
         webView.loadFileURL(ziel, allowingReadAccessTo: folder)
     }
 
-    deinit {
-        // Der Proxy ist ohnehin schwach; hier nur aufräumen, falls `stop()` nie kam.
-        MainActor.assumeIsolated { removeHandler() }
-    }
-
     // MARK: - Bedienung
 
     func togglePlay() { run(isPlaying ? "pause()" : "play()") }
@@ -138,10 +133,25 @@ extension ExplainerController: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        failed = true
+        loadFailed(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        loadFailed(error)
+    }
+
+    /// Der Web-Prozess ist abgestürzt: die Animation ist weg, der Player verschwindet.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        failed = true
+        isPlaying = false
+    }
+
+    /// Abgebrochene Ladevorgänge (-999, „Frame load interrupted“ 102 von WebKit)
+    /// sind kein Fehler der Seite — etwa wenn die Navigation selbst abgelehnt wurde.
+    private func loadFailed(_ error: Error) {
+        let e = error as NSError
+        if e.domain == NSURLErrorDomain, e.code == NSURLErrorCancelled { return }
+        if e.domain == "WebKitErrorDomain", e.code == 102 { return }
         failed = true
     }
 }

@@ -28,11 +28,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var state: State = .loadingModel {
         didSet {
             updateStatusItem()
-            // Jede Rückkehr nach `.idle` (Modell geladen, Zustellung, Abbruch, Fehler,
-            // verworfene Aufnahme) holt ein aufgeschobenes „Neu in shout.“ nach.
-            if state == .idle, whatsNewPending {
+            // Verlässt der Zustand Aufnahme und Verarbeitung (Zustellung, Abbruch, Fehler,
+            // verworfene Aufnahme), kommt ein aufgeschobenes „Neu in shout.“ nach. Kurz
+            // verzögert: Das Einfügen des Diktats soll vorher im Zielfeld angekommen sein.
+            if whatsNewPending, state != .recording, state != .working {
                 whatsNewPending = false
-                DispatchQueue.main.async { [weak self] in self?.showWhatsNewIfNeeded() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    self?.showWhatsNewIfNeeded()
+                }
             }
         }
     }
@@ -376,7 +379,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func showWhatsNewIfNeeded() {
         guard let current = AppVersion.running else { return }
         guard onboardingWindow == nil, whatsNewWindow == nil else { return }
-        guard state == .idle else {
+        // Nur Aufnahme und Verarbeitung halten das Fenster zurück (Fokus gehört dem Diktat).
+        // Beim Modell-Laden oder nach einem Ladefehler gibt es keinen Diktatfokus zu schützen.
+        guard state != .recording, state != .working else {
             whatsNewPending = true
             return
         }

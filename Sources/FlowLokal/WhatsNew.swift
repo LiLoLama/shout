@@ -1,6 +1,6 @@
 import Foundation
 
-/// Was das Fenster „Neu in shout." zeigt.
+/// Was das Fenster „Neu in shout.“ zeigt.
 enum WhatsNewDecider {
     /// Die letzte Version vor diesem Fenster. Wer von dort (oder früher)
     /// aktualisiert, hat sich noch nichts gemerkt — für ihn gilt diese.

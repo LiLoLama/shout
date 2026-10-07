@@ -1,0 +1,13 @@
+{
+  "name": "shout-explainer-video",
+  "private": true,
+  "type": "module",
+  "description": "Rendert die Erklär-Animationen aus Resources/Explainers Bild für Bild zu MP4.",
+  "scripts": {
+    "render": "node render.mjs",
+    "stills": "node render.mjs --stills 1,5,9,14,20,24,30,37"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}

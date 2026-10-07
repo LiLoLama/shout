@@ -1,2 +1,1179 @@
-<!doctype html><meta charset="utf-8"><title>scratchpad</title>
-<script>window.explainer = { ready: true, duration: 0, play(){}, pause(){}, restart(){}, setMuted(){} };</script>
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>shout. – Scratchpad</title>
+<style>
+  /* Bewusst nur dunkel, wie die App. Keine eigenen Bedienelemente: die App hat eine native Leiste. */
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0B0B0E; overflow: hidden; }
+  body { display: grid; place-items: center; }
+  canvas { display: block; }
+</style>
+<canvas id="cv" width="1600" height="1000" role="img"></canvas>
+<script>
+(() => {
+'use strict';
+
+/* ================================================================
+   Grundlagen: Bühne, Parameter, Farben, Texte
+   ================================================================ */
+const W = 1600, H = 1000, DUR = 40;
+const P = new URLSearchParams(location.search);
+const EXPORT = P.has('export');
+const LANG = P.get('lang') === 'en' ? 'en' : 'de';
+const AUTOPLAY = !EXPORT && P.get('autoplay') !== '0';
+let muted = EXPORT ? false : P.get('muted') !== '0';
+
+// Tasten aus der App als Anzeige-Text: keys=<Scratchpad>,<Eingang>; leer → Vorgabe.
+const keyParam = (P.get('keys') || '').split(',').map(s => s.trim());
+const KEYS = { pad: keyParam[0] || '⌃⌥N', inbox: keyParam[1] || '⌃⌥I', send: '⌘⏎' };
+
+const C = {
+  bg: '#0B0B0E', panel: '#16161A', win: '#1B1B20', ink: '#F3F0EC', mute: '#8E8B94',
+  dim: '#5E5B64', live: '#FF4A0A', line: 'rgba(255,255,255,0.10)', hair: 'rgba(255,255,255,0.06)',
+  link: '#4C9BFF', violet: '#9A8CF5'
+};
+const RGB = { ink: [243, 240, 236], live: [255, 74, 10], mute: [142, 139, 148] };
+const FAM = {
+  sans: '-apple-system, "SF Pro Text", system-ui, sans-serif',
+  disp: '-apple-system, "SF Pro Display", system-ui, sans-serif',
+  mono: 'ui-monospace, "SF Mono", Menlo, monospace'
+};
+
+const TEXT = {
+  de: {
+    aria: 'Erklär-Animation: das Scratchpad in shout.',
+    titleNew: 'Neu:', titleRest: 'das Scratchpad',
+    sub: 'Ein schwebender Notizblock, in den du diktierst.',
+    cap2: 'Antippen blendet ein · Halten diktiert hinein',
+    cap3: 'Schnell festhalten – ohne Fenster',
+    cap4: 'Umarbeiten mit deinem Textmodell',
+    cap5: '⌘⏎ legt formatiert in die App davor ab',
+    cap6: 'Jede Notiz ist eine Markdown-Datei – in iCloud oder Obsidian',
+    tap: 'ANTIPPEN', hold: 'HALTEN',
+    mailApp: 'Mail', mailMenus: ['Ablage', 'Bearbeiten', 'Darstellung', 'Postfach', 'E-Mail'],
+    finderApp: 'Finder', finderMenus: ['Ablage', 'Bearbeiten', 'Darstellung', 'Gehe zu', 'Fenster'],
+    mailTitle: 'Neue E-Mail', to: 'An:', toVal: 'Team', subject: 'Betreff:', subjectVal: 'Team-Meeting',
+    inboxTab: 'Eingang', newNote: 'Neue Notiz', noteTitle: 'Ideen Team-Meeting',
+    send: 'In Mail ablegen',
+    dictated: 'Ideen fürs Team-Meeting: Feedback-Runde am Anfang, Aufgaben neu verteilen, Termin für den Workshop finden.',
+    inboxSaid: '„Morgen Druckerpatronen bestellen“',
+    toast: 'Im Eingang notiert', toastAction: 'Öffnen',
+    menu: ['Aufräumen', 'Als Mail', 'Zusammenfassen', 'To-do-Liste', 'Ins Englische'], menuVoice: 'Per Sprache …',
+    working: 'Schreibe als Mail …', cancel: 'Abbrechen', done: 'Als Mail umgeschrieben', undo: 'Rückgängig',
+    mail: ['Hallo zusammen,', '', 'für das Team-Meeting habe ich drei Ideen:', '- Feedback-Runde zum Start',
+      '- Aufgaben neu verteilen', '- Termin für den Workshop finden', '', 'Was meint ihr?', '', 'Viele Grüße', 'Alex'],
+    folder: 'Notizen', sideHead: 'iCloud', sidebar: ['iCloud Drive', 'Schreibtisch', 'Dokumente', 'Notizen'],
+    colName: 'Name', colDate: 'Änderungsdatum',
+    files: [['Eingang.md', 'Heute, 9:41'], ['Ideen Team-Meeting.md', 'Heute, 9:42']],
+    vault: 'Notizen', vaultFiles: ['Eingang', 'Ideen Team-Meeting'],
+    endTitle: 'Das Scratchpad',
+    endPad: 'Antippen zeigt das Panel, halten diktiert', endInbox: 'Diktiert in den Eingang', endSend: 'Legt in die App davor ab'
+  },
+  en: {
+    aria: 'Explainer animation: the Scratchpad in shout.',
+    titleNew: 'New:', titleRest: 'the Scratchpad',
+    sub: 'A floating notepad you dictate into.',
+    cap2: 'Tap to show · Hold to dictate',
+    cap3: 'Capture quickly – no window',
+    cap4: 'Rework with your text model',
+    cap5: '⌘⏎ sends it, formatted, to the app you came from',
+    cap6: 'Every note is a Markdown file – in iCloud or Obsidian',
+    tap: 'TAP', hold: 'HOLD',
+    mailApp: 'Mail', mailMenus: ['File', 'Edit', 'View', 'Mailbox', 'Message'],
+    finderApp: 'Finder', finderMenus: ['File', 'Edit', 'View', 'Go', 'Window'],
+    mailTitle: 'New Message', to: 'To:', toVal: 'Team', subject: 'Subject:', subjectVal: 'Team meeting',
+    inboxTab: 'Inbox', newNote: 'New Note', noteTitle: 'Team meeting ideas',
+    send: 'Send to Mail',
+    dictated: 'Ideas for the team meeting: feedback round at the start, redistribute tasks, find a date for the workshop.',
+    inboxSaid: '“Order printer ink tomorrow”',
+    toast: 'Added to Inbox', toastAction: 'Open',
+    menu: ['Clean up', 'As email', 'Summarize', 'To-do list', 'To English'], menuVoice: 'By voice…',
+    working: 'Writing as email…', cancel: 'Cancel', done: 'Rewritten as email', undo: 'Undo',
+    mail: ['Hi all,', '', 'I have three ideas for the team meeting:', '- Feedback round at the start',
+      '- Redistribute tasks', '- Find a date for the workshop', '', 'What do you think?', '', 'Best,', 'Alex'],
+    folder: 'Notes', sideHead: 'iCloud', sidebar: ['iCloud Drive', 'Desktop', 'Documents', 'Notes'],
+    colName: 'Name', colDate: 'Date Modified',
+    files: [['Inbox.md', 'Today, 9:41'], ['Team meeting ideas.md', 'Today, 9:42']],
+    vault: 'Notes', vaultFiles: ['Inbox', 'Team meeting ideas'],
+    endTitle: 'The Scratchpad',
+    endPad: 'Tap to show the panel, hold to dictate', endInbox: 'Dictates into the Inbox', endSend: 'Sends it to the app you came from'
+  }
+};
+const L = TEXT[LANG];
+document.documentElement.lang = LANG;
+
+/* ================================================================
+   Zeitplan (Sekunden)
+   ================================================================ */
+const TL = {
+  // 1 · Titel
+  titleOut: 2.5, screenIn: 2.8,
+  // 2 · Panel und Diktat
+  padKeysIn: 4.0, padTap: 4.65, panelIn: 4.8,
+  holdOn: 6.2, holdOff: 10.5, wordsOn: 6.75, wordsOff: 10.05, retitle: 10.85, padKeysOut: 11.0,
+  // 3 · Eingang
+  panelOut: 12.0, inboxKeysIn: 12.6, inboxOn: 13.2, inboxOff: 15.5, toastIn: 15.75, toastOut: 17.4, inboxKeysOut: 16.0,
+  // 4 · Zauberstab
+  panelBack: 18.1, cursorIn: 19.0, wandClick: 19.95, itemClick: 21.55, working: 21.8, morph: 23.5, done: 23.55,
+  // 5 · Ablegen
+  sendKeysIn: 27.4, sendTap: 28.2, pasted: 28.75, sendKeysOut: 30.4,
+  // 6 · Dateien, Schluss
+  files: 33.7, endCard: 37.3, end: DUR
+};
+const CAPTIONS = [
+  [3.6, 11.75, 'cap2'], [12.3, 17.75, 'cap3'], [18.45, 26.85, 'cap4'], [27.15, 33.6, 'cap5'], [34.1, 37.25, 'cap6']
+];
+
+/* ================================================================
+   Helfer: Zahlen, Kurven, Rauschen
+   ================================================================ */
+const clamp = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, p) => a + (b - a) * p;
+const seg = (x, a, b) => clamp((x - a) / (b - a));
+const E = {
+  oC: p => 1 - Math.pow(1 - p, 3),
+  iC: p => p * p * p,
+  ioC: p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2,
+  ioS: p => p * p * (3 - 2 * p)
+};
+// Ein- und Ausblenden über ein Fenster [a, b].
+const vis = (x, a, b, fi = 0.4, fo = 0.4) => E.ioC(seg(x, a, a + fi)) * (1 - E.ioC(seg(x, b - fo, b)));
+// Tastendruck: unten zwischen d und u.
+const pressAt = (x, d, u) => E.oC(seg(x, d - 0.06, d)) * (1 - E.ioC(seg(x, u, u + 0.12)));
+const mix = (a, b, p) => `rgb(${Math.round(lerp(a[0], b[0], p))},${Math.round(lerp(a[1], b[1], p))},${Math.round(lerp(a[2], b[2], p))})`;
+const hsh = i => { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+const vn = x => { const i = Math.floor(x), f = x - i, s = f * f * (3 - 2 * f); return lerp(hsh(i), hsh(i + 1), s); };
+function rng(seed) {
+  return () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let r = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    r = r + Math.imul(r ^ r >>> 7, 61 | r) ^ r;
+    return ((r ^ r >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ================================================================
+   Zeichenhelfer
+   ================================================================ */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+cv.setAttribute('aria-label', L.aria);
+let K = 1;   // Auflösungsfaktor der Leinwand
+let t = 0;   // aktuelle Filmzeit
+
+function font(s, w = 500, f = 'sans') { ctx.font = `${w} ${s}px ${FAM[f]}`; }
+function lsp(v) { if ('letterSpacing' in ctx) ctx.letterSpacing = v + 'px'; }
+function mw(str, s, w = 500, f = 'sans', ls = 0) { font(s, w, f); lsp(ls); const m = ctx.measureText(str).width; lsp(0); return m; }
+function tx(str, x, y, o = {}) {
+  ctx.save();
+  font(o.s ?? 24, o.w ?? 500, o.f ?? 'sans'); lsp(o.ls ?? 0);
+  ctx.fillStyle = o.c ?? C.ink;
+  ctx.globalAlpha *= (o.a ?? 1);
+  ctx.textAlign = o.al ?? 'left';
+  ctx.textBaseline = o.bl ?? 'alphabetic';
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+function rr(x, y, w, h, r) {
+  w = Math.max(0, w); h = Math.max(0, h); r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function fillRR(x, y, w, h, r, col) { rr(x, y, w, h, r); ctx.fillStyle = col; ctx.fill(); }
+function strokeRR(x, y, w, h, r, col, lw = 1.5) { rr(x + lw / 2, y + lw / 2, w - lw, h - lw, r); ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke(); }
+function shadowed(fn, blur = 50, oy = 20, a = 0.55) {
+  ctx.save(); ctx.shadowColor = `rgba(0,0,0,${a})`; ctx.shadowBlur = blur; ctx.shadowOffsetY = oy; fn(); ctx.restore();
+}
+function glow(x, y, r, a, rgb = RGB.live) {
+  if (a <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+}
+
+// Wortweise umbrechen; liefert jedes Wort mit Lage (Zeile, x).
+function wrapWords(str, maxW) {
+  const sp = ctx.measureText(' ').width;
+  const out = []; let x = 0, line = 0;
+  for (const w of str.split(' ')) {
+    const ww = ctx.measureText(w).width;
+    if (x > 0 && x + ww > maxW) { line++; x = 0; }
+    out.push({ w, x, line, ww });
+    x += ww + sp;
+  }
+  return out;
+}
+// Zeilen mit „- “-Aufzählungen in eine Breite legen.
+function layoutDoc(lines, maxW, s, wt, lh, gap, ind) {
+  font(s, wt, 'sans');
+  const rows = []; let y = 0, idx = 0;
+  for (const src of lines) {
+    if (!src) { y += gap; continue; }
+    const bullet = src.startsWith('- ');
+    const body = bullet ? src.slice(2) : src;
+    const x0 = bullet ? ind : 0;
+    const ws = wrapWords(body, maxW - x0);
+    const n = ws[ws.length - 1].line + 1;
+    for (let k = 0; k < n; k++) {
+      const text = ws.filter(q => q.line === k).map(q => q.w).join(' ');
+      rows.push({ text, x: x0, y: y + k * lh, bullet: bullet && k === 0, idx, w: ctx.measureText(text).width });
+    }
+    y += n * lh; idx++;
+  }
+  return { rows, h: y };
+}
+// Ein gesetztes Dokument zeichnen. mode: 'md' (Markdown-Strich), 'rich' (Punkt), 'obs' (violetter Punkt).
+function drawDoc(doc, x, y, o) {
+  const s = o.s, lh = o.lh;
+  for (const r of doc.rows) {
+    const a = o.alphaOf ? o.alphaOf(r.idx) : 1;
+    if (a <= 0.001) continue;
+    const dy = o.dyOf ? o.dyOf(r.idx) : 0;
+    const by = y + r.y + lh * 0.72 + dy;
+    if (r.bullet) {
+      if (o.mode === 'md') tx('-', x, by, { s, w: 500, c: C.mute, a });
+      else {
+        ctx.save(); ctx.globalAlpha *= a; ctx.fillStyle = o.mode === 'obs' ? C.violet : C.ink;
+        ctx.beginPath(); ctx.arc(x + o.ind * 0.4, by - s * 0.33, s * 0.13, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
+    }
+    tx(r.text, x + r.x, by, { s, w: o.w ?? 400, c: o.c ?? C.ink, a });
+  }
+}
+
+/* ---------- Symbole (24er-Raster, Mitte = 0) ---------- */
+function star4(x, y, r) {
+  ctx.beginPath(); ctx.moveTo(x, y - r);
+  ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r);
+  ctx.quadraticCurveTo(x, y, x - r, y); ctx.quadraticCurveTo(x, y, x, y - r); ctx.fill();
+}
+const ICONS = {
+  mic(o) {
+    rr(-3.6, -10, 7.2, 12.5, 3.6); o.fill ? ctx.fill() : ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -2, 7, 0.1, Math.PI - 0.1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 5.2); ctx.lineTo(0, 9.5); ctx.moveTo(-4, 9.5); ctx.lineTo(4, 9.5); ctx.stroke();
+  },
+  pin() {
+    ctx.rotate(0.62);
+    rr(-3.8, -10.5, 7.6, 8.5, 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-6.5, -2); ctx.lineTo(6.5, -2); ctx.moveTo(0, -2); ctx.lineTo(0, 10.5); ctx.stroke();
+  },
+  wand() {
+    ctx.lineWidth *= 1.15;
+    ctx.beginPath(); ctx.moveTo(-9, 9.5); ctx.lineTo(4.5, -4); ctx.stroke();
+    star4(7.5, -7.5, 4.6); star4(-2.5, -8.5, 2.6); star4(9, 2.5, 2.6);
+  },
+  plus() { ctx.beginPath(); ctx.moveTo(-6.5, 0); ctx.lineTo(6.5, 0); ctx.moveTo(0, -6.5); ctx.lineTo(0, 6.5); ctx.stroke(); },
+  sidebar() { rr(-10, -8, 20, 16, 3); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-3.5, -8); ctx.lineTo(-3.5, 8); ctx.stroke(); },
+  xmark() { ctx.beginPath(); ctx.moveTo(-4, -4); ctx.lineTo(4, 4); ctx.moveTo(4, -4); ctx.lineTo(-4, 4); ctx.stroke(); },
+  envelope() {
+    rr(-10, -7.5, 20, 15, 2.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-9, -6); ctx.lineTo(0, 1); ctx.lineTo(9, -6); ctx.stroke();
+  },
+  note() {
+    rr(-8, -10, 16, 20, 3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-4, -4.5); ctx.lineTo(4, -4.5); ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.moveTo(-4, 4.5); ctx.lineTo(1, 4.5); ctx.stroke();
+  },
+  check() {
+    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(-4.5, 0.3); ctx.lineTo(-1.3, 3.6); ctx.lineTo(4.8, -3.4); ctx.stroke();
+  },
+  doc() {
+    ctx.beginPath(); ctx.moveTo(-7, -10); ctx.lineTo(3, -10); ctx.lineTo(8, -5); ctx.lineTo(8, 10); ctx.lineTo(-7, 10); ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(3, -10); ctx.lineTo(3, -5); ctx.lineTo(8, -5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-3.5, 0); ctx.lineTo(4, 0); ctx.moveTo(-3.5, 4); ctx.lineTo(2, 4); ctx.stroke();
+  },
+  folder() {
+    ctx.beginPath(); ctx.moveTo(-10, -6); ctx.lineTo(-10, 8); ctx.lineTo(10, 8); ctx.lineTo(10, -4); ctx.lineTo(-1, -4);
+    ctx.lineTo(-3, -7); ctx.lineTo(-9, -7); ctx.closePath(); ctx.stroke();
+  },
+  cloud() {
+    ctx.beginPath(); ctx.moveTo(-6, 6); ctx.arc(-6, 1, 5, Math.PI / 2, Math.PI * 1.5); ctx.arc(1, -2, 7, Math.PI * 1.1, Math.PI * 1.95);
+    ctx.arc(6.5, 2, 4, -Math.PI / 2, Math.PI / 2); ctx.closePath(); ctx.stroke();
+  },
+  chevL() { ctx.beginPath(); ctx.moveTo(3, -7); ctx.lineTo(-4, 0); ctx.lineTo(3, 7); ctx.stroke(); },
+  chevR() { ctx.beginPath(); ctx.moveTo(-3, -7); ctx.lineTo(4, 0); ctx.lineTo(-3, 7); ctx.stroke(); },
+  plane() {
+    ctx.beginPath(); ctx.moveTo(-10, -1); ctx.lineTo(10, -8); ctx.lineTo(3, 9); ctx.lineTo(0, 2); ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 2); ctx.lineTo(10, -8); ctx.stroke();
+  },
+  search() { ctx.beginPath(); ctx.arc(-2, -2, 6.5, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(3, 3); ctx.lineTo(9, 9); ctx.stroke(); }
+};
+function icon(name, cx, cy, s, col, o = {}) {
+  ctx.save();
+  ctx.globalAlpha *= (o.a ?? 1);
+  ctx.translate(cx, cy); ctx.scale(s / 24, s / 24);
+  ctx.strokeStyle = col; ctx.fillStyle = col;
+  ctx.lineWidth = o.lw ?? 1.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ICONS[name](o);
+  ctx.restore();
+}
+function spinner(cx, cy, r, a = 1) {
+  const step = Math.floor(t * 12);
+  ctx.save(); ctx.globalAlpha *= a; ctx.lineCap = 'round'; ctx.lineWidth = r * 0.24;
+  for (let i = 0; i < 8; i++) {
+    const ang = i / 8 * Math.PI * 2;
+    ctx.strokeStyle = `rgba(243,240,236,${0.2 + 0.8 * (((i - step) % 8 + 8) % 8) / 7})`;
+    ctx.beginPath(); ctx.moveTo(cx + Math.cos(ang) * r * 0.5, cy + Math.sin(ang) * r * 0.5);
+    ctx.lineTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r); ctx.stroke();
+  }
+  ctx.restore();
+}
+function trafficLights(x, y, r = 7, gap = 22) {
+  ['#FF5F57', '#FEBC2E', '#28C840'].forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x + i * gap, y, r, 0, Math.PI * 2); ctx.fill(); });
+}
+function caret(x, y, h, a = 1, blink = true) {
+  if (blink && Math.floor(t / 0.53) % 2 === 1) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.fillStyle = C.live; ctx.fillRect(x, y - h, 2.5, h); ctx.restore();
+}
+// Ein schlichtes Fenster mit Titelleiste.
+function windowChrome(x, y, w, h, title, o = {}) {
+  const r = 14, th = o.th ?? 52;
+  shadowed(() => fillRR(x, y, w, h, r, o.bg ?? '#1E1E23'), 70, 26, 0.6);
+  ctx.save(); rr(x, y, w, h, r); ctx.clip();
+  ctx.fillStyle = o.barBg ?? 'rgba(255,255,255,0.035)'; ctx.fillRect(x, y, w, th);
+  ctx.fillStyle = C.hair; ctx.fillRect(x, y + th - 1, w, 1);
+  ctx.restore();
+  strokeRR(x, y, w, h, r, 'rgba(255,255,255,0.10)', 1.5);
+  trafficLights(x + 26, y + th / 2);
+  if (title) tx(title, x + w / 2, y + th / 2 + 7, { s: 19, w: 600, c: C.mute, al: 'center' });
+}
+
+/* ================================================================
+   Tastenkappen
+   ================================================================ */
+const KEY_NAMES = { '⌃': 'control', '⌥': 'option', '⇧': 'shift', '⌘': 'command', '⏎': 'return', '↩': 'return', '⇥': 'tab', '⎋': 'esc', '⌫': 'delete', '␣': 'space' };
+function splitKeys(s) {
+  const out = []; let rest = '';
+  for (const ch of Array.from(s)) { if ('⌃⌥⇧⌘'.includes(ch) && !rest) out.push(ch); else rest += ch; }
+  if (rest) out.push(rest);
+  return out;
+}
+function capWidth(glyph, size) {
+  if (Array.from(glyph).length <= 1) return size;
+  return Math.max(size, mw(glyph, size * 0.36, 500) + size * 0.5);
+}
+function keycap(x, cy, w, s, glyph, press) {
+  const depth = s * 0.1, off = press * depth * 0.75, r = s * 0.2;
+  const y = cy - s / 2;
+  fillRR(x, y + depth, w, s, r, '#070709');
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6 - off * 0.5;
+  const g = ctx.createLinearGradient(0, y + off, 0, y + off + s);
+  g.addColorStop(0, '#3B3B42'); g.addColorStop(1, '#27272C');
+  rr(x, y + off, w, s, r); ctx.fillStyle = g; ctx.fill();
+  ctx.restore();
+  strokeRR(x, y + off, w, s, r, press > 0.04 ? `rgba(255,74,10,${0.35 + 0.6 * press})` : 'rgba(255,255,255,0.13)', 2);
+  const single = Array.from(glyph).length <= 1;
+  const name = KEY_NAMES[glyph];
+  const col = mix(RGB.ink, RGB.live, press);
+  const gy = y + off + s * (name ? 0.42 : 0.5);
+  tx(glyph, x + w / 2, gy, { s: single ? s * 0.42 : s * 0.36, w: single && !/[A-Z0-9]/.test(glyph) ? 400 : 500, c: col, al: 'center', bl: 'middle' });
+  if (name) tx(name, x + w / 2, y + off + s * 0.82, { s: Math.max(12, s * 0.15), w: 500, f: 'sans', c: C.mute, al: 'center', bl: 'middle' });
+}
+// Eine Reihe Kappen ab x; gibt die Breite zurück. press: 0…1.
+function keyRow(str, x, cy, size, press, gap = 14) {
+  const caps = splitKeys(str);
+  const ws = caps.map(g => capWidth(g, size));
+  const total = ws.reduce((a, b) => a + b, 0) + gap * (caps.length - 1);
+  glow(x + total / 2, cy + size * 0.1, total * 0.75, 0.16 * press);
+  let cx = x;
+  caps.forEach((g, i) => { keycap(cx, cy, ws[i], size, g, press); cx += ws[i] + gap; });
+  return total;
+}
+function rowWidth(str, size, gap = 14) {
+  const caps = splitKeys(str);
+  return caps.reduce((a, g) => a + capWidth(g, size), 0) + gap * (caps.length - 1);
+}
+
+/* ================================================================
+   Bühne: Bildschirm, Menüleiste, Fenster
+   ================================================================ */
+const SCREEN = { x: 40, y: 28, w: 1520, h: 842, r: 22 };
+const MAILW = { x: 96, y: 104, w: 772, h: 566 };
+const PANEL = { x: 908, y: 92, w: 612, h: 578 };
+const KEYS_POS = { x: 112, cy: 762, size: 92 };
+const PILL_POS = { x: 800, y: 776 };
+
+function screenBase(a, sc) {
+  const { x, y, w, h, r } = SCREEN;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.translate(800, 449); ctx.scale(sc, sc); ctx.translate(-800, -449);
+  shadowed(() => fillRR(x, y, w, h, r, '#111115'), 80, 30, 0.7);
+  ctx.save(); rr(x, y, w, h, r); ctx.clip();
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#18181D'); g.addColorStop(1, '#0F0F12');
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  glow(1380, 820, 700, 0.07);
+  glow(260, 160, 600, 0.05, [140, 140, 190]);
+  // Der Clip bleibt bis screenEnd(): nichts ragt über den Bildschirmrand.
+}
+function screenEnd() {
+  const { x, y, w, h, r } = SCREEN;
+  ctx.restore();
+  strokeRR(x, y, w, h, r, 'rgba(255,255,255,0.09)', 1.5);
+  ctx.restore();
+}
+function menuBar() {
+  const { x, y, w } = SCREEN, mh = 34;
+  ctx.save(); rr(x, y, w, SCREEN.h, SCREEN.r); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,0.045)'; ctx.fillRect(x, y, w, mh);
+  ctx.fillStyle = C.hair; ctx.fillRect(x, y + mh, w, 1);
+  ctx.restore();
+  const fin = E.ioC(seg(t, TL.files + 0.15, TL.files + 0.55));
+  const drawMenus = (app, menus, a) => {
+    if (a <= 0) return;
+    let mx = x + 30;
+    tx(app, mx, y + 23, { s: 17, w: 700, a }); mx += mw(app, 17, 700) + 26;
+    for (const m of menus) { tx(m, mx, y + 23, { s: 17, w: 400, c: '#C9C6CE', a }); mx += mw(m, 17, 400) + 24; }
+  };
+  drawMenus(L.mailApp, L.mailMenus, 1 - fin);
+  drawMenus(L.finderApp, L.finderMenus, fin);
+  // rechts: shout.-Symbol (leuchtet während des Diktats) und Uhrzeit
+  const rec = Math.max(pillAmount(TL.holdOn, TL.holdOff), pillAmount(TL.inboxOn, TL.inboxOff));
+  tx('9:41', x + w - 30, y + 23, { s: 17, w: 500, al: 'right' });
+  const bx = x + w - 104;
+  for (let i = 0; i < 4; i++) {
+    const hgt = [7, 13, 10, 5][i] * (1 + rec * 0.35 * Math.sin(t * 14 + i * 1.7));
+    ctx.fillStyle = rec > 0.05 ? mix(RGB.ink, RGB.live, rec) : C.ink;
+    rr(bx + i * 5.5, y + 17 - hgt / 2, 3, hgt, 1.5); ctx.fill();
+  }
+}
+
+/* ---------- Mail-Fenster ---------- */
+const MAIL_BODY = { s: 24, lh: 36, gap: 14, ind: 30 };
+let mailDoc = null;
+function mailWindow(a) {
+  if (a <= 0) return;
+  const { x, y, w, h } = MAILW;
+  ctx.save(); ctx.globalAlpha *= a;
+  windowChrome(x, y, w, h, L.mailTitle);
+  icon('plane', x + w - 34, y + 26, 22, C.mute);
+  const lx = x + 36;
+  tx(L.to, lx, y + 102, { s: 21, w: 400, c: C.mute });
+  tx(L.toVal, lx + mw(L.to, 21, 400) + 12, y + 102, { s: 21, w: 500 });
+  ctx.fillStyle = C.hair; ctx.fillRect(lx, y + 124, w - 72, 1.5);
+  tx(L.subject, lx, y + 164, { s: 21, w: 400, c: C.mute });
+  tx(L.subjectVal, lx + mw(L.subject, 21, 400) + 12, y + 164, { s: 21, w: 500 });
+  ctx.fillStyle = C.hair; ctx.fillRect(lx, y + 186, w - 72, 1.5);
+  const by = y + 220;
+  if (t < TL.pasted) {
+    // Mail ist vorn, solange das Panel nicht den Fokus hat.
+    if (panelState().a < 0.3) caret(lx, by + 28, 30, 1);
+  } else {
+    const n = mailDoc.rows.length;
+    const aOf = i => E.oC(seg(t, TL.pasted + i * 0.06, TL.pasted + 0.45 + i * 0.06));
+    drawDoc(mailDoc, lx, by, { ...MAIL_BODY, mode: 'rich', alphaOf: aOf, dyOf: i => (1 - aOf(i)) * 10 });
+    const last = mailDoc.rows[n - 1];
+    if (t > TL.pasted + 1) caret(lx + last.x + last.w + 4, by + last.y + MAIL_BODY.lh * 0.72 + 2, 28);
+    // kurzes Aufleuchten des Fensters beim Ablegen
+    const fl = vis(t, TL.pasted - 0.05, TL.pasted + 1.3, 0.2, 0.9);
+    if (fl > 0) strokeRR(x - 2, y - 2, w + 4, h + 4, 16, `rgba(255,74,10,${0.55 * fl})`, 2.5);
+  }
+  ctx.restore();
+}
+
+/* ---------- Das Panel ---------- */
+const ED = { s: 24, lh: 36, gap: 14, ind: 26, pad: 30 };
+let panelDoc = null, dictWords = null;
+function panelState() {
+  if (t < TL.panelOut) { const p = E.oC(seg(t, TL.panelIn, TL.panelIn + 0.55)); return { a: p, dx: (1 - p) * 56, s: 1 }; }
+  if (t < TL.panelBack) { const p = E.ioC(seg(t, TL.panelOut, TL.panelOut + 0.42)); return { a: 1 - p, dx: p * 56, s: 1 }; }
+  if (t < TL.sendTap + 0.08) { const p = E.oC(seg(t, TL.panelBack, TL.panelBack + 0.55)); return { a: p, dx: (1 - p) * 56, s: 1 }; }
+  const p = E.ioC(seg(t, TL.sendTap + 0.08, TL.sendTap + 0.45));
+  return { a: 1 - p, dx: 0, s: 1 - 0.035 * p };
+}
+const noticeH = () => 50 * E.ioC(seg(t, TL.working, TL.working + 0.3));
+const wordTime = i => {
+  const n = dictWords.length, span = TL.wordsOff - TL.wordsOn;
+  return TL.wordsOn + (i + 0.35 * (hsh(i * 3.1) - 0.5)) * span / n;
+};
+const FOOT = { h: 54 };
+function wandPos() { return { x: PANEL.x + 102, y: PANEL.y + PANEL.h - FOOT.h / 2 }; }
+
+function panel() {
+  const st = panelState();
+  if (st.a <= 0.001) return;
+  const { x, y, w, h } = PANEL;
+  ctx.save();
+  ctx.globalAlpha *= st.a;
+  ctx.translate(st.dx, 0);
+  ctx.translate(x + w / 2, y + h / 2); ctx.scale(st.s, st.s); ctx.translate(-(x + w / 2), -(y + h / 2));
+  shadowed(() => fillRR(x, y, w, h, 16, C.win), 90, 34, 0.7);
+  ctx.save(); rr(x, y, w, h, 16); ctx.clip();
+
+  // Tabs
+  const tbH = 58;
+  trafficLights(x + 26, y + tbH / 2);
+  let cx = x + 100;
+  const chip = (label, active, labelB = null, mixB = 0) => {
+    const s = 18, wt = active ? 600 : 400;
+    const wA = mw(label, s, wt), wB = labelB ? mw(labelB, s, wt) : wA;
+    const tw = lerp(wA, wB, mixB);
+    const cw = tw + 28 + (active ? 24 : 0);
+    fillRR(cx, y + 13, cw, 32, 8, active ? 'rgba(255,74,10,0.18)' : 'rgba(255,255,255,0.045)');
+    ctx.save(); ctx.beginPath(); ctx.rect(cx + 10, y + 13, tw + 8, 32); ctx.clip();
+    tx(label, cx + 14, y + 35, { s, w: wt, c: active ? '#FFFFFF' : '#9B98A1', a: 1 - mixB });
+    if (labelB) tx(labelB, cx + 14, y + 35, { s, w: wt, c: '#FFFFFF', a: mixB });
+    ctx.restore();
+    if (active) icon('xmark', cx + cw - 18, y + 29, 18, 'rgba(255,255,255,0.75)', { lw: 2.2 });
+    cx += cw + 8;
+  };
+  chip(L.inboxTab, false);
+  chip(L.newNote, true, L.noteTitle, E.ioC(seg(t, TL.retitle, TL.retitle + 0.4)));
+  icon('plus', cx + 14, y + 29, 20, '#9B98A1');
+  icon('sidebar', x + w - 32, y + 29, 22, '#9B98A1');
+  ctx.fillStyle = C.hair; ctx.fillRect(x, y + tbH, w, 1.5);
+
+  // Hinweisleiste (Werkzeug)
+  const nh = noticeH();
+  if (nh > 0.5) {
+    const ny = y + tbH + 1.5;
+    ctx.fillStyle = 'rgba(255,255,255,0.045)'; ctx.fillRect(x, ny, w, nh);
+    ctx.save(); ctx.beginPath(); ctx.rect(x, ny, w, nh); ctx.clip();
+    const pd = E.ioC(seg(t, TL.done - 0.1, TL.done + 0.2));
+    const midY = ny + 25;
+    const btn = (label, a) => {
+      const bw = mw(label, 16, 500) + 26;
+      fillRR(x + w - 18 - bw, midY - 15, bw, 30, 7, `rgba(255,255,255,${0.09 * a})`);
+      tx(label, x + w - 18 - bw / 2, midY + 6, { s: 16, w: 500, c: '#D9D6DD', al: 'center', a });
+    };
+    if (pd < 1) {
+      spinner(x + 30, midY, 10, 1 - pd);
+      tx(L.working, x + 52, midY + 6.5, { s: 18, w: 400, c: '#D9D6DD', a: 1 - pd });
+      btn(L.cancel, 1 - pd);
+    }
+    if (pd > 0) {
+      icon('check', x + 30, midY, 20, C.live, { a: pd });
+      tx(L.done, x + 52, midY + 6.5, { s: 18, w: 400, c: '#D9D6DD', a: pd });
+      btn(L.undo, pd);
+    }
+    ctx.restore();
+  }
+
+  // Editor
+  const ex = x + ED.pad, ey = y + tbH + 1.5 + nh + 22;
+  const morph = seg(t, TL.morph, TL.morph + 0.4);
+  const oldA = (1 - E.ioC(morph)) * (t > TL.working ? lerp(1, 0.5, E.ioC(seg(t, TL.working, TL.working + 0.4))) : 1);
+  let caretX = ex, caretY = ey + ED.lh * 0.72 + 2;
+  if (t < TL.morph + 0.4) {
+    font(ED.s, 400);
+    for (let i = 0; i < dictWords.length; i++) {
+      const q = dictWords[i], wt0 = wordTime(i);
+      const p = E.oC(seg(t, wt0, wt0 + 0.2));
+      if (p <= 0) break;
+      const by = ey + q.line * ED.lh + ED.lh * 0.72;
+      tx(q.w, ex + q.x, by + (1 - p) * 5, { s: ED.s, w: 400, a: p * oldA });
+      caretX = ex + q.x + q.ww + 3; caretY = by + 2;
+    }
+  }
+  if (morph > 0) {
+    const aOf = i => E.oC(seg(t, TL.morph + 0.25 + i * 0.07, TL.morph + 0.7 + i * 0.07));
+    drawDoc(panelDoc, ex, ey, { ...ED, mode: 'md', alphaOf: aOf, dyOf: i => (1 - aOf(i)) * 8 });
+    const last = panelDoc.rows[panelDoc.rows.length - 1];
+    caretX = ex + last.x + last.w + 3; caretY = ey + last.y + ED.lh * 0.72 + 2;
+  }
+  const recording = t > TL.holdOn && t < TL.holdOff + 0.1;
+  const caretOn = (t > TL.panelIn + 0.5 && t < TL.working) || t > TL.morph + 1.2;
+  if (caretOn) caret(caretX, caretY, 28, 1, !recording);
+
+  // Fußleiste
+  const fy = y + h - FOOT.h;
+  ctx.fillStyle = C.hair; ctx.fillRect(x, fy, w, 1.5);
+  const my = fy + FOOT.h / 2;
+  const recA = pillAmount(TL.holdOn, TL.holdOff);
+  if (recA > 0.02) glow(x + 30, my, 26, 0.35 * recA * (0.75 + 0.25 * Math.sin(t * 6)));
+  icon('mic', x + 30, my, 22, recA > 0.5 ? C.live : '#B3B0B8', { fill: recA > 0.5 });
+  icon('pin', x + 66, my, 21, '#B3B0B8');
+  const wp = wandPos();
+  const wandHi = vis(t, TL.wandClick - 0.05, TL.itemClick + 0.15, 0.1, 0.15);
+  if (wandHi > 0) fillRR(wp.x - 17, my - 16, 34, 32, 7, `rgba(255,255,255,${0.12 * wandHi})`);
+  icon('wand', wp.x, my, 22, mix([179, 176, 184], RGB.ink, wandHi));
+  const sendHi = pressAt(t, TL.sendTap, TL.sendTap + 0.1);
+  icon('envelope', x + 150, my, 20, mix([191, 188, 196], RGB.live, sendHi));
+  tx(L.send, x + 168, my + 6.5, { s: 18, w: 400, c: mix([191, 188, 196], RGB.live, sendHi) });
+
+  ctx.restore();
+  strokeRR(x, y, w, h, 16, 'rgba(255,255,255,0.11)', 1.5);
+  ctx.restore();
+}
+
+/* ---------- Zauberstab-Menü und Mauszeiger ---------- */
+const MENU = { w: 310, ih: 44, pad: 7, div: 13 };
+function menuRect() {
+  const wp = wandPos();
+  const n = L.menu.length;
+  const h = MENU.pad * 2 + (n + 1) * MENU.ih + MENU.div;
+  return { x: wp.x - 22, y: wp.y - 26 - h, w: MENU.w, h };
+}
+function menuItemY(i) { const m = menuRect(); return m.y + MENU.pad + i * MENU.ih + (i >= L.menu.length ? MENU.div : 0); }
+const CURSOR_PATH = () => {
+  const wp = wandPos();
+  const item = { x: menuRect().x + 90, y: menuItemY(1) + MENU.ih / 2 + 2 };
+  return [
+    [TL.cursorIn, PANEL.x + 360, PANEL.y + 400],
+    [TL.wandClick - 0.15, wp.x + 4, wp.y + 4],
+    [TL.wandClick + 0.45, wp.x + 4, wp.y + 4],
+    [TL.itemClick - 0.35, item.x, item.y],
+    [TL.itemClick + 0.3, item.x, item.y],
+    [TL.itemClick + 1.0, item.x + 120, item.y + 150]
+  ];
+};
+function cursorAt() {
+  const pts = CURSOR_PATH();
+  if (t <= pts[0][0]) return { x: pts[0][1], y: pts[0][2] };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [t0, x0, y0] = pts[i], [t1, x1, y1] = pts[i + 1];
+    if (t <= t1) { const p = E.ioC(seg(t, t0, t1)); return { x: lerp(x0, x1, p), y: lerp(y0, y1, p) }; }
+  }
+  const l = pts[pts.length - 1]; return { x: l[1], y: l[2] };
+}
+function wandMenu() {
+  const open = E.oC(seg(t, TL.wandClick + 0.05, TL.wandClick + 0.25)) * (1 - E.ioC(seg(t, TL.itemClick + 0.08, TL.itemClick + 0.25)));
+  if (open <= 0.001 || panelState().a < 0.99) return;
+  const m = menuRect();
+  const cur = cursorAt();
+  ctx.save();
+  ctx.globalAlpha *= open;
+  ctx.translate(m.x, m.y + m.h); ctx.scale(1, lerp(0.96, 1, open)); ctx.translate(-m.x, -(m.y + m.h));
+  shadowed(() => fillRR(m.x, m.y, m.w, m.h, 11, '#2A2A30'), 40, 16, 0.6);
+  strokeRR(m.x, m.y, m.w, m.h, 11, 'rgba(255,255,255,0.12)', 1.5);
+  const items = [...L.menu, L.menuVoice];
+  items.forEach((label, i) => {
+    const iy = menuItemY(i);
+    const inside = cur.x > m.x && cur.x < m.x + m.w && cur.y > iy && cur.y < iy + MENU.ih && t > TL.wandClick + 0.3;
+    const flash = i === 1 && t > TL.itemClick ? (Math.floor((t - TL.itemClick) / 0.06) % 2 === 0 ? 1 : 0) : 1;
+    if (inside && flash) fillRR(m.x + 6, iy + 1, m.w - 12, MENU.ih - 2, 6, C.live);
+    tx(label, m.x + 22, iy + MENU.ih / 2 + 7, { s: 20, w: 400, c: inside && flash ? '#fff' : '#E4E1E8' });
+  });
+  const dy = menuItemY(L.menu.length) - MENU.div / 2 - 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(m.x + 14, dy, m.w - 28, 1.5);
+  ctx.restore();
+}
+function mouseCursor() {
+  const a = vis(t, TL.cursorIn, TL.itemClick + 1.0, 0.3, 0.4);
+  if (a <= 0) return;
+  const p = cursorAt();
+  const click = Math.max(pressAt(t, TL.wandClick, TL.wandClick + 0.06), pressAt(t, TL.itemClick, TL.itemClick + 0.06));
+  const s = 1.45 * (1 - 0.12 * click);
+  ctx.save(); ctx.globalAlpha *= a;
+  ctx.translate(p.x, p.y); ctx.scale(s, s);
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(0, 22); ctx.lineTo(5.5, 17); ctx.lineTo(9.5, 25.5); ctx.lineTo(13, 24); ctx.lineTo(9, 15.5); ctx.lineTo(16, 15.5); ctx.closePath();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+  ctx.fillStyle = '#111'; ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------- Pille mit Pegel (Maße aus RecordingIndicator.swift) ---------- */
+const PILL_W = [0.55, 0.78, 0.93, 1.0, 0.93, 0.78, 0.55];
+function pillAmount(on, off) { return E.oC(seg(t, on + 0.08, on + 0.33)) * (1 - E.iC(seg(t, off, off + 0.22))); }
+function pill(on, off) {
+  const a = pillAmount(on, off);
+  if (a <= 0.001) return;
+  const S = 2.3, w = 111 * S, h = 34 * S;
+  const { x: cx, y: cy } = PILL_POS;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.translate(cx, cy); const sc = lerp(0.86, 1, a); ctx.scale(sc, sc);
+  shadowed(() => fillRR(-w / 2, -h / 2, w, h, h / 2, 'rgba(40,40,46,0.96)'), 24, 6, 0.6);
+  strokeRR(-w / 2, -h / 2, w, h, h / 2, 'rgba(255,255,255,0.11)', 1.5);
+  const bw = 2.8 * S, gap = 2.5 * S, total = 7 * bw + 6 * gap;
+  const env = 0.45 + 0.55 * vn(t * 2.6 + on);
+  for (let i = 0; i < 7; i++) {
+    const lv = clamp((0.3 + 0.7 * vn(t * 6 + i * 0.9 + on * 3)) * PILL_W[i] * env);
+    const len = (3 + 18 * lv) * S;
+    const bx = -total / 2 + bw / 2 + i * (bw + gap);
+    ctx.save(); ctx.shadowColor = 'rgba(255,74,10,0.55)'; ctx.shadowBlur = 4 * S;
+    fillRR(bx - bw / 2, -len / 2, bw, len, bw / 2, C.live);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// Was beim Eingang gesagt wird, leise über der Pille.
+let saidWords = null;
+function inboxSaid() {
+  const fade = 1 - E.ioC(seg(t, TL.inboxOff + 0.1, TL.inboxOff + 0.5));
+  if (t < TL.inboxOn || fade <= 0) return;
+  font(26, 400); const sp = ctx.measureText(' ').width;
+  const total = saidWords.reduce((a, q) => a + q.ww, 0) + sp * (saidWords.length - 1);
+  let x = PILL_POS.x - total / 2;
+  const span = TL.inboxOff - 0.4 - (TL.inboxOn + 0.5);
+  saidWords.forEach((q, i) => {
+    const t0 = TL.inboxOn + 0.5 + i * span / saidWords.length;
+    const p = E.oC(seg(t, t0, t0 + 0.25));
+    tx(q.w, x, PILL_POS.y - 74 + (1 - p) * 5, { s: 26, w: 400, c: '#C9C6CE', a: p * fade });
+    x += q.ww + sp;
+  });
+}
+
+/* ---------- Hinweis „Im Eingang notiert“ ---------- */
+function toast() {
+  const pin = E.oC(seg(t, TL.toastIn, TL.toastIn + 0.4)), pout = E.ioC(seg(t, TL.toastOut, TL.toastOut + 0.4));
+  const a = pin * (1 - pout);
+  if (a <= 0) return;
+  const s = 20, msgW = mw(L.toast, s, 500), actW = mw(L.toastAction, s, 500);
+  const w = 30 + 28 + 14 + msgW + 22 + actW + 26, h = 64;
+  const x = SCREEN.x + SCREEN.w - 28 - w + (1 - pin) * 30, y = SCREEN.y + 52;
+  ctx.save(); ctx.globalAlpha *= a;
+  shadowed(() => fillRR(x, y, w, h, 14, 'rgba(46,46,52,0.97)'), 40, 14, 0.55);
+  strokeRR(x, y, w, h, 14, 'rgba(255,255,255,0.12)', 1.5);
+  icon('note', x + 30 + 12, y + h / 2, 26, C.live, { lw: 2 });
+  tx(L.toast, x + 30 + 28 + 14, y + h / 2 + 7, { s, w: 500 });
+  tx(L.toastAction, x + w - 26, y + h / 2 + 7, { s, w: 500, c: C.link, al: 'right' });
+  ctx.restore();
+}
+
+/* ---------- Tastenkappen der Szenen ---------- */
+function keysScene(str, tin, tout, presses, label) {
+  const a = E.oC(seg(t, tin, tin + 0.35)) * (1 - E.ioC(seg(t, tout, tout + 0.4)));
+  if (a <= 0) return;
+  let press = 0;
+  for (const [d, u] of presses) press = Math.max(press, pressAt(t, d, u));
+  const natural = rowWidth(str, KEYS_POS.size);
+  const size = KEYS_POS.size * Math.min(1, 440 / natural);
+  ctx.save(); ctx.globalAlpha *= a;
+  const dy = (1 - E.oC(seg(t, tin, tin + 0.45))) * 18;
+  const wRow = keyRow(str, KEYS_POS.x, KEYS_POS.cy + dy, size, press);
+  if (label) {
+    const pillLeft = PILL_POS.x - 111 * 2.3 / 2 - 28;
+    for (const [text, l0, l1] of label) {
+      const la = vis(t, l0, l1, 0.2, 0.25);
+      if (la <= 0) continue;
+      const o = { s: 18, w: 600, f: 'mono', ls: 4, c: C.live, a: la };
+      // Rechts neben den Kappen; bei langen Tasten darüber, damit nichts in die Pille läuft.
+      if (KEYS_POS.x + wRow + 30 + mw(text, 18, 600, 'mono', 4) < pillLeft) tx(text, KEYS_POS.x + wRow + 30, KEYS_POS.cy + dy + 6, o);
+      else tx(text, KEYS_POS.x + 2, KEYS_POS.cy + dy - size / 2 - 18, o);
+    }
+  }
+  ctx.restore();
+}
+
+/* ---------- Szene 6: Ordner und Obsidian-artige Ansicht ---------- */
+const FINDER = { x: 96, y: 112, w: 650, h: 450 };
+const OBS = { x: 780, y: 92, w: 740, h: 590 };
+const OBS_BODY = { s: 21, lh: 32, gap: 12, ind: 26 };
+let obsDoc = null;
+function finderWindow(a) {
+  if (a <= 0) return;
+  const { x, y, w, h } = FINDER;
+  ctx.save(); ctx.globalAlpha *= a;
+  windowChrome(x, y, w, h, null, { bg: '#1E1E23' });
+  icon('chevL', x + 112, y + 26, 18, C.mute); icon('chevR', x + 140, y + 26, 18, C.dim);
+  tx(L.folder, x + 168, y + 33, { s: 20, w: 700 });
+  // Seitenleiste
+  const sw = 190;
+  ctx.fillStyle = 'rgba(255,255,255,0.025)'; ctx.fillRect(x + 1, y + 52, sw, h - 53);
+  ctx.fillStyle = C.hair; ctx.fillRect(x + sw, y + 52, 1, h - 52);
+  tx(L.sideHead, x + 20, y + 88, { s: 14, w: 700, c: C.dim });
+  L.sidebar.forEach((s, i) => {
+    const iy = y + 104 + i * 40, sel = i === 3;
+    if (sel) fillRR(x + 10, iy, sw - 20, 34, 7, 'rgba(255,255,255,0.08)');
+    icon(i === 0 ? 'cloud' : 'folder', x + 32, iy + 17, 18, sel ? C.live : C.mute);
+    tx(s, x + 50, iy + 23, { s: 17, w: sel ? 600 : 400, c: sel ? C.ink : '#C9C6CE' });
+  });
+  // Liste
+  const lx = x + sw + 22, lw = w - sw - 44;
+  tx(L.colName, lx, y + 88, { s: 15, w: 600, c: C.mute });
+  tx(L.colDate, lx + lw, y + 88, { s: 15, w: 600, c: C.mute, al: 'right' });
+  ctx.fillStyle = C.hair; ctx.fillRect(lx - 8, y + 100, lw + 16, 1);
+  const selA = E.ioC(seg(t, TL.files + 1.1, TL.files + 1.4));
+  L.files.forEach(([name, date], i) => {
+    const ry = y + 110 + i * 46, sel = i === 1;
+    const ra = E.oC(seg(t, TL.files + 0.5 + i * 0.12, TL.files + 0.9 + i * 0.12));
+    if (sel && selA > 0) fillRR(lx - 10, ry, lw + 20, 40, 7, `rgba(255,74,10,${0.22 * selA})`);
+    icon('doc', lx + 10, ry + 20, 22, sel ? mix(RGB.mute, RGB.live, selA) : C.mute, { a: ra });
+    tx(name, lx + 32, ry + 27, { s: 19, w: 500, a: ra });
+    tx(date, lx + lw, ry + 27, { s: 16, w: 400, c: C.mute, al: 'right', a: ra });
+  });
+  ctx.restore();
+}
+function obsidianWindow(a, dx) {
+  if (a <= 0) return;
+  const { x, y, w, h } = OBS;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(dx, 0);
+  windowChrome(x, y, w, h, null, { bg: '#1C1C1F', th: 46, barBg: '#232327' });
+  // Notiz-Reiter in der Titelleiste
+  fillRR(x + 100, y + 8, 250, 38, 8, '#1C1C1F');
+  tx(L.noteTitle, x + 118, y + 33, { s: 16, w: 500, c: '#D9D6DD' });
+  // Leiste und Dateibaum
+  const rib = 46, tree = 196;
+  ctx.fillStyle = '#18181B'; ctx.fillRect(x + 1, y + 46, rib + tree, h - 47);
+  ctx.fillStyle = C.hair; ctx.fillRect(x + rib, y + 46, 1, h - 46); ctx.fillRect(x + rib + tree, y + 46, 1, h - 46);
+  ['search', 'folder', 'doc'].forEach((n, i) => icon(n, x + rib / 2, y + 82 + i * 44, 18, C.dim));
+  const fx = x + rib + 16;
+  tx(L.vault, fx, y + 84, { s: 15, w: 700, c: C.mute });
+  L.vaultFiles.forEach((f, i) => {
+    const fy = y + 100 + i * 36, sel = i === 1;
+    if (sel) fillRR(fx - 6, fy, tree - 22, 30, 6, 'rgba(154,140,245,0.16)');
+    tx(f, fx + 6, fy + 21, { s: 16, w: sel ? 600 : 400, c: sel ? C.ink : '#B3B0B8' });
+  });
+  // Inhalt
+  const cx = x + rib + tree + 34, cw = w - rib - tree - 68;
+  tx(L.noteTitle, cx, y + 112, { s: 32, w: 700 });
+  drawDoc(obsDoc, cx, y + 136, { ...OBS_BODY, mode: 'obs', c: '#DCDAE0' });
+  ctx.restore();
+}
+
+/* ---------- Titel und Schluss ---------- */
+function brand(x, y, s, a, al = 'center') {
+  const bw = mw('shout', s, 800, 'disp'), dw = mw('.', s, 800, 'disp');
+  const x0 = al === 'center' ? x - (bw + dw) / 2 : x;
+  tx('shout', x0, y, { s, w: 800, f: 'disp', a });
+  tx('.', x0 + bw, y, { s, w: 800, f: 'disp', c: C.live, a });
+}
+function titleScene() {
+  const out = E.ioC(seg(t, TL.titleOut, TL.titleOut + 0.5));
+  if (out >= 1) return;
+  const a = 1 - out, dy = -out * 24;
+  const z = 1 + 0.025 * E.ioS(seg(t, 0, 3));
+  ctx.save();
+  ctx.translate(800, 470); ctx.scale(z, z); ctx.translate(-800, -470);
+  glow(800, 470, 520, 0.08 * a);
+  brand(800, 372 + dy, 40, a);
+  const s = 92, wN = mw(L.titleNew + ' ', s, 700, 'disp'), wR = mw(L.titleRest, s, 700, 'disp');
+  const x0 = 800 - (wN + wR) / 2;
+  tx(L.titleNew, x0, 500 + dy, { s, w: 700, f: 'disp', c: C.live, a });
+  tx(L.titleRest, x0 + wN, 500 + dy, { s, w: 700, f: 'disp', a });
+  const sa = E.oC(seg(t, 0.35, 1.0)) * a;
+  tx(L.sub, 800, 574 + dy + (1 - E.oC(seg(t, 0.35, 1.0))) * 10, { s: 32, w: 400, c: C.mute, al: 'center', a: sa });
+  ctx.restore();
+}
+function endCard() {
+  const a0 = E.ioC(seg(t, TL.endCard + 0.35, TL.endCard + 0.9));
+  if (a0 <= 0) return;
+  glow(800, 470, 620, 0.07 * a0);
+  const st = i => E.oC(seg(t, TL.endCard + 0.45 + i * 0.16, TL.endCard + 1.05 + i * 0.16));
+  brand(800, 236 - (1 - st(0)) * 12, 36, st(0));
+  tx(L.endTitle, 800, 330 - (1 - st(0)) * 12, { s: 72, w: 700, f: 'disp', al: 'center', a: st(0) });
+  const rows = [[KEYS.pad, L.endPad], [KEYS.inbox, L.endInbox], [KEYS.send, L.endSend]];
+  const size = 76;
+  // Gruppe mittig: rechtsbündige Tasten, linksbündige Texte.
+  const capsW = Math.max(...rows.map(([k]) => Math.min(520, rowWidth(k, size, 12))));
+  const textW = Math.max(...rows.map(([, l]) => mw(l, 30, 500)));
+  const colX = 800 - (capsW + 44 + textW) / 2 + capsW;
+  rows.forEach(([k, label], i) => {
+    const p = st(i + 1), cy = 470 + i * 118;
+    const rw = rowWidth(k, size, 12);
+    const sc = Math.min(1, 520 / rw);
+    ctx.save(); ctx.globalAlpha *= p;
+    ctx.translate(0, (1 - p) * 14);
+    ctx.save(); ctx.translate(colX, cy); ctx.scale(sc, sc);
+    keyRow(k, -rw, 0, size, 0, 12);
+    ctx.restore();
+    tx(label, colX + 44, cy + 10, { s: 30, w: 500 });
+    ctx.restore();
+  });
+}
+function captions() {
+  for (const [a0, a1, key] of CAPTIONS) {
+    const a = vis(t, a0, a1, 0.45, 0.4);
+    if (a <= 0) continue;
+    const dy = (1 - E.oC(seg(t, a0, a0 + 0.5))) * 10;
+    tx(L[key], 800, 948 + dy, { s: 36, w: 600, al: 'center', a });
+  }
+}
+
+/* ================================================================
+   Bild bei t
+   ================================================================ */
+function render(time) {
+  t = clamp(time, 0, DUR);
+  ctx.setTransform(K, 0, 0, K, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  const bg = ctx.createRadialGradient(800, 420, 0, 800, 420, 1000);
+  bg.addColorStop(0, '#141418'); bg.addColorStop(1, C.bg);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  titleScene();
+
+  const sIn = E.ioC(seg(t, TL.screenIn, TL.screenIn + 0.7));
+  const sOut = E.ioC(seg(t, TL.endCard, TL.endCard + 0.55));
+  const sa = sIn * (1 - sOut);
+  if (sa > 0) {
+    screenBase(sa, lerp(0.97, 1, sIn) * lerp(1, 0.97, sOut));
+    menuBar();
+    const mailOut = E.ioC(seg(t, TL.files, TL.files + 0.4));
+    const filesA = E.ioC(seg(t, TL.files + 0.3, TL.files + 0.8));
+    mailWindow(1 - mailOut);
+    if (t < TL.files + 0.6) {
+      panel();
+      pill(TL.holdOn, TL.holdOff);
+      pill(TL.inboxOn, TL.inboxOff);
+      inboxSaid();
+      toast();
+      wandMenu();
+      mouseCursor();
+      keysScene(KEYS.pad, TL.padKeysIn, TL.padKeysOut,
+        [[TL.padTap, TL.padTap + 0.12], [TL.holdOn, TL.holdOff]],
+        [[L.tap, TL.padTap - 0.1, TL.padTap + 0.9], [L.hold, TL.holdOn - 0.05, TL.holdOff + 0.2]]);
+      keysScene(KEYS.inbox, TL.inboxKeysIn, TL.inboxKeysOut,
+        [[TL.inboxOn, TL.inboxOff]], [[L.hold, TL.inboxOn - 0.05, TL.inboxOff + 0.2]]);
+      keysScene(KEYS.send, TL.sendKeysIn, TL.sendKeysOut, [[TL.sendTap, TL.sendTap + 0.12]], null);
+    }
+    if (filesA > 0) {
+      finderWindow(filesA);
+      const oa = E.ioC(seg(t, TL.files + 0.75, TL.files + 1.35));
+      obsidianWindow(oa, (1 - oa) * 40);
+    }
+    screenEnd();
+  }
+  endCard();
+  captions();
+}
+
+/* ================================================================
+   Ton — WebAudio, dieselbe Partitur für Wiedergabe und Export
+   ================================================================ */
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function buildAudio(ac, dest, from, offline) {
+  const now = ac.currentTime;
+  const base = offline ? 0 : now + 0.06;
+  const at = tl => base + (tl - from);
+  const live = tl => at(tl) >= now - 0.001;
+  const srcs = [];
+
+  const nb = ac.createBuffer(2, ac.sampleRate * 2, ac.sampleRate);
+  { const r = rng(9); for (let c = 0; c < 2; c++) { const d = nb.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = r() * 2 - 1; } }
+  const ir = ac.createBuffer(2, Math.floor(ac.sampleRate * 2.2), ac.sampleRate);
+  { const r = rng(21); for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = (r() * 2 - 1) * Math.pow(1 - i / d.length, 3.4); } }
+
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.004; comp.release.value = 0.2;
+  const out = ac.createGain(); out.gain.value = 3.4;
+  comp.connect(out); out.connect(dest);
+  const bus = ac.createGain(); bus.connect(comp);
+  const rev = ac.createConvolver(); rev.buffer = ir;
+  const revOut = ac.createGain(); revOut.gain.value = 0.3; rev.connect(revOut); revOut.connect(comp);
+  const send = (node, amt) => { const g = ac.createGain(); g.gain.value = amt; node.connect(g); g.connect(rev); };
+  const noise = (t0, dur) => { const s = ac.createBufferSource(); s.buffer = nb; s.loop = true; s.start(t0, (t0 * 7.3) % 1.5); s.stop(t0 + dur + 0.05); srcs.push(s); return s; };
+  const osc = (type, f, t0, t1) => { const o = ac.createOscillator(); o.type = type; o.frequency.value = f; o.start(t0); o.stop(t1); srcs.push(o); return o; };
+
+  // Weicher Tastenanschlag: gedämpftes Rauschen, ein Hauch Körper.
+  function click(tl, v = 0.07, f = 1100) {
+    if (!live(tl)) return; const t0 = at(tl);
+    const j = hsh(tl * 131.7);
+    const s = noise(t0, 0.04);
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * (0.9 + j * 0.2); bp.Q.value = 1.5;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(v, t0 + 0.0015); g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.024);
+    s.connect(bp); bp.connect(lp); lp.connect(g); g.connect(bus);
+    const o = osc('sine', 240 * (0.95 + j * 0.1), t0, t0 + 0.03);
+    const g2 = ac.createGain(); g2.gain.setValueAtTime(v * 0.5, t0); g2.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.02);
+    o.connect(g2); g2.connect(bus); send(g, 0.08);
+  }
+  // Ein sanfter Ton mit Obertönen.
+  function tone(tl, f, dur, v, type = 'sine', rv = 0.4) {
+    if (!live(tl)) return; const t0 = at(tl);
+    const o = osc(type, f, t0, t0 + dur + 0.05);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(v, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+    o.connect(g); g.connect(bus); send(g, rv);
+  }
+  const twoTone = tl => { tone(tl, mtof(79), 0.18, 0.07); tone(tl + 0.09, mtof(86), 0.28, 0.07); };
+  const doneTone = tl => { tone(tl, mtof(86), 0.16, 0.035); tone(tl + 0.08, mtof(79), 0.3, 0.035); };
+  const ping = tl => { tone(tl, mtof(91), 1.3, 0.08); tone(tl, mtof(98), 0.7, 0.025); tone(tl + 0.004, mtof(103), 0.35, 0.012, 'triangle'); };
+  const blip = (tl, m, v = 0.035) => tone(tl, mtof(m), 0.35, v, 'sine', 0.5);
+  // Luftiges Wischen beim Ein- und Ausblenden des Panels.
+  function whoosh(tl, dur = 0.5, v = 0.035, up = true) {
+    if (!live(tl)) return; const t0 = at(tl);
+    const s = noise(t0, dur);
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.9;
+    bp.frequency.setValueAtTime(up ? 500 : 1600, t0); bp.frequency.exponentialRampToValueAtTime(up ? 1600 : 500, t0 + dur);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(v, t0 + dur * 0.4); g.gain.linearRampToValueAtTime(0, t0 + dur);
+    s.connect(bp); bp.connect(g); g.connect(bus); send(g, 0.3);
+  }
+  // Leiser Klangteppich: zwei weiche Akkorde im Wechsel.
+  function pad(t1, t2, notes, v, rel = 1.6) {
+    if (!live(t2 + rel)) return;
+    const a = Math.max(at(t1), now), b = at(t2), late = at(t1) < now;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.4;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(v, a + (late ? 0.4 : 1.6));
+    g.gain.setValueAtTime(v, Math.max(a + 1.61, b)); g.gain.linearRampToValueAtTime(0, Math.max(a + 1.7, b) + rel);
+    lp.connect(g); g.connect(bus); send(g, 0.6);
+    const end = Math.max(a + 1.7, b) + rel + 0.1;
+    notes.forEach(m => [-5, 5].forEach(dc => {
+      const o = osc('triangle', mtof(m), a, end); o.detune.value = dc;
+      const og = ac.createGain(); og.gain.value = 1 / (notes.length * 2); o.connect(og); og.connect(lp);
+    }));
+  }
+
+  // --- Partitur ---
+  const CH = [[41, 53, 57, 60, 64], [38, 50, 57, 60, 65], [46, 50, 58, 62, 65], [43, 55, 58, 62, 67]];
+  for (let i = 0, tt = 0.2; tt < TL.endCard; i++, tt += 8) pad(tt, Math.min(tt + 8, TL.endCard + 0.3), CH[i % 4], 0.055, 2.2);
+  // 2 · Panel und Diktat
+  click(TL.padTap - 0.03); click(TL.padTap + 0.12, 0.04, 1500);
+  whoosh(TL.panelIn - 0.05, 0.5, 0.03, true);
+  click(TL.holdOn - 0.03); twoTone(TL.holdOn + 0.1);
+  click(TL.holdOff, 0.04, 1500); doneTone(TL.holdOff + 0.12);
+  // 3 · Eingang
+  whoosh(TL.panelOut, 0.45, 0.025, false);
+  click(TL.inboxOn - 0.03); twoTone(TL.inboxOn + 0.1);
+  click(TL.inboxOff, 0.04, 1500);
+  blip(TL.toastIn + 0.05, 84, 0.03); blip(TL.toastIn + 0.15, 88, 0.025);
+  // 4 · Zauberstab
+  whoosh(TL.panelBack - 0.05, 0.5, 0.03, true);
+  click(TL.wandClick, 0.05, 2200); click(TL.itemClick, 0.05, 2200);
+  [76, 79, 84, 88].forEach((m, i) => blip(TL.done + i * 0.09, m, 0.022));
+  // 5 · Ablegen
+  click(TL.sendTap - 0.03); click(TL.sendTap + 0.12, 0.04, 1500);
+  whoosh(TL.sendTap + 0.08, 0.4, 0.02, false);
+  ping(TL.pasted);
+  // 6 · Dateien und leiser Abschluss
+  whoosh(TL.files, 0.6, 0.02, true);
+  pad(TL.endCard + 0.3, DUR - 0.4, [53, 60, 64, 67, 69], 0.08, 1.2);
+  [72, 76, 79, 84].forEach((m, i) => blip(TL.endCard + 0.5 + i * 0.16, m, 0.028));
+
+  return { out, srcs };
+}
+
+/* ---------- Export: Tonspur als WAV ---------- */
+async function renderAudioWav() {
+  const sr = 48000;
+  const oc = new OfflineAudioContext(2, Math.ceil(DUR * sr), sr);
+  buildAudio(oc, oc.destination, 0, true);
+  const buf = await oc.startRendering();
+  const n = buf.length, Lc = buf.getChannelData(0), Rc = buf.getChannelData(1);
+  const ab = new ArrayBuffer(44 + n * 4), dv = new DataView(ab);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true); dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); ws(36, 'data'); dv.setUint32(40, n * 4, true);
+  let o = 44;
+  for (let i = 0; i < n; i++) {
+    dv.setInt16(o, clamp(Lc[i], -1, 1) * 32767, true); dv.setInt16(o + 2, clamp(Rc[i], -1, 1) * 32767, true); o += 4;
+  }
+  const bytes = new Uint8Array(ab); let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/* ================================================================
+   Wiedergabe — Uhr über AudioContext (mit Ton) oder performance.now()
+   ================================================================ */
+let playing = false, cur = 0, tStart = 0, wallStart = 0, acStart = 0, raf = 0, ac = null, nodes = null;
+
+function post(msg) {
+  try { const h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.explainer; if (h) h.postMessage(msg); } catch (e) { /* ohne App */ }
+}
+function postState() { post({ type: 'state', playing, muted, t: Math.round(cur * 100) / 100 }); }
+
+function clock() {
+  if (nodes && ac && ac.state === 'running') return tStart + Math.max(0, ac.currentTime - acStart);
+  return tStart + (performance.now() - wallStart) / 1000;
+}
+function rebase() { const x = clock(); tStart = x; wallStart = performance.now(); return x; }
+function stopAudio() {
+  if (!nodes) return;
+  const v = nodes; nodes = null;
+  try {
+    v.out.gain.cancelScheduledValues(ac.currentTime);
+    v.out.gain.setValueAtTime(v.out.gain.value, ac.currentTime);
+    v.out.gain.linearRampToValueAtTime(0, ac.currentTime + 0.03);
+  } catch (e) { /* schon weg */ }
+  setTimeout(() => { v.srcs.forEach(s => { try { s.stop(); } catch (e) { /* nie gestartet */ } }); try { v.out.disconnect(); } catch (e) { /* egal */ } }, 90);
+}
+function startAudio() {
+  if (muted || !playing) return;
+  try {
+    if (!ac) {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      // Läuft der Kontext erst später an (Autoplay-Regeln), ab dort einsetzen.
+      ac.onstatechange = () => { if (ac.state === 'running' && playing && !muted && !nodes) startAudio(); };
+    }
+    if (ac.state !== 'running') { ac.resume().catch(() => { /* bleibt stumm */ }); return; }
+    const from = rebase();
+    if (from >= DUR) return;
+    nodes = buildAudio(ac, ac.destination, from, false);
+    tStart = from; acStart = ac.currentTime + 0.06;
+  } catch (e) { nodes = null; }
+}
+function tick() {
+  if (!playing) return;
+  cur = clock();
+  if (cur >= DUR) {
+    cur = DUR; playing = false; stopAudio(); render(cur);
+    post({ type: 'ended' }); postState();
+    return;
+  }
+  render(cur);
+  raf = requestAnimationFrame(tick);
+}
+function play() {
+  if (playing) return;
+  if (cur >= DUR - 0.05) cur = 0;
+  playing = true; tStart = cur; wallStart = performance.now();
+  startAudio();
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
+  postState();
+}
+function pause() {
+  if (playing) cur = clock();
+  playing = false; cancelAnimationFrame(raf); stopAudio();
+  render(cur); postState();
+}
+function restart() {
+  playing = false; cancelAnimationFrame(raf); stopAudio();
+  cur = 0; play();
+}
+function setMuted(b) {
+  muted = !!b;
+  if (playing) { stopAudio(); rebase(); if (!muted) startAudio(); }
+  postState();
+}
+
+/* ---------- Größe: 16:10 in das Fenster, Gerätepixel beachten ---------- */
+function resize() {
+  if (EXPORT) { K = 1; cv.width = W; cv.height = H; cv.style.width = W + 'px'; cv.style.height = H + 'px'; return; }
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const cw = Math.max(1, Math.min(vw, vh * W / H)), ch = cw * H / W;
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
+  const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr);
+  if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; }
+  K = bw / W;
+  if (!playing) render(cur);
+}
+
+/* ---------- Start ---------- */
+function prepare() {
+  font(ED.s, 400);
+  dictWords = wrapWords(L.dictated, PANEL.w - 2 * ED.pad);
+  panelDoc = layoutDoc(L.mail, PANEL.w - 2 * ED.pad, ED.s, 400, ED.lh, ED.gap, ED.ind);
+  mailDoc = layoutDoc(L.mail, MAILW.w - 72, MAIL_BODY.s, 400, MAIL_BODY.lh, MAIL_BODY.gap, MAIL_BODY.ind);
+  obsDoc = layoutDoc(L.mail, OBS.w - 46 - 196 - 68, OBS_BODY.s, 400, OBS_BODY.lh, OBS_BODY.gap, OBS_BODY.ind);
+  font(26, 400);
+  saidWords = L.inboxSaid.split(' ').map(w => ({ w, ww: ctx.measureText(w).width }));
+}
+
+window.explainer = {
+  ready: false,
+  duration: DUR,
+  play, pause, restart, setMuted,
+  frame(x, q = 0.92) { render(x); return cv.toDataURL('image/jpeg', q).split(',')[1]; },
+  renderAudio: renderAudioWav
+};
+prepare();
+window.addEventListener('resize', resize);
+resize();
+render(0);
+window.explainer.ready = true;
+if (AUTOPLAY) play(); else postState();
+})();
+</script>
+</html>

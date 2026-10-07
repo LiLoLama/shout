@@ -9,6 +9,9 @@ struct WhatsNewView: View {
     let onClose: () -> Void
 
     @State private var page = 0
+    /// Erst nach ~1 s gilt ⏎ als „Weiter“/„Fertig“: Ein ⏎, das noch dem Tippen vor dem
+    /// Erscheinen des Fensters gehört, soll es nicht gleich schließen. Klicken geht immer.
+    @State private var enterArmed = false
 
     init(entries: [ChangelogEntry], keys: [String], onClose: @escaping () -> Void) {
         self.entries = entries
@@ -36,11 +39,11 @@ struct WhatsNewView: View {
                 if isLast {
                     Button(Loc.t("Fertig"), action: onClose)
                         .buttonStyle(ConsoleButtonStyle())
-                        .keyboardShortcut(.defaultAction)
+                        .keyboardShortcut(enterArmed ? .defaultAction : nil)
                 } else {
                     Button(Loc.t("Weiter")) { page += 1 }
                         .buttonStyle(ConsoleButtonStyle())
-                        .keyboardShortcut(.defaultAction)
+                        .keyboardShortcut(enterArmed ? .defaultAction : nil)
                 }
             }
         }
@@ -48,6 +51,10 @@ struct WhatsNewView: View {
         .frame(width: 760, height: 580)
         .background(Color.shoutWindow)
         .preferredColorScheme(.dark)
+        .task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            enterArmed = true
+        }
     }
 }
 

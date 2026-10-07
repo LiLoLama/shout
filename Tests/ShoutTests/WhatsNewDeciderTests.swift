@@ -47,4 +47,18 @@ final class WhatsNewDeciderTests: XCTestCase {
         d.set("kaputt", forKey: WhatsNewState.key)
         XCTAssertNil(WhatsNewState(defaults: d).lastSeen)
     }
+
+    func testMarkSeenSenktDieMarkeNicht() {
+        let name = "shout-whatsnew-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        defer { d.removePersistentDomain(forName: name) }
+        let s = WhatsNewState(defaults: d)
+        s.markSeen(AppVersion("1.15.0")!)
+        s.markSeen(AppVersion("1.14.0")!)   // Downgrade
+        XCTAssertEqual(s.lastSeen, AppVersion("1.15.0"))
+        s.markSeen(AppVersion("1.15.0")!)
+        XCTAssertEqual(s.lastSeen, AppVersion("1.15.0"))
+        s.markSeen(AppVersion("1.16.0")!)
+        XCTAssertEqual(s.lastSeen, AppVersion("1.16.0"))
+    }
 }

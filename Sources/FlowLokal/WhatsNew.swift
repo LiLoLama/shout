@@ -25,7 +25,11 @@ struct WhatsNewState {
 
     var lastSeen: AppVersion? { defaults.string(forKey: Self.key).flatMap(AppVersion.init) }
 
-    func markSeen(_ version: AppVersion) { defaults.set(version.description, forKey: Self.key) }
+    /// Merkt nur nach oben: Nach einem Downgrade (laufende < gemerkte Version) bleibt die höhere stehen.
+    func markSeen(_ version: AppVersion) {
+        if let alt = lastSeen, alt >= version { return }
+        defaults.set(version.description, forKey: Self.key)
+    }
 }
 
 extension AppVersion {

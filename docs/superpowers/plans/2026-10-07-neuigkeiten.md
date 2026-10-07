@@ -559,7 +559,7 @@ final class ChangelogRepoTests: XCTestCase {
         p.executableURL = URL(fileURLWithPath: "/bin/bash")
         p.arguments = [wurzel.appendingPathComponent("Support/release-notes.sh").path] + args
         var env = ProcessInfo.processInfo.environment
-        if let changelog { env["CHANGELOG"] = changelog }
+        if let changelog { env["SHOUT_CHANGELOG"] = changelog }
         p.environment = env
         let pipe = Pipe()
         p.standardOutput = pipe
@@ -606,14 +606,14 @@ die Aufgabe 4 ersetzt — genau dieser Inhalt:
 # Release-Notes einer Version aus CHANGELOG.md — für
 #   gh release create v1.13.0 … --notes-file <(Support/release-notes.sh 1.13.0)
 #   Support/release-notes.sh --check 1.13.0   → Exit 0 nur mit gültigem Abschnitt
-# CHANGELOG=<pfad> liest eine andere Datei (Tests).
+# SHOUT_CHANGELOG=<pfad> liest eine andere Datei (Tests).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 check=0
 if [[ "${1:-}" == "--check" ]]; then check=1; shift; fi
 version="${1:?Version fehlt, z. B. 1.13.0}"
-datei="${CHANGELOG:-CHANGELOG.md}"
+datei="${SHOUT_CHANGELOG:-CHANGELOG.md}"
 [[ -f "$datei" ]] || { echo "$datei fehlt" >&2; exit 1; }
 
 # Der Abschnitt ohne seine Kopfzeile.

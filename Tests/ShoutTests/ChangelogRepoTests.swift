@@ -38,7 +38,7 @@ final class ChangelogRepoTests: XCTestCase {
         p.executableURL = URL(fileURLWithPath: "/bin/bash")
         p.arguments = [wurzel.appendingPathComponent("Support/release-notes.sh").path] + args
         var env = ProcessInfo.processInfo.environment
-        if let changelog { env["CHANGELOG"] = changelog }
+        if let changelog { env["SHOUT_CHANGELOG"] = changelog }
         p.environment = env
         let pipe = Pipe()
         p.standardOutput = pipe

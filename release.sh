@@ -16,12 +16,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Version aus project.yml; zählt nur für die CHANGELOG-Prüfung. Weiter unten
-# wird VERSION aus der gebauten App neu gelesen (derselbe Wert, sonst wäre der Build falsch).
-VERSION=$(awk -F'"' '/MARKETING_VERSION:/ { print $2; exit }' project.yml)
-echo "▶ Prüfe CHANGELOG.md für $VERSION …"
-Support/release-notes.sh --check "$VERSION" \
-  || { echo "✗ CHANGELOG.md braucht einen gültigen Abschnitt für $VERSION (siehe Kopf der Datei)."; exit 1; }
+# Version aus project.yml; zählt für die CHANGELOG-Prüfung. Weiter unten wird die Version
+# aus der gebauten App gelesen und muss mit dieser übereinstimmen.
+CHANGELOG_VERSION=$(awk -F'"' '/MARKETING_VERSION:/ { print $2; exit }' project.yml)
+echo "▶ Prüfe CHANGELOG.md für $CHANGELOG_VERSION …"
+Support/release-notes.sh --check "$CHANGELOG_VERSION" \
+  || { echo "✗ CHANGELOG.md braucht einen gültigen Abschnitt für $CHANGELOG_VERSION (siehe Kopf der Datei)."; exit 1; }
 
 : "${DEV_ID_APP:?Bitte DEV_ID_APP setzen, z. B. 'Developer ID Application: Dein Name (TEAMID)'}"
 : "${TEAM_ID:?Bitte TEAM_ID setzen (10-stellige Apple Team-ID)}"
@@ -53,6 +53,13 @@ xcodebuild \
 
 APP="$DERIVED/Build/Products/$CONFIG/shout.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+
+# Das Bundle muss den Changelog enthalten (sonst zeigt „Neu in shout.“ nichts und markiert still)
+# und genau die Version tragen, für die der CHANGELOG oben geprüft wurde.
+[ -f "$APP/Contents/Resources/CHANGELOG.md" ] \
+  || { echo "✗ Die gebaute App enthält keine Contents/Resources/CHANGELOG.md — so wird nicht ausgeliefert."; exit 1; }
+[ "$VERSION" = "$CHANGELOG_VERSION" ] \
+  || { echo "✗ Die gebaute App hat Version $VERSION, geprüft wurde der CHANGELOG aber für $CHANGELOG_VERSION (MARKETING_VERSION in project.yml)."; exit 1; }
 
 # ── Sparkle-Helfer neu signieren ────────────────────────────────────────────
 # xcodebuild signiert die verschachtelten Sparkle-Binaries (Updater.app,

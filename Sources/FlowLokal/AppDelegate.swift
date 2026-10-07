@@ -211,6 +211,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var whatsNewWindow: NSWindow?
     /// Das Fenster sollte erscheinen, aber eine Aufnahme lief gerade.
     private var whatsNewPending = false
+    /// Ein Wiederholversuch wartet schon (Nutzer tippt gerade) — es läuft nie mehr als einer.
+    private var whatsNewRetryScheduled = false
     /// Ergebnisfenster der Datei-Transkription, eines je Auftrag. Ohne dieses
     /// Verzeichnis öffnete jeder Doppelklick ein weiteres Fenster derselben Datei.
     private var transcriptWindows: [UUID: NSWindow] = [:]
@@ -383,6 +385,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Beim Modell-Laden oder nach einem Ladefehler gibt es keinen Diktatfokus zu schützen.
         guard state != .recording, state != .working else {
             whatsNewPending = true
+            return
+        }
+        // Tippt der Nutzer gerade (in einer beliebigen App), würde das Fenster ihm den Fokus
+        // und die Tastendrücke wegnehmen. Dann in 3 s erneut versuchen, nie mehr als ein Versuch offen.
+        let ruhe = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        guard ruhe >= 3 else {
+            if !whatsNewRetryScheduled {
+                whatsNewRetryScheduled = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    self?.whatsNewRetryScheduled = false
+                    self?.showWhatsNewIfNeeded()
+                }
+            }
             return
         }
         let onboardingDone = UserDefaults.standard.bool(forKey: "didCompleteOnboarding")

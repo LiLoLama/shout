@@ -21,12 +21,30 @@ struct WhatsNewView: View {
 
     private var isLast: Bool { page >= entries.count - 1 }
 
+    /// Mindestgröße des (in der Größe veränderbaren) Fensters.
+    static let minSize = CGSize(width: 720, height: 620)
+    /// Anteil der Fensterhöhe, den die Animation höchstens einnimmt; der Rest gehört dem Text.
+    private static let maxStageShare: CGFloat = 0.58
+
     var body: some View {
+        GeometryReader { geo in
+            content(maxStageHeight: geo.size.height * Self.maxStageShare)
+        }
+        .frame(minWidth: Self.minSize.width, minHeight: Self.minSize.height)
+        .background(Color.shoutWindow)
+        .preferredColorScheme(.dark)
+        .task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            enterArmed = true
+        }
+    }
+
+    private func content(maxStageHeight: CGFloat) -> some View {
         VStack(spacing: 14) {
             if entries.indices.contains(page) {
                 // `.id`: Jede Seite bekommt eine eigene Ansicht und damit einen
                 // neuen Controller; der alte hält beim Verschwinden an.
-                WhatsNewPage(entry: entries[page], keys: keys)
+                WhatsNewPage(entry: entries[page], keys: keys, maxStageHeight: maxStageHeight)
                     .id(entries[page].id)
             } else {
                 Spacer()
@@ -48,20 +66,16 @@ struct WhatsNewView: View {
             }
         }
         .padding(.horizontal, 28).padding(.top, 40).padding(.bottom, 20)
-        .frame(width: 760, height: 580)
-        .background(Color.shoutWindow)
-        .preferredColorScheme(.dark)
-        .task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            enterArmed = true
-        }
     }
 }
 
-/// Eine Seite: Kopf, Animation (wenn es sie gibt), Text.
+/// Eine Seite: Kopf, Animation (wenn es sie gibt) in voller Inhaltsbreite, Text darunter.
 private struct WhatsNewPage: View {
     let entry: ChangelogEntry
     let keys: [String]
+    /// Höchste Höhe der Bühne (ohne Leiste); ist sie kleiner als Breite ÷ 1,6,
+    /// schrumpft die Animation samt Leiste entsprechend und bleibt mittig.
+    let maxStageHeight: CGFloat
     /// Entsteht erst beim Erscheinen — nicht im `init`, das SwiftUI oft mehrfach aufruft.
     @State private var controller: ExplainerController?
 
@@ -71,8 +85,7 @@ private struct WhatsNewPage: View {
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Color(white: 0.95))
             if let controller {
-                ExplainerView(controller: controller)
-                    .frame(maxWidth: 440)
+                ExplainerView(controller: controller, maxStageHeight: maxStageHeight)
                     .frame(maxWidth: .infinity)
             }
             ScrollView {

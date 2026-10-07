@@ -164,19 +164,56 @@ private struct ExplainerWebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
 
-/// Bühne im Format 16:10 mit nativer Leiste darunter.
+/// Bühne (16:10) mit der Leiste direkt darunter. Die Bühne nimmt die angebotene
+/// Breite ein, höchstens aber so viel, dass sie `maxStageHeight` nicht überschreitet;
+/// die Leiste ist genauso breit und mittig.
+private struct StageLayout: Layout {
+    static let aspect: CGFloat = 16.0 / 10.0
+    var maxStageHeight: CGFloat?
+    var spacing: CGFloat = 6
+
+    private func stageWidth(_ proposal: ProposedViewSize) -> CGFloat {
+        let angeboten = proposal.width.map { $0.isFinite ? $0 : nil } ?? nil
+        var breite = angeboten ?? (maxStageHeight.map { $0 * Self.aspect } ?? 640)
+        if let maxStageHeight { breite = min(breite, maxStageHeight * Self.aspect) }
+        return max(0, breite)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+        let breite = stageWidth(proposal)
+        let leiste = subviews[1].sizeThatFits(ProposedViewSize(width: breite, height: nil)).height
+        return CGSize(width: breite, height: breite / Self.aspect + spacing + leiste)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else { return }
+        let breite = min(bounds.width, stageWidth(proposal))
+        let hoehe = breite / Self.aspect
+        let x = bounds.midX - breite / 2
+        subviews[0].place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: breite, height: hoehe))
+        let leiste = subviews[1].sizeThatFits(ProposedViewSize(width: breite, height: nil)).height
+        subviews[1].place(at: CGPoint(x: x, y: bounds.minY + hoehe + spacing), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: breite, height: leiste))
+    }
+}
+
+/// Bühne im Format 16:10 mit leichter, mittiger Leiste darunter.
 struct ExplainerView: View {
     @ObservedObject var controller: ExplainerController
+    /// Obergrenze für die Höhe der Bühne (ohne Leiste); `nil` = nur die Breite zählt.
+    var maxStageHeight: CGFloat?
 
-    init(controller: ExplainerController) {
+    init(controller: ExplainerController, maxStageHeight: CGFloat? = nil) {
         self.controller = controller
+        self.maxStageHeight = maxStageHeight
     }
 
     var body: some View {
         if !controller.failed {
-            VStack(spacing: 8) {
+            StageLayout(maxStageHeight: maxStageHeight) {
                 ExplainerWebView(webView: controller.webView)
-                    .aspectRatio(16.0 / 10.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.08)))
                 controls
@@ -185,7 +222,7 @@ struct ExplainerView: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             controlButton(controller.isPlaying ? "pause.fill" : "play.fill",
                           help: controller.isPlaying ? Loc.t("Pause") : Loc.t("Abspielen"),
                           action: controller.togglePlay)
@@ -193,18 +230,32 @@ struct ExplainerView: View {
             controlButton(controller.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
                           help: controller.isMuted ? Loc.t("Ton an") : Loc.t("Ton aus"),
                           action: controller.toggleMute)
-            Spacer()
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func controlButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        ExplainerIconButton(symbol: symbol, action: action)
+            .help(help)
+            .accessibilityLabel(help)
+    }
+}
+
+/// Randloser Symbol-Knopf: gedämpft, beim Überfahren heller, beim Drücken blasser.
+private struct ExplainerIconButton: View {
+    let symbol: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 18, height: 16)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(white: hovering ? 0.95 : 0.62))
+                .frame(width: 30, height: 24)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(ConsoleButtonStyle())
-        .help(help)
-        .accessibilityLabel(help)
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }

@@ -139,7 +139,7 @@ struct NewsView: View {
     }
 }
 
-/// Der Player im Sheet: 720 breit, darunter „Schließen“.
+/// Der Player im Sheet: 900 breit, das Video füllt die Breite, darunter „Schließen“.
 private struct ExplainerSheet: View {
     let name: String
     let keys: [String]
@@ -166,7 +166,7 @@ private struct ExplainerSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 720)
+        .frame(width: 900)
         .background(Color.shoutWindow)
         .preferredColorScheme(.dark)
         .onAppear {

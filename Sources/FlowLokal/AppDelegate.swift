@@ -413,16 +413,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // Über das Fenster schließen: `windowWillClose` erledigt den Rest genau einmal.
             self?.whatsNewWindow?.close()
         }
-        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        let hosting = NSHostingController(rootView: view)
+        // Die Größe bestimmt das Fenster (Vorgabe unten, vom Nutzer veränderbar), nicht die Ansicht.
+        hosting.sizingOptions = []
+        let window = NSWindow(contentViewController: hosting)
         window.title = "shout."
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         window.delegate = self
-        window.setContentSize(NSSize(width: 760, height: 580))
+        // 900 × 860, aber nie höher als der sichtbare Bildschirm minus 60 pt (und nie breiter).
+        let sichtbar = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
+        let groesse = NSSize(width: min(900, sichtbar.width - 60), height: min(860, sichtbar.height - 60))
+        window.contentMinSize = NSSize(width: min(WhatsNewView.minSize.width, groesse.width),
+                                       height: min(WhatsNewView.minSize.height, groesse.height))
+        window.setContentSize(groesse)
         window.center()
         whatsNewWindow = window
         NSApp.setActivationPolicy(.regular)

@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.13.1 — 2026-10-07
+zeigen: nein
+
+### Deutsch
+**Neu: Neuigkeiten.** Nach einem Update zeigt shout. einmal, was neu ist — mit einer kurzen Animation, wenn sich ein Ablauf erst im Bewegtbild erschließt. Das Fenster lässt sich überspringen. Alle Versionen stehen jederzeit auf der Seite **Neuigkeiten** im Hauptfenster (auch über das Menü „Neuigkeiten …“).
+
+### English
+**New: What’s New.** After an update, shout. shows once what has changed — with a short animation when a workflow is easier to see than to read. You can skip the window. All versions are always available on the **What’s New** page in the main window (also via the “What’s New…” menu item).
+
 ## 1.13.0 — 2026-10-07
 zeigen: ja
 video: scratchpad

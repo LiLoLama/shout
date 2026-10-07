@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.13.2 — 2026-10-07
+zeigen: nein
+
+### Deutsch
+**Behoben:** Das Erklärvideo im Fenster „Neu in shout.“ und auf der Seite **Neuigkeiten** war zu klein. Es nutzt jetzt die volle Breite, das Fenster ist größer und lässt sich in der Größe ändern.
+
+### English
+**Fixed:** The explainer video in the “New in shout.” window and on the **What’s New** page was too small. It now uses the full width, and the window is larger and resizable.
+
 ## 1.13.1 — 2026-10-07
 zeigen: nein
 

@@ -16,6 +16,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Version aus project.yml; zählt nur für die CHANGELOG-Prüfung. Weiter unten
+# wird VERSION aus der gebauten App neu gelesen (derselbe Wert, sonst wäre der Build falsch).
+VERSION=$(awk -F'"' '/MARKETING_VERSION:/ { print $2; exit }' project.yml)
+echo "▶ Prüfe CHANGELOG.md für $VERSION …"
+Support/release-notes.sh --check "$VERSION" \
+  || { echo "✗ CHANGELOG.md braucht einen gültigen Abschnitt für $VERSION (siehe Kopf der Datei)."; exit 1; }
+
 : "${DEV_ID_APP:?Bitte DEV_ID_APP setzen, z. B. 'Developer ID Application: Dein Name (TEAMID)'}"
 : "${TEAM_ID:?Bitte TEAM_ID setzen (10-stellige Apple Team-ID)}"
 : "${NOTARY_PROFILE:?Bitte NOTARY_PROFILE setzen (Name aus 'notarytool store-credentials')}"
@@ -122,4 +129,6 @@ fi
 echo "✅ Fertig: $DMG (notarisiert & gestapelt, Version $VERSION)"
 echo "   Nächste Schritte: DMG als GitHub-Release v$VERSION hochladen UND"
 echo "   die aktualisierte appcast.xml committen+pushen (sonst sehen Nutzer kein Update)."
+echo "   Release-Notes aus CHANGELOG.md:"
+echo "   gh release create v$VERSION shout-$VERSION.dmg --notes-file <(Support/release-notes.sh $VERSION)"
 echo "   Zum Verteilen einfach dieses DMG weitergeben."

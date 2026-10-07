@@ -72,6 +72,12 @@ targets:
       - path: Resources/Audio
         includes:
           - "*.mp3"
+      # Update-Log fürs Fenster „Neu in shout.“ und die Seite „Neuigkeiten“.
+      - path: CHANGELOG.md
+        buildPhase: resources
+      # Erklär-Animationen (HTML, im WKWebView abgespielt).
+      - path: Resources/Explainers
+        type: folder
     # Explizite Info.plist (von xcodegen generiert), damit die Sparkle-Keys
     # SUFeedURL/SUPublicEDKey gesetzt werden können — die gehen NICHT über die
     # INFOPLIST_KEY_-Build-Settings (nur Apple-bekannte Schlüssel).

@@ -54,6 +54,16 @@ Das Skript: baut Release (arm64, Hardened Runtime) → signiert mit Developer ID
 Vor jedem Release in `project.yml` `MARKETING_VERSION` (und ggf.
 `CURRENT_PROJECT_VERSION`) hochzählen — sonst kollidieren spätere Sparkle-Updates.
 
+## Update-Log
+Vor jedem Release in `CHANGELOG.md` einen Abschnitt für die neue Version anlegen
+(Format steht im Kopf der Datei; `release.sh` bricht sonst ab). `zeigen: ja` nur
+bei Neuerungen, die man nach dem Update sehen soll; sonst `zeigen: nein`. Die
+GitHub-Release-Notes kommen aus derselben Datei:
+
+```bash
+gh release create v1.13.0 shout-1.13.0.dmg --notes-file <(Support/release-notes.sh 1.13.0)
+```
+
 ## Hinweis Intel-Macs
 Der Build ist **arm64-only** (MLX/WhisperKit brauchen Apple Silicon). Auf
 Intel-Macs startet macOS die App gar nicht erst — bewusst so, statt beim

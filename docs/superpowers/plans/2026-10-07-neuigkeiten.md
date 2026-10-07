@@ -881,3 +881,5 @@ cd /Users/liam/Developer/LIAM/flow-lokal && git add Resources/Explainers/scratch
   - [ ] „Bewegung reduzieren“ an: Animation startet nicht von selbst.
   - [ ] Während eines Diktats starten (Aufnahme läuft): Fenster erst danach.
   - [ ] Eigene Tasten eingestellt: die Animation zeigt sie.
+  - [ ] Nach dem Update sofort in einer anderen App tippen: das Fenster wartet, bis 3 s nicht getippt wurde; ein ⏎ in der ersten Sekunde schließt es nicht.
+  - [ ] Esc und ⏎, während der Player (Web-Ansicht) den Fokus hat: Esc überspringt, ⏎ geht weiter.

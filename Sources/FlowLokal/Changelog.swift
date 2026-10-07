@@ -1,6 +1,6 @@
 import Foundation
 
-/// Versionsnummer wie „1.13.0" — verglichen Stelle für Stelle als Zahl;
+/// Versionsnummer wie „1.13.0“ — verglichen Stelle für Stelle als Zahl;
 /// fehlende Stellen gelten als 0 (1.13 == 1.13.0).
 struct AppVersion: Comparable, Hashable, CustomStringConvertible {
     let parts: [Int]
@@ -41,7 +41,7 @@ struct AppVersion: Comparable, Hashable, CustomStringConvertible {
 struct ChangelogEntry: Equatable, Identifiable {
     let version: AppVersion
     let date: String
-    /// `zeigen: ja` — erscheint einmal im Fenster „Neu in shout.".
+    /// `zeigen: ja` — erscheint einmal im Fenster „Neu in shout.“.
     let highlight: Bool
     /// Name einer Animation in `Explainers/<name>.html`.
     let video: String?
@@ -141,7 +141,7 @@ enum ChangelogParser {
         return text.isEmpty ? nil : text
     }
 
-    /// „JJJJ-MM-TT".
+    /// „JJJJ-MM-TT“.
     private static func isDate(_ s: String) -> Bool {
         let t = Array(s.trimmingCharacters(in: .whitespaces))
         guard t.count == 10, t[4] == "-", t[7] == "-" else { return false }

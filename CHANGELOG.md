@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.13.4 — 2026-10-12
+zeigen: nein
+
+### Deutsch
+**Behoben:** Auf Intel-Macs schloss sich shout. nach dem Beenden einer Aufnahme, und das Diktat ging verloren. Die lokale Spracherkennung läuft auf Intel-Macs nicht zuverlässig; dort erkennt shout. Sprache jetzt über einen Anbieter, den du unter **Modelle** einrichtest. Ohne Anbieter sagt shout. das, bevor die Aufnahme beginnt.
+
+### English
+**Fixed:** On Intel Macs, shout. quit after you ended a recording, and the dictation was lost. Local speech recognition doesn’t run reliably on Intel Macs; there, shout. now recognizes speech through a provider you set up under **Models**. Without a provider, shout. tells you so before the recording starts.
+
 ## 1.13.3 — 2026-10-12
 zeigen: nein
 

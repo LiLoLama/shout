@@ -642,6 +642,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// genau dieses Programms — nicht der ganze Systemton, sonst läge die Musik
     /// von nebenan mit in der Datei.
     private func startMeetingRecording(_ meeting: MeetingDetector.Meeting, icon: NSImage?) {
+        guard Hardware.lokaleModelle || EngineSelection.decide(for: .audio) != .local else {
+            meetingPrompt.showDone(appName: meeting.name, icon: icon,
+                                   message: Loc.t("Auf Intel-Macs erkennt shout. Sprache nur über einen Anbieter. Richte ihn unter „Modelle“ ein."),
+                                   onOpen: { [weak self] in self?.openDashboard(.modelle) })
+            meetingDetector.decline(meeting)
+            return
+        }
         do {
             try meetingRecorder.start(source: .both, limitedTo: meeting.processObject)
         } catch {
@@ -1508,7 +1515,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 state = .failed
                 // NACH state=.failed: das didSet ruft updateStatusItem() und würde
                 // einen zuvor gesetzten Titel sofort überschreiben.
-                statusMenuItem?.title = Loc.f("Modell-Ladefehler: %@", error.localizedDescription)
+                if case LocalSpeechEngineError.intelMac = error {
+                    statusMenuItem?.title = Loc.t("Spracherkennung: Anbieter unter „Modelle“ einrichten")
+                } else {
+                    statusMenuItem?.title = Loc.f("Modell-Ladefehler: %@", error.localizedDescription)
+                }
             }
             dashboardModel.asrLoadingID = nil
             dashboardModel.asrProgress = nil
@@ -2081,6 +2092,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func startRecording(target explizit: DictationTarget? = nil, held: Bool = false) {
         // Das Beenden wartet gerade auf ein Diktat — ein neues ginge dabei verloren.
         guard pendingTermination == nil else { return }
+        // Intel ohne Anbieter: Die Aufnahme ließe sich nicht erkennen und wäre
+        // nach dem Stoppen verloren. Lieber vorher sagen, was fehlt.
+        guard Hardware.lokaleModelle || EngineSelection.decide(for: .audio) != .local else {
+            zeigeIntelHinweis()
+            return
+        }
         disarmPill()
         // Ziel-App merken, solange sie noch im Vordergrund ist. Das Panel ist
         // nicht aktivierend — hat es den Fokus, ist die App davor trotzdem vorne.
@@ -2115,6 +2132,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         scratchpadMic.isRecording = false
         state = .idle
         recIndicator.finish()
+    }
+
+    /// Intel-Mac ohne Anbieter für die Spracherkennung (siehe `Hardware.lokaleModelle`).
+    private func zeigeIntelHinweis() {
+        sounds.play(.error)
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = Loc.t("Noch keine Spracherkennung eingerichtet.")
+        alert.informativeText = Loc.t("Auf Intel-Macs erkennt shout. Sprache nur über einen Anbieter. Richte ihn unter „Modelle“ ein.")
+        alert.addButton(withTitle: Loc.t("Modelle öffnen"))
+        alert.addButton(withTitle: Loc.t("Später"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        openDashboard(.modelle)
     }
 
     /// Bricht eine laufende Aufnahme ab: Samples verwerfen, nichts transkribieren.

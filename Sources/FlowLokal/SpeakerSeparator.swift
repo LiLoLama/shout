@@ -31,6 +31,10 @@ actor SpeakerSeparator {
         // 16 kHz mono, wie vom MediaDecoder geliefert. Unter ein paar Sekunden
         // findet Pyannote ohnehin nichts Sinnvolles.
         guard samples.count > 16_000 * 2 else { return [] }
+        // SpeakerKit rechnet mit denselben Float16-Puffern wie WhisperKit.
+        guard Hardware.lokaleModelle else {
+            throw SpeakerSeparatorError.unavailable("Intel-Mac")
+        }
 
         if kit == nil {
             do {

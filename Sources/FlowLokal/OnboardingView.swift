@@ -128,6 +128,7 @@ struct OnboardingView: View {
         let icon = ready ? "checkmark.circle.fill" : (failed ? "exclamationmark.triangle.fill" : "arrow.down.circle.fill")
         let text: String = {
             if ready { return Loc.t("Das Sprachmodell ist geladen und liegt lokal auf deinem Mac.") }
+            if !Hardware.lokaleModelle { return Loc.t("Auf Intel-Macs erkennt shout. Sprache nur über einen Anbieter. Richte ihn unter „Modelle“ ein.") }
             if failed { return Loc.t("Das Sprachmodell konnte nicht geladen werden — meist fehlt beim ersten Start die Internet-Verbindung. Prüfe die Verbindung und versuch es erneut.") }
             return Loc.t("Beim ersten Start lädt shout. das Sprachmodell einmalig herunter (danach läuft alles offline). Das kann je nach Verbindung ein paar Minuten dauern.")
         }()
@@ -135,7 +136,9 @@ struct OnboardingView: View {
                         iconColor: ready ? .green : Color.shoutLive,
                         title: Loc.t("Sprachmodell"),
                         text: text) {
-            if failed {
+            if !Hardware.lokaleModelle && !ready {
+                Button(Loc.t("Modelle öffnen")) { zeigeModelleSeite() }.buttonStyle(PrimaryOnboardButton())
+            } else if failed {
                 Button(Loc.t("Erneut versuchen")) { onRetryModel() }.buttonStyle(PrimaryOnboardButton())
             } else if !ready {
                 HStack(spacing: 10) {

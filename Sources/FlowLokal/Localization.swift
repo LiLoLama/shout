@@ -355,6 +355,11 @@ final class Loc: ObservableObject {
         "Rechner zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später unter „Modelle“.":
             "Machine too weak? You can run both steps at a provider of your choice instead — later under “Models”.",
         "Schon Modelle auf dem Rechner?": "Already have models on this Mac?",
+        "Auf Intel-Macs erkennt shout. Sprache nur über einen Anbieter. Richte ihn unter „Modelle“ ein.":
+            "On Intel Macs, shout. recognizes speech only through a provider. Set one up under “Models”.",
+        "Spracherkennung: Anbieter unter „Modelle“ einrichten": "Speech recognition: set up a provider under “Models”",
+        "Noch keine Spracherkennung eingerichtet.": "No speech recognition set up yet.",
+        "Modelle öffnen": "Open Models",
         "Gerät zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später in den Einstellungen.":
             "Device too weak? You can run both steps at a provider of your choice instead — later in Settings.",
         "Näherung — abgerechnet wird beim Anbieter.":

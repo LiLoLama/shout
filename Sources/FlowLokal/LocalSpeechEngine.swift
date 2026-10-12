@@ -43,6 +43,8 @@ actor LocalSpeechEngine: SpeechEngine {
     // MARK: - Laden
 
     func prepare(reset: Bool, onProgress: (@Sendable (Double) -> Void)?) async throws {
+        // Auf Intel nie WhisperKit anfassen — siehe `Hardware.lokaleModelle`.
+        guard Hardware.lokaleModelle else { throw LocalSpeechEngineError.intelMac }
         if reset {
             pipe = nil
             loadedModel = nil
@@ -158,4 +160,9 @@ actor LocalSpeechEngine: SpeechEngine {
         }
         return SpeechResult(text: text, segments: segments)
     }
+}
+
+enum LocalSpeechEngineError: Error {
+    /// Lokale Erkennung ist auf Intel-Macs gesperrt (`Hardware.lokaleModelle`).
+    case intelMac
 }

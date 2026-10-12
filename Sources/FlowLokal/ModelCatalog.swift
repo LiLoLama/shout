@@ -6,6 +6,22 @@ enum Hardware {
         Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
     }
 
+    /// Laufen die lokalen Modelle (WhisperKit, MLX) auf diesem Rechner?
+    ///
+    /// Auf Intel-Macs nicht. MLX braucht die GPU von Apple Silicon, und WhisperKit
+    /// (bis mindestens 1.1.1) legt seine Float16-Puffer zwar mit 2 Byte je Wert an,
+    /// beschreibt sie auf Intel aber mit `Float` (4 Byte) — `Float16` gibt es dort
+    /// in Swift nicht. Das schreibt über das Pufferende hinaus und beendet die App
+    /// beim ersten Erkennen (am 12.10.2026 unter Rosetta nachgestellt). Auf Intel
+    /// geht deshalb beides nur über einen Anbieter.
+    static var lokaleModelle: Bool {
+        #if arch(x86_64)
+        return false
+        #else
+        return true
+        #endif
+    }
+
     /// Kerne — wie in der Windows-App neben dem Arbeitsspeicher gezeigt.
     static var coreCount: Int { ProcessInfo.processInfo.processorCount }
 
@@ -78,11 +94,7 @@ enum ModelCatalog {
 
     #else
 
-    #if arch(x86_64)
-    static let defaultASR = "large-v3-v20240930_626MB"   // siehe recommendedASR
-    #else
     static let defaultASR = "large-v3-v20240930_turbo"
-    #endif
     static let defaultFormatting = "mlx-community/gemma-4-e4b-it-4bit"
 
     static let asr: [Option] = [
@@ -99,15 +111,7 @@ enum ModelCatalog {
         .init(id: "mlx-community/gemma-4-31b-it-4bit", name: "Gemma 4 · 31B", note: "~18 GB · High-End, beste Qualität", minRAMGB: 48),
     ]
 
-    static func recommendedASR(ramGB: Int) -> Option {
-        #if arch(x86_64)
-        // Intel-Macs haben keine Neural Engine; Whisper rechnet dort auf der
-        // CPU. Das kompakte Turbo-Modell hält die Wartezeit erträglich.
-        return asr[0]
-        #else
-        return ramGB >= 16 ? asr[1] : asr[0]
-        #endif
-    }
+    static func recommendedASR(ramGB: Int) -> Option { ramGB >= 16 ? asr[1] : asr[0] }
     static func recommendedFormatting(ramGB: Int) -> Option {
         if ramGB >= 48 { return formatting[4] }   // 31B High-End
         if ramGB >= 32 { return formatting[3] }   // 12B

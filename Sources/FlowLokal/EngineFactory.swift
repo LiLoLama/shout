@@ -60,6 +60,8 @@ enum EngineFactory {
     /// Diktat. Wird lokal gearbeitet, gibt es nichts zum Ausweichen.
     @Sendable static func speechFallback() -> (any SpeechEngine)? {
         guard case .remote = EngineSelection.decide(for: .audio) else { return nil }
+        // Auf Intel gibt es kein lokales Modell, auf das man ausweichen könnte.
+        guard Hardware.lokaleModelle else { return nil }
         return LocalSpeechEngine(allowDownload: false)
     }
 }

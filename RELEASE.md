@@ -65,11 +65,13 @@ gh release create v1.13.0 shout-1.13.0.dmg --notes-file <(Support/release-notes.
 ```
 
 ## Hinweis Intel-Macs
-Seit 1.13.3 ist der Build **universal** (arm64 + x86_64). Auf Intel rechnet
-Whisper über Core ML auf der CPU (langsamer, deshalb dort das kompakte
-Turbo-Modell als Standard). Das lokale Textmodell (MLX) braucht die GPU von
-Apple Silicon und wird auf Intel gar nicht erst geladen — ohne Anbieter fügt
-shout. dort den Rohtext ein. Die Appcast-Einträge bis 1.13.2 tragen
+Seit 1.13.3 ist der Build **universal** (arm64 + x86_64). Auf Intel laufen die
+lokalen Modelle nicht (`Hardware.lokaleModelle`): MLX braucht die GPU von Apple
+Silicon, und WhisperKit beschreibt seine Float16-Puffer auf Intel mit 4-Byte-
+Floats und stürzt beim ersten Erkennen ab (bis mindestens WhisperKit 1.1.1;
+nachstellbar mit `whisperkit-cli`, für x86_64 gebaut und unter Rosetta
+gestartet). Erkennung und Aufbereitung gehen dort nur über einen Anbieter; ohne
+Anbieter startet shout. keine Aufnahme, sondern zeigt einen Hinweis. Die Appcast-Einträge bis 1.13.2 tragen
 `sparkle:hardwareRequirements arm64`; Intel-Macs sehen deshalb nur Updates ab
 1.13.3. Dieses Element setzt `generate_appcast` selbst, sobald ein DMG nur arm64
 enthält — beim Universal-Build fehlt es, und genau das soll so sein.

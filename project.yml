@@ -103,10 +103,9 @@ targets:
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # Universal (Apple Silicon + Intel), seit 1.13.3. Auf Intel läuft Whisper
-        # über Core ML auf der CPU; das lokale Textmodell (MLX) braucht die GPU von
-        # Apple Silicon und bleibt dort aus (siehe LocalTextEngine.prepare) —
-        # Aufbereitung geht auf Intel nur über einen Anbieter.
+        # Universal (Apple Silicon + Intel), seit 1.13.3. Auf Intel laufen weder
+        # WhisperKit noch MLX (siehe Hardware.lokaleModelle) — Erkennung und
+        # Aufbereitung gehen dort nur über einen Anbieter.
         ARCHS: "arm64 x86_64"
         ONLY_ACTIVE_ARCH: NO
         # Bundle-ID bewusst unverändert (com.inthezone.flowlokal), damit die
@@ -114,8 +113,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.flowlokal
         # Datei-/Produktname ohne Punkt (sonst "shout..app"); Anzeigename mit Punkt.
         PRODUCT_NAME: "shout"
-        MARKETING_VERSION: "1.13.3"
-        CURRENT_PROJECT_VERSION: "36"
+        MARKETING_VERSION: "1.13.4"
+        CURRENT_PROJECT_VERSION: "37"
         # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"

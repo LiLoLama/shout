@@ -33,7 +33,7 @@ struct FilesView: View {
                     if !files.isEmpty { jobsPanel }
                 } else {
                     ConsolePanel {
-                        Text(Loc.t("Zum Transkribieren wird das Sprachmodell gebraucht. Lade es unter „Modelle“ herunter — danach geht es hier weiter."))
+                        Text(Hardware.lokaleModelle ? Loc.t("Zum Transkribieren wird das Sprachmodell gebraucht. Lade es unter „Modelle“ herunter — danach geht es hier weiter.") : Loc.t("Auf Intel-Macs erkennt shout. Sprache nur über einen Anbieter. Richte ihn unter „Modelle“ ein."))
                             .font(.system(size: 13))
                             .foregroundStyle(Color(white: 0.62))
                             .fixedSize(horizontal: false, vertical: true)

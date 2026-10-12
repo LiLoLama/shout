@@ -78,8 +78,8 @@ individually from **“On this device”** to **“Provider”** under *Models*.
 stays the default, and shout. never switches outward on its own.
 
 This exists for two groups: machines that cannot run a local model (the cleanup
-needs MLX on Apple Silicon and 8–48 GB of RAM depending on the model; an
-Intel Mac lacks the former, an iPhone the latter), and people who simply want a larger model than a 4-bit 2B
+needs MLX on Apple Silicon and 8–48 GB of RAM depending on the model, which
+an iPhone lacks; on Intel Macs neither local model runs at all), and people who simply want a larger model than a 4-bit 2B
 one to clean up their dictation.
 
 One provider needs a base address, an API key and a model id. Templates ship for
@@ -123,9 +123,9 @@ What you should know before switching:
    permissions and the one-time model download.
 
 Requires **macOS 14+**. One universal download for Apple Silicon and Intel Macs.
-On Intel Macs, speech recognition runs locally on the CPU (slower), and the local
-text cleanup is unavailable because MLX needs Apple Silicon — use a
-[provider](#optional-bring-your-own-provider) for cleanup there.
+On Intel Macs the local models don’t run (MLX needs Apple Silicon, and WhisperKit
+crashes there), so both speech recognition and text cleanup go through a
+[provider](#optional-bring-your-own-provider).
 Signed with a Developer ID and notarized, so it opens without Gatekeeper
 warnings. Updates arrive automatically via Sparkle.
 

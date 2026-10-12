@@ -78,7 +78,11 @@ enum ModelCatalog {
 
     #else
 
+    #if arch(x86_64)
+    static let defaultASR = "large-v3-v20240930_626MB"   // siehe recommendedASR
+    #else
     static let defaultASR = "large-v3-v20240930_turbo"
+    #endif
     static let defaultFormatting = "mlx-community/gemma-4-e4b-it-4bit"
 
     static let asr: [Option] = [
@@ -95,7 +99,15 @@ enum ModelCatalog {
         .init(id: "mlx-community/gemma-4-31b-it-4bit", name: "Gemma 4 · 31B", note: "~18 GB · High-End, beste Qualität", minRAMGB: 48),
     ]
 
-    static func recommendedASR(ramGB: Int) -> Option { ramGB >= 16 ? asr[1] : asr[0] }
+    static func recommendedASR(ramGB: Int) -> Option {
+        #if arch(x86_64)
+        // Intel-Macs haben keine Neural Engine; Whisper rechnet dort auf der
+        // CPU. Das kompakte Turbo-Modell hält die Wartezeit erträglich.
+        return asr[0]
+        #else
+        return ramGB >= 16 ? asr[1] : asr[0]
+        #endif
+    }
     static func recommendedFormatting(ramGB: Int) -> Option {
         if ramGB >= 48 { return formatting[4] }   // 31B High-End
         if ramGB >= 32 { return formatting[3] }   // 12B

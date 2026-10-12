@@ -35,12 +35,16 @@ DERIVED="build"
 echo "▶ Generiere Xcode-Projekt …"
 xcodegen generate
 
-echo "▶ Baue & signiere ($CONFIG, Developer ID, Hardened Runtime) …"
+echo "▶ Baue & signiere ($CONFIG, Universal, Developer ID, Hardened Runtime) …"
+# `-destination generic/platform=macOS` („Any Mac") ist Pflicht für den
+# Universal-Build: Ohne Ziel nimmt xcodebuild „My Mac" mit der Architektur dieses
+# Rechners und baut NUR die — trotz ARCHS="arm64 x86_64" und ONLY_ACTIVE_ARCH=NO.
 xcodebuild \
     -project FlowLokal.xcodeproj \
     -scheme FlowLokal \
     -configuration "$CONFIG" \
     -derivedDataPath "$DERIVED" \
+    -destination 'generic/platform=macOS' \
     -skipPackagePluginValidation \
     -skipMacroValidation \
     CODE_SIGN_STYLE=Manual \
@@ -52,6 +56,14 @@ xcodebuild \
     build
 
 APP="$DERIVED/Build/Products/$CONFIG/shout.app"
+
+# Intel-Macs bekommen Updates nur, solange die App universal ist (fehlt x86_64,
+# setzt generate_appcast „hardwareRequirements arm64" und Intel sieht nichts mehr).
+for arch in arm64 x86_64; do
+    lipo "$APP/Contents/MacOS/shout" -verify_arch "$arch" \
+      || { echo "✗ Die gebaute App enthält kein $arch — so wird nicht ausgeliefert."; exit 1; }
+done
+
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 
 # Das Bundle muss den Changelog enthalten (sonst zeigt „Neu in shout.“ nichts und markiert still)

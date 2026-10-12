@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.13.3 — 2026-10-12
+zeigen: nein
+
+### Deutsch
+**Neu: shout. läuft auch auf Intel-Macs.** Ein Download für alle Macs. Auf Intel-Macs erkennt shout. Sprache wie gewohnt lokal, nur etwas langsamer. Die automatische Text-Aufbereitung braucht einen Apple-Chip; auf Intel lässt sie sich über einen eigenen Anbieter einschalten (*Modelle → Anbieter*).
+
+### English
+**New: shout. now runs on Intel Macs too.** One download for every Mac. On Intel Macs, speech recognition stays local as usual, just a little slower. Automatic text cleanup needs Apple silicon; on Intel you can turn it on with a provider of your own (*Models → Provider*).
+
 ## 1.13.2 — 2026-10-07
 zeigen: nein
 

@@ -45,6 +45,15 @@ actor LocalTextEngine: TextEngine {
     /// Prozess. Die Serialisierung mehrerer Ladevorgänge macht der Router — sonst
     /// würden zwei parallele Aufrufe denselben Multi-GB-Download zweimal starten.
     func prepare(reset: Bool, onProgress: (@Sendable (Double) -> Void)?) async {
+        #if arch(x86_64)
+        // Intel-Build: MLX braucht die GPU von Apple Silicon. Auf den AMD- und
+        // Intel-Grafikchips der Intel-Macs scheitern seine Metal-Kernel — statt
+        // eines Absturzes beim Laden bleibt die Engine einfach „nicht bereit",
+        // und der Router fügt den Rohtext ein. Aufbereitung geht dort nur über
+        // einen Anbieter.
+        NSLog("Intel-Mac: lokales Textmodell (MLX) wird nicht geladen.")
+        return
+        #else
         let id = modelID
         if !reset, isReady, loadedModel == id { return }  // schon das richtige Modell geladen
         isLoading = true
@@ -97,6 +106,7 @@ actor LocalTextEngine: TextEngine {
             Abkuerzungsgedaechtnis.geteilt.ladenGescheitert(id)
             #endif
         }
+        #endif
     }
 
     /// „Aufwärmen": ein Ein-Token-Durchlauf, damit die Metal-Pipeline kompiliert

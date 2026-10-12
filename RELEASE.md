@@ -33,7 +33,7 @@ NOTARY_PROFILE="shout-notary" \
 ./release.sh
 ```
 
-Das Skript: baut Release (arm64, Hardened Runtime) → signiert mit Developer ID
+Das Skript: baut Release (Universal: arm64 + x86_64, Hardened Runtime) → signiert mit Developer ID
 → notarisiert (`notarytool --wait`) → stapelt das Ticket an die App → baut
 `shout-<version>.dmg`. Dieses DMG kannst du direkt weitergeben.
 
@@ -65,9 +65,14 @@ gh release create v1.13.0 shout-1.13.0.dmg --notes-file <(Support/release-notes.
 ```
 
 ## Hinweis Intel-Macs
-Der Build ist **arm64-only** (MLX/WhisperKit brauchen Apple Silicon). Auf
-Intel-Macs startet macOS die App gar nicht erst — bewusst so, statt beim
-Modell-Laden abzustürzen. In den Systemvoraussetzungen klar kommunizieren.
+Seit 1.13.3 ist der Build **universal** (arm64 + x86_64). Auf Intel rechnet
+Whisper über Core ML auf der CPU (langsamer, deshalb dort das kompakte
+Turbo-Modell als Standard). Das lokale Textmodell (MLX) braucht die GPU von
+Apple Silicon und wird auf Intel gar nicht erst geladen — ohne Anbieter fügt
+shout. dort den Rohtext ein. Die Appcast-Einträge bis 1.13.2 tragen
+`sparkle:hardwareRequirements arm64`; Intel-Macs sehen deshalb nur Updates ab
+1.13.3. Dieses Element setzt `generate_appcast` selbst, sobald ein DMG nur arm64
+enthält — beim Universal-Build fehlt es, und genau das soll so sein.
 
 ## Windows
 

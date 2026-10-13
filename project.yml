@@ -113,8 +113,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.flowlokal
         # Datei-/Produktname ohne Punkt (sonst "shout..app"); Anzeigename mit Punkt.
         PRODUCT_NAME: "shout"
-        MARKETING_VERSION: "1.13.4"
-        CURRENT_PROJECT_VERSION: "37"
+        MARKETING_VERSION: "1.13.5"
+        CURRENT_PROJECT_VERSION: "38"
         # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"
@@ -371,6 +371,7 @@ targets:
       - path: Sources/FlowLokal/MeetingRecorder.swift
       # Vom MeetingRecorder mitbenutzt; nur System-Frameworks, keine Pakete.
       - path: Sources/FlowLokal/SystemAudioTap.swift
+      - path: Sources/FlowLokal/AudioDevices.swift
       - path: Sources/FlowLokal/PillPlacement.swift
       - path: Sources/FlowLokal/StoreIO.swift
       # Modellverzeichnis: abhängigkeitsfrei, ohne MLX-/WhisperKit-Bezug.

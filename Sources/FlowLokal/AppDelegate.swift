@@ -671,9 +671,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.meetingPrompt.update(
                     duration: self.meetingRecorder.duration,
                     level: self.meetingRecorder.level,
-                    note: self.meetingRecorder.noSignal
-                        ? Loc.t("Es kommt kein Ton an. Beim Systemton fehlt dann meist die Erlaubnis: Systemeinstellungen → Datenschutz & Sicherheit → Tonaufnahme.")
-                        : nil)
+                    note: self.meetingRecorder.signalNote)
             }
         }
         RunLoop.main.add(ticker, forMode: .common)

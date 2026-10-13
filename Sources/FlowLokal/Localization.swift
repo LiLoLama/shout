@@ -818,6 +818,7 @@ final class Loc: ObservableObject {
         "Nimmt den Ton anderer Programme auf — für Online-Meetings. Deine eigene Stimme ist dann NICHT dabei.": "Records the audio of other apps — for online meetings. Your own voice is NOT included.",
         "Mikrofon und Ton anderer Programme zusammen — für Online-Meetings, bei denen du mitsprichst.": "Microphone and the audio of other apps together — for online meetings where you speak too.",
         "Es kommt kein Ton an. Beim Systemton fehlt dann meist die Erlaubnis: Systemeinstellungen → Datenschutz & Sicherheit → Tonaufnahme.": "No audio is arriving. For system audio this usually means the permission is missing: System Settings → Privacy & Security → Audio Recording.",
+        "Vom Mikrofon „%@“ kommt kein Ton — deine Stimme fehlt im Mitschnitt. Wähle unter Aufnahme & Text → Mikrofon ein anderes Gerät.": "No sound from the microphone “%@” — your voice is missing from the recording. Choose another device under Recording & text → Microphone.",
         "Handy auf den Tisch legen und antippen": "Put the phone on the table and tap",
         "Die Aufnahme läuft weiter, wenn der Bildschirm aus ist. Was danach damit passiert, entscheidest du selbst.": "Recording continues with the screen off. What happens with it afterwards is up to you.",
         "Nimmt auf …": "Recording…",

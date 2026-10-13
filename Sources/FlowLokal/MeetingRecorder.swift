@@ -29,6 +29,10 @@ final class MeetingRecorder: ObservableObject {
     /// der Tap liefert einfach Nullen, und ohne diesen Hinweis stünde man nach
     /// einer Stunde vor einer stummen Datei.
     @Published private(set) var noSignal = false
+    /// Bei „Beides": Vom Mikrofon kommt nur digitale Stille, obwohl der Ton der
+    /// anderen ankommt. Dann steckt das falsche Gerät drin — meist ein virtuelles
+    /// wie Loopback —, und die eigene Stimme fehlt im Mitschnitt.
+    @Published private(set) var noMicrophone = false
     @Published private(set) var isPaused = false
     /// Aufgenommene Zeit in Sekunden, aus den geschriebenen Frames gerechnet und
     /// nicht aus der Uhr — so zählt eine Pause exakt nicht mit.
@@ -36,7 +40,8 @@ final class MeetingRecorder: ObservableObject {
     /// Pegel 0…1 für die Anzeige.
     @Published private(set) var level: Float = 0
 
-    private let engine = AVAudioEngine()
+    /// Je Aufnahme frisch, damit ein Gerätewechsel sauber greift (wie beim Diktat).
+    private var engine = AVAudioEngine()
     private var file: AVAudioFile?
     private var url: URL?
     /// Eigene Warteschlange fürs Schreiben: Die Datei-Ausgabe gehört nicht auf den
@@ -46,6 +51,11 @@ final class MeetingRecorder: ObservableObject {
     private var paused = false
     /// Wurde seit dem Start überhaupt ein Ausschlag gemessen?
     private var sawSignal = false
+    /// Läuft bei „Beides" ein Mikrofon mit, und kam von ihm schon etwas?
+    private var listensToMicrophone = false
+    private var sawMicrophoneSignal = false
+    /// Name des Mikrofons im Mitschnitt, für den Hinweis.
+    private var microphoneName: String?
 
     #if os(macOS)
     private var tap: Any?
@@ -209,13 +219,25 @@ final class MeetingRecorder: ObservableObject {
         level = 0
         sawSignal = false
         noSignal = false
+        listensToMicrophone = false
+        sawMicrophoneSignal = false
+        noMicrophone = false
+        microphoneName = nil
+
+        #if os(macOS)
+        let microphone = Self.microphoneUID(
+            preferred: UserDefaults.standard.string(forKey: "preferredMicUID"),
+            available: AudioDevices.inputDevices().map(\.uid))
+        #else
+        let microphone: String? = nil
+        #endif
 
         do {
             switch source {
             case .microphone:
-                try startMicrophone(writeFormat: writeFormat)
+                try startMicrophone(writeFormat: writeFormat, microphoneUID: microphone)
             case .systemAudio, .both:
-                try startSystemAudio(includeMicrophone: source == .both,
+                try startSystemAudio(includeMicrophone: source == .both, microphoneUID: microphone,
                                      writeFormat: writeFormat, limitedTo: processObject)
             }
         } catch {
@@ -234,8 +256,31 @@ final class MeetingRecorder: ObservableObject {
         return target
     }
 
-    private func startMicrophone(writeFormat: AVAudioFormat) throws {
+    /// Das Mikrofon aus den Einstellungen — dasselbe, das das Diktat nimmt. Nicht
+    /// einfach der Standard-Eingang von macOS: Steht dort ein virtuelles Gerät
+    /// (Loopback, Teams Audio), fehlt sonst die eigene Stimme im Mitschnitt, und
+    /// niemand merkt es, weil der Ton der anderen ja ankommt.
+    /// `nil` heißt Standard-Eingang: nichts gewählt, oder das Gerät ist gerade
+    /// nicht angeschlossen.
+    nonisolated static func microphoneUID(preferred: String?, available: [String]) -> String? {
+        guard let preferred, !preferred.isEmpty, available.contains(preferred) else { return nil }
+        return preferred
+    }
+
+    private func startMicrophone(writeFormat: AVAudioFormat, microphoneUID: String?) throws {
+        engine = AVAudioEngine()
         let input = engine.inputNode
+        #if os(macOS)
+        // Gerät setzen, BEVOR das Format gelesen wird.
+        if let microphoneUID,
+           let deviceID = AudioDevices.deviceID(forUID: microphoneUID),
+           let audioUnit = input.audioUnit {
+            var device = deviceID
+            AudioUnitSetProperty(audioUnit, kAudioOutputUnitProperty_CurrentDevice,
+                                 kAudioUnitScope_Global, 0, &device,
+                                 UInt32(MemoryLayout<AudioDeviceID>.size))
+        }
+        #endif
         let inputFormat = input.inputFormat(forBus: 0)
         guard let converter = AVAudioConverter(from: inputFormat, to: writeFormat) else {
             throw MeetingRecorderError.converterFailed
@@ -248,13 +293,19 @@ final class MeetingRecorder: ObservableObject {
     }
 
     #if os(macOS)
-    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat,
+    private func startSystemAudio(includeMicrophone: Bool, microphoneUID: String?,
+                                  writeFormat: AVAudioFormat,
                                   limitedTo processObject: UInt32?) throws {
         guard #available(macOS 14.2, *) else { throw MeetingRecorderError.systemAudioUnsupported }
         let capture = SystemAudioTap()
         try capture.start(includeMicrophone: includeMicrophone,
-                          onlyProcesses: processObject.map { [$0] } ?? []) { [weak self] samples in
-            self?.handleTap(samples)
+                          microphoneUID: microphoneUID,
+                          onlyProcesses: processObject.map { [$0] } ?? []) { [weak self] samples, microphonePeak in
+            self?.handleTap(samples, microphonePeak: microphonePeak)
+        }
+        listensToMicrophone = includeMicrophone
+        microphoneName = capture.microphoneUID.flatMap { uid in
+            AudioDevices.inputDevices().first { $0.uid == uid }?.name
         }
         // Format erst NACH dem Start: Die Rate richtet sich nach dem Ausgabegerät.
         guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
@@ -269,7 +320,8 @@ final class MeetingRecorder: ObservableObject {
         tap = capture
     }
     #else
-    private func startSystemAudio(includeMicrophone: Bool, writeFormat: AVAudioFormat,
+    private func startSystemAudio(includeMicrophone: Bool, microphoneUID: String?,
+                                  writeFormat: AVAudioFormat,
                                   limitedTo processObject: UInt32?) throws {
         // iOS lässt Apps nicht an den Ton anderer Apps — es gibt keine API dafür.
         throw MeetingRecorderError.systemAudioUnsupported
@@ -282,9 +334,30 @@ final class MeetingRecorder: ObservableObject {
     private func watchForSilence() {
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 6_000_000_000)
-            guard let self, self.isRecording, !self.sawSignal else { return }
-            self.noSignal = true
+            guard let self, self.isRecording else { return }
+            if !self.sawSignal { self.noSignal = true }
+            if self.listensToMicrophone, !self.sawMicrophoneSignal { self.noMicrophone = true }
         }
+    }
+
+    /// Kam vom Mikrofon etwas? Ein echtes Mikrofon rauscht immer ein wenig (ein
+    /// eingebautes im ruhigen Raum um −66 dBFS) — wer nur zuhört, löst also keinen
+    /// Hinweis aus. Exakte Nullen liefert nur ein falsches oder virtuelles Gerät.
+    nonisolated static func isMicrophoneSignal(_ peak: Float) -> Bool {
+        peak > 0.0001
+    }
+
+    /// Hinweis unter der Pegelanzeige, wenn etwas nicht ankommt — oder `nil`.
+    /// Gar kein Ton geht vor: Dann ist das Mikrofon nicht die Ursache.
+    var signalNote: String? {
+        if noSignal {
+            return Loc.t("Es kommt kein Ton an. Beim Systemton fehlt dann meist die Erlaubnis: Systemeinstellungen → Datenschutz & Sicherheit → Tonaufnahme.")
+        }
+        if noMicrophone {
+            return Loc.f("Vom Mikrofon „%@“ kommt kein Ton — deine Stimme fehlt im Mitschnitt. Wähle unter Aufnahme & Text → Mikrofon ein anderes Gerät.",
+                         microphoneName ?? Loc.t("Systemstandard"))
+        }
+        return nil
     }
 
     func pause() {
@@ -337,6 +410,7 @@ final class MeetingRecorder: ObservableObject {
         tapFormat = nil
         #endif
         noSignal = false
+        noMicrophone = false
         isRecording = false
         isPaused = false
         paused = false
@@ -385,10 +459,14 @@ final class MeetingRecorder: ObservableObject {
     #if os(macOS)
     /// Mono-Samples aus dem Systemton-Tap: in einen Puffer packen, umrechnen,
     /// schreiben. Läuft auf dem Audio-Thread des Aggregats.
-    private nonisolated func handleTap(_ samples: [Float]) {
+    private nonisolated func handleTap(_ samples: [Float], microphonePeak: Float?) {
         Task { @MainActor [weak self] in
-            guard let self, self.isRecording,
-                  let format = self.tapFormat, let converter = self.tapConverter,
+            guard let self, self.isRecording else { return }
+            if let microphonePeak, Self.isMicrophoneSignal(microphonePeak) {
+                self.sawMicrophoneSignal = true
+                self.noMicrophone = false
+            }
+            guard let format = self.tapFormat, let converter = self.tapConverter,
                   let source = AVAudioPCMBuffer(pcmFormat: format,
                                                 frameCapacity: AVAudioFrameCount(samples.count)),
                   let channel = source.floatChannelData?[0] else { return }

@@ -152,8 +152,8 @@ struct MeetingView: View {
             }
             .frame(height: 5).frame(maxWidth: 380)
 
-            if recorder.noSignal {
-                Text(Loc.t("Es kommt kein Ton an. Beim Systemton fehlt dann meist die Erlaubnis: Systemeinstellungen → Datenschutz & Sicherheit → Tonaufnahme."))
+            if let note = recorder.signalNote {
+                Text(note)
                     .font(.system(size: 11)).foregroundStyle(Color(red: 0.95, green: 0.7, blue: 0.2))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 420)

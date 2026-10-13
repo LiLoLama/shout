@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.13.5 — 2026-10-13
+zeigen: nein
+
+### Deutsch
+**Behoben:** Beim Mitschnitt eines Meetings fehlte die eigene Stimme, wenn in macOS ein anderes Mikrofon als Standard eingestellt war als in shout. – etwa ein virtuelles Gerät wie Loopback. Der Mitschnitt nimmt jetzt dasselbe Mikrofon wie das Diktat. Kommt bei „Beides“ vom Mikrofon kein Ton an, sagt shout. das jetzt während der Aufnahme und nennt das Gerät.
+
+### English
+**Fixed:** When recording a meeting, your own voice was missing if macOS had a different default microphone than shout. – for example a virtual device like Loopback. The recording now uses the same microphone as dictation. If no sound arrives from the microphone with “Both”, shout. now tells you during the recording and names the device.
+
 ## 1.13.4 — 2026-10-12
 zeigen: nein
 

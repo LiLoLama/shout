@@ -22,8 +22,13 @@ import Foundation
 @available(macOS 14.2, *)
 final class SystemAudioTap {
 
-    /// Mono-Samples in der Rate des Aggregats. Wird auf dem Audio-Thread gerufen.
-    private var onSamples: (([Float]) -> Void)?
+    /// Mono-Samples in der Rate des Aggregats, dazu der Spitzenpegel des Mikrofons
+    /// allein (`nil` ohne Mikrofon). Wird auf dem Audio-Thread gerufen.
+    private var onSamples: (([Float], Float?) -> Void)?
+
+    /// UID des Mikrofons, das tatsächlich im Aggregat steckt — für den Hinweis,
+    /// wenn von dort nichts kommt.
+    private(set) var microphoneUID: String?
 
     private var tap = AudioObjectID(kAudioObjectUnknown)
     private var aggregate = AudioObjectID(kAudioObjectUnknown)
@@ -40,14 +45,17 @@ final class SystemAudioTap {
     ///   als Sub-Gerät ins SELBE Aggregat — nur so teilen sich beide Quellen einen
     ///   Takt. Zwei getrennt laufende Geräte würden über eine Stunde auseinander
     ///   driften.
+    /// - Parameter microphoneUID: Das Mikrofon aus den Einstellungen. `nil` nimmt
+    ///   den Standard-Eingang von macOS.
     /// - Parameter onlyProcesses: Prozessobjekte, die allein abgegriffen werden
     ///   sollen. Leer = alles außer dem eigenen Ton. Die Meeting-Erkennung kennt
     ///   den Prozess und reicht ihn durch: Sonst läge die Musik, die nebenher
     ///   lief, mit im Mitschnitt — bei einem Mitschnitt, den man nicht selbst
     ///   gestartet hat, ist das nicht zumutbar.
     func start(includeMicrophone: Bool,
+               microphoneUID: String? = nil,
                onlyProcesses: [AudioObjectID] = [],
-               onSamples: @escaping ([Float]) -> Void) throws {
+               onSamples: @escaping ([Float], Float?) -> Void) throws {
         self.onSamples = onSamples
         self.includeSubDevices = includeMicrophone
 
@@ -70,8 +78,10 @@ final class SystemAudioTap {
 
         var subDevices: [[String: Any]] = [[kAudioSubDeviceUIDKey: outputUID]]
         if includeMicrophone {
-            let input = try Self.defaultDevice(selector: kAudioHardwarePropertyDefaultInputDevice)
-            let inputUID = try Self.stringProperty(input, kAudioDevicePropertyDeviceUID)
+            let inputUID = try microphoneUID ?? Self.stringProperty(
+                Self.defaultDevice(selector: kAudioHardwarePropertyDefaultInputDevice),
+                kAudioDevicePropertyDeviceUID)
+            self.microphoneUID = inputUID
             // Nur hinzufügen, wenn es nicht ohnehin dasselbe Gerät ist (ein
             // Interface bedient oft Ein- und Ausgang).
             if inputUID != outputUID {
@@ -130,7 +140,20 @@ final class SystemAudioTap {
 
     private func handle(_ input: UnsafePointer<AudioBufferList>) {
         let list = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
-        guard list.count > 0, let callback = onSamples else { return }
+        guard let callback = onSamples else { return }
+        let result = Self.mix(list, includeSubDevices: includeSubDevices)
+        guard !result.samples.isEmpty else { return }
+        callback(result.samples, result.microphonePeak)
+    }
+
+    /// Mischt die Puffer zu Mono und misst nebenbei das Mikrofon für sich.
+    /// Getrennt gemessen, weil der Ton der anderen sonst ein stummes Mikrofon
+    /// verdeckt: Die Mischung schlägt aus, die eigene Stimme fehlt trotzdem.
+    /// `microphonePeak` ist `nil` bei „nur Systemton" und 0, wenn vor dem Tap gar
+    /// kein Puffer liegt — dann steckt kein Mikrofon im Aggregat.
+    static func mix(_ list: UnsafeMutableAudioBufferListPointer,
+                    includeSubDevices: Bool) -> (samples: [Float], microphonePeak: Float?) {
+        guard list.count > 0 else { return ([], nil) }
 
         // Der Tap ist der letzte Puffer. Bei „nur Systemton" ist er der einzige, der
         // uns interessiert: Die davor sind die Eingänge des Ausgabegeräts, und die
@@ -139,6 +162,7 @@ final class SystemAudioTap {
         let first = includeSubDevices ? 0 : tapIndex
 
         var mixed: [Float] = []
+        var microphonePeak: Float = 0
         for index in first...tapIndex {
             let buffer = list[index]
             guard let data = buffer.mData else { continue }
@@ -148,6 +172,9 @@ final class SystemAudioTap {
             guard frames > 0 else { continue }
             let samples = data.assumingMemoryBound(to: Float.self)
 
+            if index < tapIndex {
+                for i in 0..<frames * channels { microphonePeak = max(microphonePeak, abs(samples[i])) }
+            }
             if mixed.isEmpty { mixed = Array(repeating: 0, count: frames) }
             let usable = min(frames, mixed.count)
             for frame in 0..<usable {
@@ -156,12 +183,12 @@ final class SystemAudioTap {
                 mixed[frame] += sum / Float(channels)
             }
         }
-        guard !mixed.isEmpty else { return }
+        guard !mixed.isEmpty else { return ([], nil) }
 
         // Bei zwei Quellen halbieren, damit die Summe nicht übersteuert.
         let sources = includeSubDevices ? Float(max(1, tapIndex - first + 1)) : 1
         if sources > 1 { for i in mixed.indices { mixed[i] /= sources } }
-        callback(mixed)
+        return (mixed, includeSubDevices ? microphonePeak : nil)
     }
 
     // MARK: - Core-Audio-Kleinkram

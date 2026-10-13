@@ -3,6 +3,22 @@
     <channel>
         <title>shout</title>
         <item>
+            <title>1.13.5</title>
+            <pubDate>Tue, 13 Oct 2026 13:58:33 +0200</pubDate>
+            <link>https://github.com/LiLoLama/shout</link>
+            <sparkle:version>38</sparkle:version>
+            <sparkle:shortVersionString>1.13.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.13.5/shout-1.13.5.dmg" length="32427699" type="application/octet-stream" sparkle:edSignature="82hXs6czTlh7/coQuLe5rsi7h3O14x5Z1IdFfxLU0qnZpqQEfViIY9yNbusSpyGu6WCNJM4sc4+x7gVKnZPmBQ=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.13.5/shout38-37.delta" sparkle:deltaFrom="37" length="1959126" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="33yTu5nfTK6uL4PF/gLlYsyoGa9aX/BUwEP8nkWCeqAX8yVCVgMFePzG38+rovr34EUOgTIPtbWzZQAfQUYTCw=="/>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.13.5/shout38-36.delta" sparkle:deltaFrom="36" length="2545326" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="mY8oRnCQ3qp4LFCpVWO3D3F/L3xwl54l8UJ8b9Lriv/3E3vdUTquD6uXOJXoFyPdIwzROrEY8yMSLAITMzpsBw=="/>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.13.5/shout38-35.delta" sparkle:deltaFrom="35" length="7606818" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="LT+qSJQw6hfAd1EEbGSdyrAAxt1Wz2vI/sdYhLTOysb1tPRiATMDaR1nnXldpR7YntGI7B6a78GmB/nwjgNXDQ=="/>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.13.5/shout38-34.delta" sparkle:deltaFrom="34" length="8008570" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="u0vc+Y+qcCEXPFtwLWvFGnQmT4qtCBjcTDfSsOXEu2D1CJxMs6YiFePoQjUEXOuML68AKlBezEIeYDtTY12aCA=="/>
+                <enclosure url="https://github.com/LiLoLama/shout/releases/download/v1.13.5/shout38-33.delta" sparkle:deltaFrom="33" length="8367958" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="zbl73EhSn8nq6G8I4vPAqN2lR/ai+R0MUEo2WvnDi/kZn+n6/y70FVvDRf5UrnS6P0ImNFoU3B+5FNj7TgoCAQ=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.13.4</title>
             <pubDate>Mon, 12 Oct 2026 16:37:07 +0200</pubDate>
             <link>https://github.com/LiLoLama/shout</link>

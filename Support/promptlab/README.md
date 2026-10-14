@@ -24,3 +24,17 @@ messen. Ergebnis am 27.08.2026, Fall „Bild-Frage": alter Prompt 4/4 falsch,
 neuer 4/4 richtig.
 
 Neue Fälle einfach in `faelle` in `main.swift` ergänzen.
+
+## Gemma gegen Luna (ChatGPT-Abo)
+
+```bash
+./build/Build/Products/Debug/promptlab luna
+```
+
+Schickt die Fehlfälle und zwölf echte Diktate aus `history.json` (über alle
+Längen verteilt) je dreimal durch das lokale Gemma und durch GPT-6 Luna über das
+ChatGPT-Abo — für Luna mit derselben Engine wie die App. Das Zugangstoken kommt
+aus der Anmeldung in shout. (macOS fragt beim ersten Mal nach dem
+Schlüsselbund-Zugriff). Erneuert wird hier nie; ist es abgelaufen, in shout.
+„Verbindung testen“ drücken. Der Bericht enthält echte Diktate — nicht ins Repo legen.
+

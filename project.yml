@@ -321,6 +321,12 @@ targets:
       - path: Sources/FlowLokal/FormatterPrompt.swift
       - path: Sources/FlowLokal/FormattingGuard.swift
       - path: Sources/FlowLokal/Localization.swift
+      # Für `promptlab luna`: dieselbe Abo-Engine wie in der App.
+      - path: Sources/FlowLokal/TextEngine.swift
+      - path: Sources/FlowLokal/RemoteProvider.swift
+      - path: Sources/FlowLokal/ProviderKeychain.swift
+      - path: Sources/FlowLokal/ChatGPTCredentials.swift
+      - path: Sources/FlowLokal/ChatGPTPlanTextEngine.swift
     dependencies:
       - package: mlxlm
         product: MLXLLM

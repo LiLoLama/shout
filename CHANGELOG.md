@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.13.6 — 2026-10-14
+zeigen: nein
+
+### Deutsch
+**Behoben:** Die Seite **Notizen** ließ sich nicht scrollen. Bei offenen Einstellungen und kleinerem Fenster waren die Scratchpad-Einstellungen sowie Liste und Editor unten abgeschnitten. Die Seite scrollt jetzt.
+
+### English
+**Fixed:** The **Notes** page couldn’t be scrolled. With the settings open and a smaller window, the Scratchpad settings as well as the list and editor were cut off at the bottom. The page now scrolls.
+
 ## 1.13.5 — 2026-10-13
 zeigen: nein
 

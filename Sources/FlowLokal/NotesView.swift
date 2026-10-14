@@ -19,8 +19,55 @@ struct NotesView: View {
     @State private var editorFocus = 0
     @State private var versionenFuer: Note?
 
+    /// Höhe von Kopf, Hinweisen und Einstellungen über Liste und Editor.
+    @State private var kopfHoehe: CGFloat = 0
+    /// Darunter werden Liste und Editor nicht gestaucht — die Seite scrollt dann.
+    private static let mindestHoeheNotizen: CGFloat = 400
+    private static let abstand: CGFloat = 14
+    private static let obenRand: CGFloat = 42
+    private static let untenRand: CGFloat = 20
+
+    /// Die ganze Seite scrollt: Bei offenen Einstellungen und kleinem Fenster
+    /// wurde sonst unten abgeschnitten. Liste und Editor füllen den Rest des
+    /// Fensters, mindestens aber `mindestHoeheNotizen`.
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        GeometryReader { geo in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: Self.abstand) {
+                    kopf
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { kopfHoehe = $0 }
+                    notizBereich
+                        .frame(height: max(Self.mindestHoeheNotizen,
+                                           geo.size.height - Self.obenRand - Self.untenRand - Self.abstand - kopfHoehe))
+                }
+                .padding(.horizontal, 28).padding(.top, Self.obenRand).padding(.bottom, Self.untenRand)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollContentBackground(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.shoutWindow)
+        .overlay(alignment: .bottom) { undoBar }
+        .alert(Loc.t("Notiz umbenennen"), isPresented: renameBinding) {
+            TextField(Loc.t("Titel"), text: $renameText)
+            Button(Loc.t("Umbenennen")) {
+                if let id = renaming { model.rename(id, to: renameText) }
+                renaming = nil
+            }
+            Button(Loc.t("Abbrechen"), role: .cancel) { renaming = nil }
+        }
+        .sheet(item: $versionenFuer) { note in
+            NoteVersionsSheet(title: note.title,
+                              versions: model.versionList(for: note.id),
+                              onRestore: { model.restore($0, of: note.id) },
+                              onClose: { versionenFuer = nil })
+        }
+        .onAppear { model.refreshRescuedFiles() }
+        .onDisappear { model.flush() }
+    }
+
+    private var kopf: some View {
+        VStack(alignment: .leading, spacing: Self.abstand) {
             header
             if !model.rescuedFiles.isEmpty { rescueBanner }
             if !hinweisGesehen && scratchpadSettings.isEnabled { hintCard }
@@ -44,35 +91,18 @@ struct NotesView: View {
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.shoutLive.opacity(0.10)))
             }
-            HStack(spacing: 0) {
-                list.frame(width: 250)
-                Rectangle().fill(Color.white.opacity(0.06)).frame(width: 1)
-                editor.frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(white: 0.135)))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.07)))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .padding(.horizontal, 28).padding(.top, 42).padding(.bottom, 20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.shoutWindow)
-        .overlay(alignment: .bottom) { undoBar }
-        .alert(Loc.t("Notiz umbenennen"), isPresented: renameBinding) {
-            TextField(Loc.t("Titel"), text: $renameText)
-            Button(Loc.t("Umbenennen")) {
-                if let id = renaming { model.rename(id, to: renameText) }
-                renaming = nil
-            }
-            Button(Loc.t("Abbrechen"), role: .cancel) { renaming = nil }
+    }
+
+    private var notizBereich: some View {
+        HStack(spacing: 0) {
+            list.frame(width: 250)
+            Rectangle().fill(Color.white.opacity(0.06)).frame(width: 1)
+            editor.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .sheet(item: $versionenFuer) { note in
-            NoteVersionsSheet(title: note.title,
-                              versions: model.versionList(for: note.id),
-                              onRestore: { model.restore($0, of: note.id) },
-                              onClose: { versionenFuer = nil })
-        }
-        .onAppear { model.refreshRescuedFiles() }
-        .onDisappear { model.flush() }
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(white: 0.135)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.07)))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var renameBinding: Binding<Bool> {

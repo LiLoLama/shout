@@ -113,8 +113,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.inthezone.flowlokal
         # Datei-/Produktname ohne Punkt (sonst "shout..app"); Anzeigename mit Punkt.
         PRODUCT_NAME: "shout"
-        MARKETING_VERSION: "1.13.6"
-        CURRENT_PROJECT_VERSION: "39"
+        MARKETING_VERSION: "1.14.0"
+        CURRENT_PROJECT_VERSION: "40"
         # Selbstsigniertes Zertifikat → stabile Code-Identität → Accessibility-Freigabe
         # bleibt über alle Rebuilds erhalten (kein ad-hoc "-" mehr).
         CODE_SIGN_IDENTITY: "Flow Lokal Self-Signed"
@@ -183,6 +183,13 @@ targets:
           - ProviderKeychain.swift
           - RemoteTextEngine.swift
           - ProviderModels.swift
+          # ChatGPT-Abo („Sign in with ChatGPT"). Am iPhone noch nicht im
+          # Katalog, aber Fabrik, Auswahl und Fehlertexte kennen die Typen.
+          - ChatGPTCredentials.swift
+          - ChatGPTOAuth.swift
+          - ChatGPTAuth.swift
+          - ChatGPTPlanTextEngine.swift
+          - LoopbackServer.swift
           - ProviderText.swift
           - WAVEncoder.swift
           - AudioWindows.swift
@@ -350,6 +357,11 @@ targets:
       - path: Sources/FlowLokal/RemoteProvider.swift
       - path: Sources/FlowLokal/ProviderKeychain.swift
       - path: Sources/FlowLokal/RemoteTextEngine.swift
+      - path: Sources/FlowLokal/ChatGPTCredentials.swift
+      - path: Sources/FlowLokal/ChatGPTOAuth.swift
+      - path: Sources/FlowLokal/ChatGPTAuth.swift
+      - path: Sources/FlowLokal/ChatGPTPlanTextEngine.swift
+      - path: Sources/FlowLokal/LoopbackServer.swift
       - path: Sources/FlowLokal/ProviderModels.swift
       - path: Sources/FlowLokal/ProviderText.swift
       - path: Sources/FlowLokal/WAVEncoder.swift

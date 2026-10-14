@@ -52,6 +52,11 @@ struct ProviderTemplate: Identifiable, Hashable, Sendable {
     let needsKey: Bool
     /// Ein Satz Einordnung für die Oberfläche.
     let note: String
+    /// Läuft über das ChatGPT-Abo des Nutzers statt über einen API-Schlüssel
+    /// („Sign in with ChatGPT"). Dann gibt es keinen Schlüssel, sondern eine
+    /// Anmeldung, und gesprochen wird die Responses API statt
+    /// `/chat/completions` — siehe `ChatGPTPlanTextEngine`.
+    var chatGPTPlan: Bool = false
 }
 
 /// Die mitgelieferten Vorlagen.
@@ -66,7 +71,33 @@ struct ProviderTemplate: Identifiable, Hashable, Sendable {
 /// Notausgänge, wenn eine Vorlage hinterherhängt.
 enum ProviderCatalog {
 
-    static let all: [ProviderTemplate] = [
+    static let all: [ProviderTemplate] = Array(anbieter.prefix(1)) + abo + anbieter.dropFirst()
+
+    /// Das ChatGPT-Abo als Anbieter. Vorerst nur am Mac: Die Anmeldung braucht
+    /// einen Browser und einen Rückruf auf `127.0.0.1`, und das ist auf dem
+    /// iPhone noch nicht ausprobiert.
+    ///
+    /// Nur für die Aufbereitung: OpenAI schließt Audio-Eingabe und die
+    /// Transkriptions-API bei der Abo-Nutzung ausdrücklich aus (Stand 14.10.2026).
+    private static var abo: [ProviderTemplate] {
+        #if os(macOS)
+        return [ProviderTemplate(
+            id: "chatgpt", name: "ChatGPT-Abo",
+            baseURL: ChatGPTPlan.resource,
+            keyURL: "",
+            chatModels: ["gpt-6-luna", "gpt-6.1-sol"],
+            audioModels: [],
+            canAudio: false, canText: true, needsKey: false,
+            note: "Läuft über dein ChatGPT-Abo (Plus oder Pro) statt über einen API-Schlüssel. "
+                + "Bei Plus teilst du dir das Fünf-Stunden-Limit mit ChatGPT und Codex. "
+                + "Keine Transkription.",
+            chatGPTPlan: true)]
+        #else
+        return []
+        #endif
+    }
+
+    private static let anbieter: [ProviderTemplate] = [
         ProviderTemplate(
             id: "openai", name: "OpenAI",
             baseURL: "https://api.openai.com/v1",
@@ -231,6 +262,7 @@ struct RemoteConfig: Codable, Equatable, Sendable {
     // MARK: - Adressen
 
     var chatURL: URL? { url(appending: "chat/completions") }
+    var responsesURL: URL? { url(appending: "responses") }
     var audioURL: URL? { url(appending: "audio/transcriptions") }
     var modelsURL: URL? { url(appending: "models") }
 
@@ -257,7 +289,7 @@ struct RemoteConfig: Codable, Equatable, Sendable {
 
         while text.hasSuffix("/") { text.removeLast() }
 
-        for endpoint in ["/chat/completions", "/audio/transcriptions", "/models"]
+        for endpoint in ["/chat/completions", "/responses", "/audio/transcriptions", "/models"]
         where text.hasSuffix(endpoint) {
             text.removeLast(endpoint.count)
             break
@@ -339,6 +371,15 @@ enum RemoteProviderError: Error, Equatable {
     /// (Ollama, LM Studio) läuft nicht. Eigener Fall, weil die Abhilfe eine
     /// völlig andere ist als bei einem abgelehnten Schlüssel.
     case cannotConnect(code: Int)
+    /// ChatGPT-Abo: nicht (mehr) angemeldet, oder die Anmeldung ist endgültig
+    /// verfallen. Abhilfe ist eine neue Anmeldung, kein Schlüssel.
+    case signInRequired
+    /// ChatGPT-Abo: Das Nutzungslimit ist erreicht (Fünf-Stunden-Limit bei
+    /// Plus oder das Limit, das der Nutzer dieser App gesetzt hat).
+    case planLimitReached
+    /// ChatGPT-Abo: Für dieses Konto oder diesen Workspace nicht verfügbar,
+    /// z. B. ohne Plus oder Pro.
+    case planNotEligible
 
     /// Lohnt ein zweiter Versuch? Nur bei Ursachen, die von selbst weggehen.
     /// Ein abgelehnter Schlüssel oder ein unbekanntes Modell wird beim zweiten
@@ -349,6 +390,10 @@ enum RemoteProviderError: Error, Equatable {
         case .http(let status): return status >= 500
         case .missingKey, .invalidBaseURL, .unauthorized, .noCredit,
              .unknownModel, .malformedResponse: return false
+        // Das Limit geht zwar irgendwann von selbst weg, aber nicht in den
+        // Sekunden, die ein zweiter Versuch wartet — und OpenAI bittet
+        // ausdrücklich darum, dann nicht weiter anzufragen.
+        case .signInRequired, .planLimitReached, .planNotEligible: return false
         }
     }
 
@@ -367,6 +412,9 @@ enum RemoteProviderError: Error, Equatable {
         case .malformedResponse: return "Antwort nicht verwertbar"
         case .timedOut: return "Zeitgrenze überschritten"
         case .cannotConnect(let code): return "keine Verbindung (\(code))"
+        case .signInRequired: return "ChatGPT-Anmeldung nötig"
+        case .planLimitReached: return "ChatGPT-Abo: Limit erreicht"
+        case .planNotEligible: return "ChatGPT-Abo: für dieses Konto nicht verfügbar"
         }
     }
 }
@@ -452,9 +500,12 @@ extension EngineSelection {
     /// Gerät stünde sonst „Anbieter" in den Einstellungen, und jedes Diktat
     /// liefe in einen 401 — oder schlimmer, es ginge Text an einen Anbieter, für
     /// den der Mensch auf diesem Gerät nie einen Schlüssel eingetragen hat.
+    ///
+    /// Beim ChatGPT-Abo gilt dasselbe mit der Anmeldung statt des Schlüssels.
     static func decide(for purpose: EnginePurpose,
                        defaults: UserDefaults = .standard,
-                       hasKey: (String) -> Bool = { ProviderKeychain.has(templateID: $0) })
+                       hasKey: (String) -> Bool = { ProviderKeychain.has(templateID: $0) },
+                       signedIn: () -> Bool = { ChatGPTCredentialStore.hasSession() })
     -> EngineSelection {
         guard defaults.string(forKey: purpose.engineKey) == "remote",
               let config = RemoteConfig.load(purpose: purpose, from: defaults),
@@ -465,6 +516,7 @@ extension EngineSelection {
         if purpose == .audio, !template.canAudio { return .local }
         if purpose == .text, !template.canText { return .local }
         if template.needsKey, !hasKey(template.id) { return .local }
+        if template.chatGPTPlan, !signedIn() { return .local }
         return .remote(config: config, template: template)
     }
 }

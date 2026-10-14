@@ -150,4 +150,36 @@ final class EngineSelectionTests: XCTestCase {
         if case .local = text { XCTFail("Text hätte extern sein müssen") }
         XCTAssertEqual(audio, .local)
     }
+
+    // MARK: - ChatGPT-Abo
+
+    /// Ohne Anmeldung wird lokal gearbeitet — wie ohne Schlüssel. Ein Backup
+    /// mit „ChatGPT-Abo" darf auf einem neuen Mac nichts verschicken.
+    func testAboOhneAnmeldungBleibtLokal() {
+        stelleEin(.text, auf: "remote", templateID: "chatgpt", model: "gpt-6-luna")
+        XCTAssertEqual(EngineSelection.decide(for: .text, defaults: defaults,
+                                              hasKey: { _ in false }, signedIn: { false }),
+                       .local)
+    }
+
+    /// Mit Anmeldung extern — und dafür braucht es keinen Schlüssel.
+    func testAboMitAnmeldungWirdExtern() {
+        stelleEin(.text, auf: "remote", templateID: "chatgpt", model: "gpt-6-luna")
+        let wahl = EngineSelection.decide(for: .text, defaults: defaults,
+                                          hasKey: { _ in false }, signedIn: { true })
+        guard case .remote(let config, let template) = wahl else {
+            return XCTFail("Hätte extern werden müssen, wurde: \(wahl)")
+        }
+        XCTAssertTrue(template.chatGPTPlan)
+        XCTAssertEqual(config.responsesURL?.absoluteString, "https://api.openai.com/v1/responses")
+    }
+
+    /// Das Abo transkribiert nicht — OpenAI schließt Audio dort aus.
+    func testAboNieFuerAudio() {
+        stelleEin(.audio, auf: "remote", templateID: "chatgpt")
+        XCTAssertEqual(EngineSelection.decide(for: .audio, defaults: defaults,
+                                              hasKey: { _ in true }, signedIn: { true }),
+                       .local)
+        XCTAssertFalse(ProviderCatalog.templates(for: .audio).contains { $0.chatGPTPlan })
+    }
 }

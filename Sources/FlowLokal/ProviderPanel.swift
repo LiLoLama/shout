@@ -25,6 +25,11 @@ struct ProviderPanel: View {
     @State private var lastError: String?
     @ObservedObject private var usage = ProviderUsageStore.shared
     @State private var loadingPrices = false
+    @ObservedObject private var plan = ChatGPTPlanStatus.shared
+    /// Die laufende ChatGPT-Anmeldung — abbrechbar, solange der Browser offen ist.
+    @State private var anmeldung: Task<Void, Never>?
+    /// Der Hinweis nach der ersten Anmeldung erscheint einmal, danach nicht mehr.
+    @AppStorage("chatGPTPlanWelcomeSeen") private var willkommenGesehen = false
 
     init(purpose: EnginePurpose, onChanged: @escaping () async -> Void) {
         self.purpose = purpose
@@ -38,6 +43,9 @@ struct ProviderPanel: View {
 
     private var template: ProviderTemplate? { ProviderCatalog.template(id: config.templateID) }
 
+    /// Das ChatGPT-Abo statt eines Schlüssels: Anmeldung, keine Adresse, keine Kosten.
+    private var istAbo: Bool { template?.chatGPTPlan == true }
+
     /// Adresse selbst eintragen: bei „Eigener Endpunkt" und bei Anbietern auf dem
     /// eigenen Rechner, wo Host und Port abweichen können.
     private var addressEditable: Bool {
@@ -46,6 +54,37 @@ struct ProviderPanel: View {
     }
 
     var body: some View {
+        if istAbo { aboBody } else { schluesselBody }
+    }
+
+    private var aboBody: some View {
+        VStack(spacing: 0) {
+            providerRow
+            ConsoleDivider()
+            accountRow
+            if plan.signedIn, !willkommenGesehen {
+                ConsoleDivider()
+                willkommenRow
+            }
+            ConsoleDivider()
+            modelRow
+            ConsoleDivider()
+            probeRow
+            ConsoleDivider()
+            planUsageRow
+            if let note = template?.note {
+                ConsoleDivider()
+                noteRow(note)
+            }
+            if let lastError {
+                ConsoleDivider()
+                errorRow(lastError)
+            }
+        }
+        .onAppear { plan.refresh() }
+    }
+
+    private var schluesselBody: some View {
         VStack(spacing: 0) {
             providerRow
             ConsoleDivider()
@@ -84,7 +123,9 @@ struct ProviderPanel: View {
                 get: { config.templateID },
                 set: { neu in wechselVorlage(zu: neu) })) {
                 ForEach(ProviderCatalog.templates(for: purpose)) { vorlage in
-                    Text(vorlage.name).tag(vorlage.id)
+                    // Übersetzt wird nur, was in der Tabelle steht („ChatGPT-Abo");
+                    // Firmennamen fallen unverändert durch.
+                    Text(Loc.t(vorlage.name)).tag(vorlage.id)
                 }
             }
             .labelsHidden().frame(minWidth: 150, idealWidth: 200, maxWidth: 220)
@@ -254,6 +295,99 @@ struct ProviderPanel: View {
         }
     }
 
+    // MARK: - ChatGPT-Abo
+
+    private var accountRow: some View {
+        FieldRow(title: Loc.t("Konto"), help: kontoHilfe) {
+            HStack(spacing: 8) {
+                if anmeldung != nil {
+                    ProgressView().controlSize(.small).tint(Color.shoutLive)
+                    Button(Loc.t("Abbrechen")) { anmeldung?.cancel() }
+                        .buttonStyle(ConsoleButtonStyle()).fixedSize()
+                } else if plan.signedIn {
+                    Text(plan.account?.email ?? Loc.t("Angemeldet"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(white: 0.7))
+                        .lineLimit(1).truncationMode(.middle)
+                    Button(Loc.t("Abmelden")) { Task { await abmelden() } }
+                        .buttonStyle(ConsoleButtonStyle()).fixedSize()
+                } else {
+                    Button(Loc.t("Weiter mit ChatGPT")) { anmelden() }
+                        .buttonStyle(ConsoleButtonStyle()).fixedSize()
+                }
+            }
+        }
+    }
+
+    private var kontoHilfe: String? {
+        if anmeldung != nil { return Loc.t("Im Browser anmelden und die Nutzung erlauben.") }
+        if plan.signedIn { return nil }
+        return Loc.t("Plus oder Pro nötig. Die Anmeldung öffnet sich im Browser.")
+    }
+
+    /// Einmal nach der ersten Anmeldung, wie OpenAI es für die Abo-Nutzung vorsieht.
+    private var willkommenRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.circle").font(.system(size: 11))
+                .foregroundStyle(Color.shoutLive)
+            Text(Loc.t("Die Aufbereitung läuft jetzt über dein ChatGPT-Abo. Wie viel shout. davon nutzen darf, legst du in den ChatGPT-Einstellungen fest."))
+                .font(.system(size: 11)).foregroundStyle(Color(white: 0.7))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button(Loc.t("Verstanden")) { willkommenGesehen = true }
+                .buttonStyle(ConsoleButtonStyle()).fixedSize()
+        }
+        .padding(.horizontal, 15).padding(.vertical, 11)
+    }
+
+    /// An der Stelle der Kostenzeile: Hier kostet nichts extra, aber es zählt
+    /// gegen das Abo — und das Limit stellt der Nutzer bei ChatGPT ein.
+    private var planUsageRow: some View {
+        FieldRow(title: Loc.t("Nutzung"), help: nutzungHilfe) {
+            Button(Loc.t("Nutzung verwalten")) { NSWorkspace.shared.open(ChatGPTPlan.manageUsageURL) }
+                .buttonStyle(ConsoleButtonStyle()).fixedSize()
+        }
+    }
+
+    private var nutzungHilfe: String {
+        if plan.limitReachedAt != nil {
+            return Loc.t("Das Limit deines ChatGPT-Abos ist erreicht. Bis es wieder frei ist, fügt shout. den Rohtext ein.")
+        }
+        return Loc.t("Läuft über dein ChatGPT-Abo — keine Kosten pro Aufruf.")
+    }
+
+    private func anmelden() {
+        lastError = nil
+        anmeldung = Task {
+            do {
+                _ = try await ChatGPTAuth.shared.signIn { url in
+                    await MainActor.run { _ = NSWorkspace.shared.open(url) }
+                }
+                await MainActor.run { NSApp.activate(ignoringOtherApps: true) }
+                lastError = nil
+                models = []
+                await onChanged()
+            } catch ChatGPTAuthError.cancelled {
+                lastError = nil
+            } catch {
+                lastError = ProviderText.describe(error)
+            }
+            plan.refresh()
+            anmeldung = nil
+        }
+    }
+
+    private func abmelden() async {
+        let bestaetigt = await ChatGPTAuth.shared.signOut()
+        plan.refresh()
+        models = []
+        probeOK = nil
+        probeText = nil
+        lastError = bestaetigt ? nil
+            : Loc.t("Abgemeldet. OpenAI hat den Widerruf nicht bestätigt — trennen kannst du shout. auch in den ChatGPT-Einstellungen.")
+        await onChanged()
+    }
+
     private func noteRow(_ note: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "info.circle").font(.system(size: 11))
@@ -319,6 +453,17 @@ struct ProviderPanel: View {
         guard let template else { return }
         loadingModels = true
         defer { loadingModels = false }
+        if istAbo {
+            do {
+                let token = try await ChatGPTAuth.shared.accessToken()
+                models = try await ChatGPTPlanModels.fetch(token: token)
+                lastError = nil
+            } catch {
+                lastError = ProviderText.describe(error)
+                plan.refresh()
+            }
+            return
+        }
         do {
             let ids = try await ProviderModels.fetch(
                 config: config,
@@ -336,6 +481,10 @@ struct ProviderPanel: View {
         probing = true
         probeOK = nil
         defer { probing = false }
+        if istAbo {
+            await aboTesten()
+            return
+        }
         let ergebnis = await ProviderProbe.run(
             config: config,
             key: ProviderKeychain.read(for: template.id),
@@ -361,5 +510,29 @@ struct ProviderPanel: View {
             probeText = nil
             lastError = ProviderText.describe(fehler)
         }
+    }
+
+    /// Wie „Verbindung testen" bei den anderen: über die Modell-Liste, nicht über
+    /// einen Aufruf ans Modell — der würde gegen das Limit des Abos zählen.
+    /// Prüft nebenbei, ob die Anmeldung noch gilt (das Token wird dabei erneuert).
+    private func aboTesten() async {
+        let start = Date()
+        do {
+            let token = try await ChatGPTAuth.shared.accessToken()
+            let ids = try await ChatGPTPlanModels.fetch(token: token)
+            models = ids
+            let dauer = String(format: "%.1f", Date().timeIntervalSince(start))
+            probeOK = ids.contains(config.model)
+            probeText = probeOK == true
+                ? Loc.f("Verbindung steht · %@ s", dauer)
+                : Loc.f("Verbindung steht, aber „%@“ steht nicht in der Modell-Liste des Anbieters.",
+                        config.model)
+            lastError = nil
+        } catch {
+            probeOK = false
+            probeText = nil
+            lastError = ProviderText.describe(error)
+        }
+        plan.refresh()
     }
 }

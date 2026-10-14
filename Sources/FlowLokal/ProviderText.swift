@@ -10,6 +10,7 @@ import Foundation
 enum ProviderText {
 
     static func describe(_ error: Error) -> String {
+        if let anmeldung = error as? ChatGPTAuthError { return describe(anmeldung) }
         guard let fehler = error as? RemoteProviderError else {
             return Loc.t("Unbekannter Fehler.")
         }
@@ -35,6 +36,35 @@ enum ProviderText {
             return Loc.t("Der Anbieter hat nicht rechtzeitig geantwortet.")
         case .cannotConnect:
             return Loc.t("Keine Verbindung. Stimmt die Adresse — und läuft der Server?")
+        case .signInRequired:
+            return Loc.t("Die Anmeldung bei ChatGPT ist abgelaufen. Bitte neu anmelden.")
+        case .planLimitReached:
+            return Loc.t("Das Limit deines ChatGPT-Abos ist erreicht. Bis es wieder frei ist, fügt shout. den Rohtext ein.")
+        case .planNotEligible:
+            return Loc.t("Für dieses ChatGPT-Konto ist die Nutzung in anderen Apps nicht freigegeben. Nötig ist Plus oder Pro.")
+        }
+    }
+
+    static func describe(_ fehler: ChatGPTAuthError) -> String {
+        switch fehler {
+        case .cancelled:
+            return Loc.t("Anmeldung abgebrochen.")
+        case .denied:
+            return Loc.t("Die Anmeldung wurde im Browser abgelehnt.")
+        case .stateMismatch, .callbackFailed, .tokenRejected:
+            return Loc.t("Die Anmeldung bei ChatGPT ist fehlgeschlagen. Bitte noch einmal versuchen.")
+        case .clientMismatch:
+            return Loc.t("Im Browser wurde ein anderes Konto gewählt. Bitte noch einmal anmelden.")
+        case .invalidIDToken:
+            return Loc.t("Die Antwort von ChatGPT ließ sich nicht prüfen. Bitte noch einmal versuchen.")
+        case .missingUsageScope:
+            return Loc.t("Angemeldet, aber ohne Erlaubnis, dein Abo zu nutzen. Bitte neu anmelden und die Nutzung erlauben.")
+        case .listenerFailed:
+            return Loc.t("shout. konnte den Rückruf für die Anmeldung nicht bereitstellen.")
+        case .timedOut:
+            return Loc.t("Die Anmeldung hat zu lange gedauert. Bitte noch einmal versuchen.")
+        case .network:
+            return Loc.t("Keine Verbindung zu ChatGPT.")
         }
     }
 }

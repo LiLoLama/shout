@@ -19,6 +19,18 @@ enum EngineFactory {
         switch EngineSelection.decide(for: .text) {
         case .local:
             return LocalTextEngine()
+        case .remote(let config, let template) where template.chatGPTPlan:
+            // Kein Verbrauch in `ProviderUsageStore`: Abgerechnet wird über das
+            // Abo, eine Dollar-Zahl in der Kostenanzeige wäre erfunden.
+            return ChatGPTPlanTextEngine(
+                model: config.model,
+                endpoint: config.responsesURL ?? URL(string: ChatGPTPlan.resource + "/responses")!,
+                token: { erneuern in
+                    try await ChatGPTAuth.shared.accessToken(forceRefresh: erneuern)
+                },
+                onPlanLimit: {
+                    Task { @MainActor in ChatGPTPlanStatus.shared.limitReached() }
+                })
         case .remote(let config, let template):
             let anbieter = template.name
             let modell = config.model

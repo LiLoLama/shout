@@ -339,6 +339,47 @@ final class Loc: ObservableObject {
         "Keine Verbindung. Stimmt die Adresse — und läuft der Server?":
             "No connection. Is the address right — and is the server running?",
         "Unbekannter Fehler.": "Unknown error.",
+        // ChatGPT-Abo („Sign in with ChatGPT", Abo-Nutzung)
+        "ChatGPT-Abo": "ChatGPT plan",
+        "Läuft über dein ChatGPT-Abo (Plus oder Pro) statt über einen API-Schlüssel. Bei Plus teilst du dir das Fünf-Stunden-Limit mit ChatGPT und Codex. Keine Transkription.":
+            "Runs on your ChatGPT plan (Plus or Pro) instead of an API key. On Plus, you share the five-hour limit with ChatGPT and Codex. No transcription.",
+        "Konto": "Account",
+        "Angemeldet": "Signed in",
+        "Abmelden": "Sign out",
+        "Weiter mit ChatGPT": "Continue with ChatGPT",
+        "Im Browser anmelden und die Nutzung erlauben.":
+            "Sign in in your browser and allow usage.",
+        "Plus oder Pro nötig. Die Anmeldung öffnet sich im Browser.":
+            "Requires Plus or Pro. Sign-in opens in your browser.",
+        "Die Aufbereitung läuft jetzt über dein ChatGPT-Abo. Wie viel shout. davon nutzen darf, legst du in den ChatGPT-Einstellungen fest.":
+            "Cleanup now runs on your ChatGPT plan. You decide in your ChatGPT settings how much of it shout. may use.",
+        "Nutzung": "Usage",
+        "Nutzung verwalten": "Manage usage",
+        "Läuft über dein ChatGPT-Abo — keine Kosten pro Aufruf.":
+            "Using your ChatGPT plan — no cost per request.",
+        "Abgemeldet. OpenAI hat den Widerruf nicht bestätigt — trennen kannst du shout. auch in den ChatGPT-Einstellungen.":
+            "Signed out. OpenAI did not confirm the revocation — you can also disconnect shout. in your ChatGPT settings.",
+        "Die Anmeldung bei ChatGPT ist abgelaufen. Bitte neu anmelden.":
+            "Your ChatGPT sign-in has expired. Please sign in again.",
+        "Das Limit deines ChatGPT-Abos ist erreicht. Bis es wieder frei ist, fügt shout. den Rohtext ein.":
+            "Your ChatGPT plan limit has been reached. Until it frees up, shout. inserts the raw text.",
+        "Für dieses ChatGPT-Konto ist die Nutzung in anderen Apps nicht freigegeben. Nötig ist Plus oder Pro.":
+            "This ChatGPT account can’t be used in other apps. Plus or Pro is required.",
+        "Anmeldung abgebrochen.": "Sign-in cancelled.",
+        "Die Anmeldung wurde im Browser abgelehnt.": "Sign-in was declined in the browser.",
+        "Die Anmeldung bei ChatGPT ist fehlgeschlagen. Bitte noch einmal versuchen.":
+            "Signing in to ChatGPT failed. Please try again.",
+        "Im Browser wurde ein anderes Konto gewählt. Bitte noch einmal anmelden.":
+            "A different account was chosen in the browser. Please sign in again.",
+        "Die Antwort von ChatGPT ließ sich nicht prüfen. Bitte noch einmal versuchen.":
+            "ChatGPT’s response could not be verified. Please try again.",
+        "Angemeldet, aber ohne Erlaubnis, dein Abo zu nutzen. Bitte neu anmelden und die Nutzung erlauben.":
+            "Signed in, but without permission to use your plan. Please sign in again and allow usage.",
+        "shout. konnte den Rückruf für die Anmeldung nicht bereitstellen.":
+            "shout. could not set up the sign-in callback.",
+        "Die Anmeldung hat zu lange gedauert. Bitte noch einmal versuchen.":
+            "Sign-in took too long. Please try again.",
+        "Keine Verbindung zu ChatGPT.": "No connection to ChatGPT.",
         "Kosten": "Cost",
         "Preise aktualisieren": "Update prices",
         "ca. %@ je Diktat": "approx. %@ per dictation",

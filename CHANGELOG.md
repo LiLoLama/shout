@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.14.1 — 2026-10-14
+zeigen: ja
+
+### Deutsch
+**Neu: Aufbereitung über dein ChatGPT-Abo.** Hast du ChatGPT Plus oder Pro, kann shout. deine Diktate jetzt damit aufbereiten – ohne API-Schlüssel und ohne Kosten pro Aufruf. Einrichten unter **Modelle → Aufbereitung & Formatierung → Anbieter → ChatGPT-Abo**, dann **Weiter mit ChatGPT**. Wie viel shout. von deinem Abo nutzen darf, legst du in den ChatGPT-Einstellungen fest; ist das Limit erreicht, fügt shout. den Rohtext ein. Die Spracherkennung läuft weiter wie bisher – eine Transkription über das Abo lässt OpenAI nicht zu.
+
+### English
+**New: Cleanup through your ChatGPT plan.** If you have ChatGPT Plus or Pro, shout. can now use it to clean up your dictations – no API key and no cost per request. Set it up under **Models → Cleanup & formatting → Provider → ChatGPT plan**, then **Continue with ChatGPT**. You decide in your ChatGPT settings how much of your plan shout. may use; when the limit is reached, shout. inserts the raw text. Speech recognition works as before – OpenAI doesn’t allow transcription through the plan.
+
 ## 1.14.0 — 2026-10-14
 zeigen: nein
 

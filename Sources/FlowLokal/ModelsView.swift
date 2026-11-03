@@ -44,6 +44,11 @@ struct ModelsView: View {
     private var recASR: ModelCatalog.Option { ModelCatalog.recommendedASR(ramGB: ram) }
     private var recFormat: ModelCatalog.Option { ModelCatalog.recommendedFormatting(ramGB: ram) }
 
+    // Auf Intel gibt es nur den Anbieter (`Hardware.lokaleModelle`) — dann
+    // weder Umschalter noch lokale Modelle, die doch nie laden würden.
+    private var asrRemote: Bool { asrEngine == "remote" || !Hardware.lokaleModelle }
+    private var formatRemote: Bool { formatEngine == "remote" || !Hardware.lokaleModelle }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -63,9 +68,11 @@ struct ModelsView: View {
 
                 ConsolePanel(title: Loc.t("Transkription (Sprache → Text)")) {
                     VStack(spacing: 0) {
-                        engineSwitch(for: .audio, selection: $asrEngine)
-                        ConsoleDivider()
-                        if asrEngine == "remote" {
+                        if Hardware.lokaleModelle {
+                            engineSwitch(for: .audio, selection: $asrEngine)
+                            ConsoleDivider()
+                        }
+                        if asrRemote {
                             ProviderPanel(purpose: .audio) { await onEngineChanged(.audio) }
                         } else {
                             ForEach(ModelCatalog.asr.indices, id: \.self) { i in
@@ -85,9 +92,11 @@ struct ModelsView: View {
 
                 ConsolePanel(title: Loc.t("Aufbereitung & Formatierung (KI-Textmodell)")) {
                     VStack(spacing: 0) {
-                        engineSwitch(for: .text, selection: $formatEngine)
-                        ConsoleDivider()
-                        if formatEngine == "remote" {
+                        if Hardware.lokaleModelle {
+                            engineSwitch(for: .text, selection: $formatEngine)
+                            ConsoleDivider()
+                        }
+                        if formatRemote {
                             ProviderPanel(purpose: .text) { await onEngineChanged(.text) }
                         } else {
                             ForEach(ModelCatalog.formatting.indices, id: \.self) { i in
@@ -101,16 +110,18 @@ struct ModelsView: View {
                     }
                 }
 
-                if formatEngine == "local" {
+                if !formatRemote {
                     // Was schon auf der Platte liegt, steht vor dem, was
                     // erst geladen werden müsste.
                     gefundenePanel
                     remotePanel
                 }
 
-                ordnerAbschnitt
+                if Hardware.lokaleModelle { ordnerAbschnitt }
 
-                Text(asrEngine == "remote" || formatEngine == "remote"
+                Text(asrRemote && formatRemote
+                     ? Loc.t("Beide Schritte laufen bei einem Anbieter. Was dorthin geht, verlässt dein Gerät; abgerechnet wird beim Anbieter. Alles Übrige bleibt lokal.")
+                     : asrRemote || formatRemote
                      ? Loc.t("Ein Schritt läuft bei einem Anbieter. Was dorthin geht, verlässt dein Gerät; abgerechnet wird beim Anbieter. Der andere Schritt und alles Übrige bleibt lokal.")
                      : Loc.t("Modelle werden beim ersten Auswählen einmalig von Hugging Face geladen und danach lokal gespeichert. Alles läuft anschließend komplett offline auf deinem Mac."))
                     .font(.system(size: 11)).foregroundStyle(Color(white: 0.5))
@@ -121,7 +132,7 @@ struct ModelsView: View {
         }
         .background(Color.shoutWindow)
         .scrollContentBackground(.hidden)
-        .task { if !didFetch { didFetch = true; await refreshRemote() } }
+        .task { if !didFetch, Hardware.lokaleModelle { didFetch = true; await refreshRemote() } }
     }
 
     // MARK: - Umschalter „auf diesem Gerät" / „Anbieter"
@@ -351,11 +362,14 @@ struct ModelsView: View {
                 }
                 ConsoleDivider().padding(.horizontal, -15)
                 HStack(spacing: 8) {
-                    Image(systemName: "sparkles").font(.system(size: 12)).foregroundStyle(Color.shoutLive)
+                    Image(systemName: Hardware.lokaleModelle ? "sparkles" : "info.circle")
+                        .font(.system(size: 12)).foregroundStyle(Color.shoutLive)
                     // .init(…) macht daraus eine LocalizedStringKey — SwiftUI parst
                     // das Markdown (**fett**) weiterhin.
-                    Text(.init(Loc.f("Empfohlen für deinen Mac: **%@** zum Transkribieren, **%@** zum Aufbereiten.",
-                                     recASR.name, recFormat.name)))
+                    Text(.init(Hardware.lokaleModelle
+                               ? Loc.f("Empfohlen für deinen Mac: **%@** zum Transkribieren, **%@** zum Aufbereiten.",
+                                       recASR.name, recFormat.name)
+                               : Loc.t("Auf Intel-Macs laufen Transkription und Aufbereitung über einen Anbieter. Modelle auf dem Gerät brauchen einen Mac mit Apple-Chip.")))
                         .font(.system(size: 12)).foregroundStyle(Color(white: 0.7))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)

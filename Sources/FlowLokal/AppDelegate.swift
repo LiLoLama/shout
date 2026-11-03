@@ -318,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         requestPermissions()
         installHotkeyMonitors()
         setupScratchpad()
+        nurAnbieterAufIntel()
         loadModel()
         loadFormatter()
 
@@ -642,7 +643,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// genau dieses Programms — nicht der ganze Systemton, sonst läge die Musik
     /// von nebenan mit in der Datei.
     private func startMeetingRecording(_ meeting: MeetingDetector.Meeting, icon: NSImage?) {
-        guard Hardware.lokaleModelle || EngineSelection.decide(for: .audio) != .local else {
+        guard !intelOhneSpracherkennung else {
             meetingPrompt.showDone(appName: meeting.name, icon: icon,
                                    message: Loc.t("Auf Intel-Macs erkennt shout. Sprache nur über einen Anbieter. Richte ihn unter „Modelle“ ein."),
                                    onOpen: { [weak self] in self?.openDashboard(.modelle) })
@@ -970,6 +971,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .loadingModel:
             button.title = "⏳"
             statusMenuItem?.title = Loc.t("Modell wird geladen …")
+        case .idle where intelOhneSpracherkennung:
+            button.title = "⚠️"
+            statusMenuItem?.title = Loc.t("Spracherkennung: Anbieter unter „Modelle“ einrichten")
         case .idle:
             button.title = "🎙️"
             statusMenuItem?.title = Loc.f("Bereit — %@", settings.triggerDescription)
@@ -1510,12 +1514,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 // mit „erneut laden" im Menü und im Onboarding.
                 NSLog("Modell-Ladefehler: \(error)")
                 dashboardModel.asrLoadFailed = true
-                state = .failed
-                // NACH state=.failed: das didSet ruft updateStatusItem() und würde
-                // einen zuvor gesetzten Titel sofort überschreiben.
-                if case LocalSpeechEngineError.intelMac = error {
-                    statusMenuItem?.title = Loc.t("Spracherkennung: Anbieter unter „Modelle“ einrichten")
-                } else {
+                state = zustandNachLaden(bereit: false)
+                // NACH dem Setzen von state: das didSet ruft updateStatusItem() und
+                // würde einen zuvor gesetzten Titel sofort überschreiben.
+                if state == .failed {
                     statusMenuItem?.title = Loc.f("Modell-Ladefehler: %@", error.localizedDescription)
                 }
             }
@@ -1567,6 +1569,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         do {
             try await transcriber.reload(onProgress: asrProgressHandler())
             dashboardModel.activeASR = id
+        } catch LocalSpeechEngineError.intelMac {
+            // Kein Download-Problem: Auf Intel lädt kein lokales Modell, auch das
+            // vorherige nicht. „Offline?“ schickte den Nutzer auf die falsche Fährte.
+            UserDefaults.standard.set(previous, forKey: "asrModel")
+            dashboardModel.modelNote = Loc.t("Auf Intel-Macs erkennt shout. Sprache nur über einen Anbieter. Richte ihn unter „Modelle“ ein.")
         } catch {
             // Laden fehlgeschlagen (z. B. offline) → vorheriges Modell wiederherstellen,
             // damit die App funktionsfähig bleibt und nicht still Diktate verschluckt.
@@ -1583,7 +1590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let ready = await transcriber.isReady
         dashboardModel.transcriberReady = ready
         dashboardModel.asrLoadFailed = !ready
-        state = ready ? .idle : .failed
+        state = zustandNachLaden(bereit: ready)
     }
 
     /// Lädt die Engine eines Schrittes neu, nachdem sich die Anbieter-Einstellung
@@ -1625,7 +1632,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let ready = await transcriber.isReady
             dashboardModel.transcriberReady = ready
             dashboardModel.asrLoadFailed = !ready
-            state = ready ? .idle : .failed
+            state = zustandNachLaden(bereit: ready)
         }
     }
 
@@ -2092,7 +2099,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard pendingTermination == nil else { return }
         // Intel ohne Anbieter: Die Aufnahme ließe sich nicht erkennen und wäre
         // nach dem Stoppen verloren. Lieber vorher sagen, was fehlt.
-        guard Hardware.lokaleModelle || EngineSelection.decide(for: .audio) != .local else {
+        guard !intelOhneSpracherkennung else {
             zeigeIntelHinweis()
             return
         }
@@ -2133,6 +2140,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     /// Intel-Mac ohne Anbieter für die Spracherkennung (siehe `Hardware.lokaleModelle`).
+    private var intelOhneSpracherkennung: Bool {
+        !Hardware.lokaleModelle && EngineSelection.decide(for: .audio) == .local
+    }
+
+    /// Zustand nach einem Ladeversuch des Erkenners.
+    ///
+    /// Auf Intel ohne Anbieter gibt es nichts zu laden und nichts zu
+    /// wiederholen. Stünde die App dann auf `.failed`, ließe jede Taste die
+    /// Aufnahme still aus (sie starten nur aus `.idle`), und der Hinweis in
+    /// `startRecording` käme nie an. Also bleibt sie „bereit“; was fehlt, sagen
+    /// Menüleiste, Seitenleiste und der Hinweis beim ersten Tastendruck.
+    private func zustandNachLaden(bereit: Bool) -> State {
+        bereit || intelOhneSpracherkennung ? .idle : .failed
+    }
+
+    /// Auf Intel gibt es nur den Anbieter: Die Modelle-Seite bietet dort
+    /// „Auf diesem Gerät“ nicht an, also darf auch keine Einstellung darauf
+    /// stehen — sonst griffe ein eingerichteter Anbieter nie
+    /// (`EngineSelection.decide` verlangt „remote“).
+    private func nurAnbieterAufIntel() {
+        guard !Hardware.lokaleModelle else { return }
+        for zweck in [EnginePurpose.audio, .text] {
+            UserDefaults.standard.set("remote", forKey: zweck.engineKey)
+        }
+    }
+
+    /// Sagt beim Tastendruck, dass auf Intel noch der Anbieter fehlt.
     private func zeigeIntelHinweis() {
         sounds.play(.error)
         NSApp.activate(ignoringOtherApps: true)

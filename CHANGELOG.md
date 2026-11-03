@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.14.2 — 2026-11-03
+zeigen: nein
+
+### Deutsch
+**Behoben:** Auf Intel-Macs ohne eingerichteten Anbieter passierte beim Drücken der Diktiertaste gar nichts – ohne Hinweis, woran es liegt. Jetzt sagt shout. beim ersten Tastendruck, dass auf Intel-Macs ein Anbieter für die Spracherkennung nötig ist, und führt direkt zu **Modelle**. Dort zeigt shout. auf Intel-Macs jetzt gleich die Anbieter-Einstellung statt lokaler Modelle, die dort nicht laufen, und meldet beim Modellwechsel nicht mehr fälschlich „offline?“. Die Seitenleiste zeigt nur noch „Bereit“, wenn die Spracherkennung auch wirklich bereit ist.
+
+### English
+**Fixed:** On Intel Macs without a provider set up, pressing the dictation key did nothing at all – with no hint as to why. Now shout. tells you on the first key press that Intel Macs need a provider for speech recognition and takes you straight to **Models**. There, on Intel Macs, shout. now shows the provider settings right away instead of on-device models that don’t run there, and no longer wrongly reports “offline?” when switching models. The sidebar only says “Ready” when speech recognition really is ready.
+
 ## 1.14.1 — 2026-10-14
 zeigen: ja
 

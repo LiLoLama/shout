@@ -118,9 +118,13 @@ struct DashboardView: View {
                 .popover(isPresented: $model.showAbout, arrowEdge: .bottom) {
                     AboutView(updates: updates)
                 }
+                // Ohne Erkenner nicht „Bereit“ behaupten — sonst sucht man den
+                // Fehler bei der Taste statt bei der Spracherkennung.
                 HStack(spacing: 6) {
-                    Circle().fill(Color.shoutLive).frame(width: 6, height: 6)
-                    Text(Loc.f("Bereit · %@", statusText))
+                    Circle().fill(model.asrLoadFailed ? Color(white: 0.4) : Color.shoutLive).frame(width: 6, height: 6)
+                    Text(!model.asrLoadFailed ? Loc.f("Bereit · %@", statusText)
+                         : Hardware.lokaleModelle ? Loc.t("Sprachmodell nicht geladen")
+                         : Loc.t("Spracherkennung: Anbieter unter „Modelle“ einrichten"))
                         .font(.system(size: 11)).foregroundStyle(Color(white: 0.55))
                 }
             }

@@ -400,6 +400,11 @@ final class Loc: ObservableObject {
             "On Intel Macs, shout. recognizes speech only through a provider. Set one up under “Models”.",
         "Spracherkennung: Anbieter unter „Modelle“ einrichten": "Speech recognition: set up a provider under “Models”",
         "Noch keine Spracherkennung eingerichtet.": "No speech recognition set up yet.",
+        "Auf Intel-Macs laufen Transkription und Aufbereitung über einen Anbieter. Modelle auf dem Gerät brauchen einen Mac mit Apple-Chip.":
+            "On Intel Macs, transcription and cleanup run through a provider. On-device models need a Mac with Apple silicon.",
+        "Sprachmodell nicht geladen": "Speech model not loaded",
+        "Beide Schritte laufen bei einem Anbieter. Was dorthin geht, verlässt dein Gerät; abgerechnet wird beim Anbieter. Alles Übrige bleibt lokal.":
+            "Both steps run at a provider. Whatever goes there leaves your device; the provider does the billing. Everything else stays local.",
         "Modelle öffnen": "Open Models",
         "Gerät zu schwach? Du kannst beide Schritte stattdessen bei einem Anbieter deiner Wahl laufen lassen — später in den Einstellungen.":
             "Device too weak? You can run both steps at a provider of your choice instead — later in Settings.",

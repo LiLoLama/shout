@@ -1,16 +1,27 @@
 import AVFoundation
 import AudioToolbox
+import os
 
 /// Nimmt Mikrofon-Audio auf und liefert es als 16-kHz-Mono-Float-Array —
 /// genau das Format, das Whisper erwartet.
 ///
-/// Die Hardware liefert i.d.R. 44,1/48 kHz (evtl. Stereo). Wir hängen einen
-/// Tap auf den Input-Node und resamplen jeden Puffer per AVAudioConverter
-/// live auf 16 kHz Mono. Der Tap-Callback läuft auf einem Audio-Thread,
-/// deshalb ist der Sample-Puffer per NSLock geschützt.
+/// Am Mac liefert `MicCapture` (AVCaptureSession) die Samples schon in 16 kHz
+/// Mono, Begründung dort. Am iPhone hängen wir einen Tap auf den Input-Node der
+/// AVAudioEngine und resamplen jeden Puffer per AVAudioConverter live auf 16 kHz
+/// Mono. Beide Wege liefern auf einem eigenen Thread, deshalb ist der
+/// Sample-Puffer per NSLock geschützt.
 final class AudioRecorder {
 
+    /// Abfragbar per `log show --predicate 'subsystem == "com.inthezone.flowlokal"'`.
+    /// Bewusst Logger statt NSLog: NSLog-Texte erscheinen im Systemlog nur als
+    /// `<private>`, damit war die Gerätewechsel-Diagnose blind.
+    private static let log = Logger(subsystem: "com.inthezone.flowlokal", category: "aufnahme")
+
+    #if os(macOS)
+    private let mic = MicCapture()
+    #else
     private var engine = AVAudioEngine()
+    #endif
 
     private let lock = NSLock()
     private var samples: [Float] = []
@@ -31,6 +42,19 @@ final class AudioRecorder {
     var onSilence: (() -> Void)?
     /// Laufender Eingangspegel 0…1 (für den Aufnahme-Hinweis). Läuft über den Main-Thread.
     var onLevel: ((Float) -> Void)?
+    /// Einmal je Aufnahme, sobald vom Mikrofon echtes Signal ankommt — ab da wird
+    /// wirklich aufgenommen. Läuft über den Main-Thread.
+    ///
+    /// Echtes Signal, nicht der erste Puffer: Bluetooth-Kopfhörer melden das
+    /// Mikrofon nach wenigen Millisekunden als offen, liefern aber noch rund eine
+    /// Sekunde lang Nullen, bis ihre Sprachverbindung steht. Wer schon beim ersten
+    /// Puffer losspricht, verliert den Satzanfang. Ein echtes Mikrofon rauscht
+    /// dagegen immer ein wenig und ist sofort „bereit".
+    var onReady: (() -> Void)?
+    /// Kommt nach so vielen Sekunden noch immer nur digitale Stille (stummgeschaltetes
+    /// oder virtuelles Gerät), wird `onReady` trotzdem gemeldet — sonst wartete man
+    /// vergeblich auf den Start-Ton.
+    private static let readyFallback: TimeInterval = 2.0
 
     // Adaptiver VAD: statt fester Schwelle läuft ein Rausch-Boden mit, der sich
     // an die Umgebung anpasst. Sprache = RMS deutlich über dem Boden.
@@ -42,12 +66,32 @@ final class AudioRecorder {
     private var silenceAccumulated = 0.0
     private var silenceFired = false
 
+    // MARK: - Gerätewechsel während der Aufnahme
+
+    /// Läuft gerade eine Aufnahme? Nur auf dem Main-Thread gelesen und geschrieben.
+    private var isRunning = false
+    /// Steht `onReady` für diese Aufnahme noch aus? Unter `lock`, der Audio-Thread liest es.
+    private var readyPending = false
+    /// Wann `start()` lief — für die Log-Zeile, wie lange das Mikrofon bis zum
+    /// ersten echten Signal brauchte. Unter `lock`.
+    private var startedAt = Date()
+    #if os(iOS)
+    /// Beobachtet die laufende Engine auf `AVAudioEngineConfigurationChange`.
+    private var configObserver: NSObjectProtocol?
+    /// Neustarts, die der laufenden Aufnahme noch zustehen. Begrenzt, damit ein
+    /// Gerät, das sich dauernd umkonfiguriert, keine Endlosschleife auslöst.
+    private var restartsLeft = 0
+    private static let maxRestarts = 5
+    #endif
+
     func start() throws {
         let gen: Int
         lock.lock()
         samples.removeAll(keepingCapacity: true)
         generation &+= 1
         gen = generation
+        readyPending = true
+        startedAt = Date()
         // VAD-Zustand unter demselben Lock zurücksetzen wie der Audio-Thread ihn
         // liest/schreibt — sonst racet ein noch laufender Alt-Callback mit dem Reset.
         heardSpeech = false
@@ -60,29 +104,66 @@ final class AudioRecorder {
         // iOS: Audio-Session für Aufnahme aktivieren (ersetzt die macOS-Geräteauswahl).
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .default,
-                                options: [.defaultToSpeaker, .allowBluetooth, .duckOthers])
+                                options: [.defaultToSpeaker, .allowBluetoothHFP, .duckOthers])
         try session.setActive(true)
+        restartsLeft = Self.maxRestarts
         #endif
 
-        // Frische Engine je Aufnahme, damit ein Gerätewechsel sauber greift.
+        try openMicrophone(generation: gen)
+        isRunning = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.readyFallback) { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.lock.lock()
+            let fire = self.readyPending && self.generation == gen
+            if fire { self.readyPending = false }
+            self.lock.unlock()
+            guard fire else { return }
+            Self.log.error("Mikrofon liefert nach \(Self.readyFallback, format: .fixed(precision: 1), privacy: .public) s noch kein Signal, Start-Ton kommt trotzdem")
+            self.onReady?()
+        }
+    }
+
+    private func openMicrophone(generation gen: Int) throws {
+        #if os(macOS)
+        try mic.start(deviceUID: preferredDeviceUID) { [weak self] chunk in
+            self?.ingest(chunk, generation: gen)
+        }
+        #else
+        try launchEngine(generation: gen)
+        #endif
+    }
+
+    private func closeMicrophone() {
+        #if os(macOS)
+        mic.stop()
+        #else
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        configObserver = nil
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        #endif
+    }
+
+    #if os(iOS)
+    /// Baut eine frische Engine auf, hängt den Tap ein und startet sie. Dient dem
+    /// Start und dem Neustart nach einem Gerätewechsel.
+    ///
+    /// Frische Engine statt Wiederverwendung: Nach einem Wechsel meldet eine alte
+    /// Engine gelegentlich noch das frühere Format, und `installTap` mit einem
+    /// Format, das nicht zur Hardware passt, endet in einer Exception.
+    private func launchEngine(generation gen: Int) throws {
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        configObserver = nil
+
         engine = AVAudioEngine()
         let input = engine.inputNode
-
-        #if os(macOS)
-        // Gewünschtes Eingabegerät setzen — MUSS vor dem Auslesen des Formats passieren.
-        if let uid = preferredDeviceUID,
-           let deviceID = AudioDevices.deviceID(forUID: uid),
-           let audioUnit = input.audioUnit {
-            var device = deviceID
-            AudioUnitSetProperty(
-                audioUnit, kAudioOutputUnitProperty_CurrentDevice,
-                kAudioUnitScope_Global, 0, &device,
-                UInt32(MemoryLayout<AudioDeviceID>.size)
-            )
-        }
-        #endif
-
         let inputFormat = input.inputFormat(forBus: 0)
+        // Mitten im Umschalten meldet das Gerät kurz 0 Hz oder 0 Kanäle.
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw NSError(domain: "shout.AudioRecorder", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Das Eingabegerät liefert gerade kein gültiges Format."])
+        }
 
         // Converter + Zielformat als lokale, unveränderliche Konstanten je Aufnahme —
         // so liest der Audio-Thread nie eine Instanz-Property, die start() gerade ersetzt.
@@ -100,18 +181,60 @@ final class AudioRecorder {
             self?.append(buffer, converter: converter, targetFormat: targetFormat, generation: gen)
         }
 
+        // Schaltet das Gerät um (Bluetooth-Kopfhörer ins Headset-Profil, anderes
+        // Gerät gesteckt), hält die Engine an und meldet sich hier. Ohne Neustart
+        // bliebe die Aufnahme danach stumm, obwohl die Pille läuft.
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            Self.log.info("Audio-Gerät hat umgeschaltet")
+            self?.relaunch()
+        }
+
         engine.prepare()
         try engine.start()
     }
 
+    /// Startet die Aufnahme mit dem neuen Geräteformat neu. Die bisher gesammelten
+    /// Samples bleiben, es geht nahtlos weiter. Läuft auf dem Main-Thread.
+    /// Nur am iPhone nötig — am Mac übernimmt `MicCapture` Gerätewechsel selbst.
+    private func relaunch() {
+        guard isRunning else { return }
+        guard restartsLeft > 0 else {
+            Self.log.error("Audio-Gerät schaltet ständig um, Aufnahme wird nicht mehr neu gestartet")
+            return
+        }
+        restartsLeft -= 1
+
+        lock.lock()
+        let gen = generation
+        lock.unlock()
+
+        closeMicrophone()
+        do {
+            try openMicrophone(generation: gen)
+            Self.log.info("Aufnahme läuft nach Neustart weiter")
+        } catch {
+            // Gerät noch mitten im Umschalten: kurz warten und erneut versuchen.
+            Self.log.error("Neustart nach Gerätewechsel fehlgeschlagen, neuer Versuch: \(error.localizedDescription, privacy: .public)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                self?.relaunch()
+            }
+        }
+    }
+    #endif
+
     /// Beendet die Aufnahme und gibt die gesammelten 16-kHz-Samples zurück.
     @discardableResult
     func stop() -> [Float] {
-        // Den letzten in-flight Tap-Puffer (~85 ms bei 4096 Frames) noch ankommen
+        isRunning = false
+        lock.lock()
+        readyPending = false
+        lock.unlock()
+        // Den letzten in-flight Puffer (~85 ms bei 4096 Frames) noch ankommen
         // lassen, damit das Ende des letzten Wortes nicht abgeschnitten wird.
         Thread.sleep(forTimeInterval: 0.09)
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        closeMicrophone()
         #if os(iOS)
         // Session freigeben, damit z. B. Musik-Wiedergabe anderer Apps weiterläuft.
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -123,8 +246,7 @@ final class AudioRecorder {
         lock.unlock()
         let trimmed = trimSilence(result)
         if trimmed.count != result.count {
-            NSLog("shout: Aufnahme %.1fs → getrimmt %.1fs",
-                  Double(result.count) / 16_000, Double(trimmed.count) / 16_000)
+            Self.log.info("Aufnahme \(Double(result.count) / 16_000, format: .fixed(precision: 1), privacy: .public) s → getrimmt \(Double(trimmed.count) / 16_000, format: .fixed(precision: 1), privacy: .public) s")
         }
         return trimmed
     }
@@ -173,6 +295,7 @@ final class AudioRecorder {
 
     // MARK: - Intern
 
+    #if os(iOS)
     private func append(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter,
                         targetFormat: AVAudioFormat, generation gen: Int) {
         let ratio = targetSampleRate / buffer.format.sampleRate
@@ -198,12 +321,30 @@ final class AudioRecorder {
 
         let frameCount = Int(outBuffer.frameLength)
         let channel = channelData[0]
-        let chunk = Array(UnsafeBufferPointer(start: channel, count: frameCount))
+        ingest(Array(UnsafeBufferPointer(start: channel, count: frameCount)), generation: gen)
+    }
+    #endif
 
+    /// Nimmt einen Block 16-kHz-Mono-Samples auf. Läuft auf dem Audio-Thread.
+    private func ingest(_ chunk: [Float], generation gen: Int) {
         lock.lock()
-        guard gen == generation else { lock.unlock(); return }   // Callback einer alten Engine
+        guard gen == generation else { lock.unlock(); return }   // Callback einer alten Aufnahme
         samples.append(contentsOf: chunk)
+        // Echtes Signal statt digitaler Stille (siehe `onReady`). Die Schwelle liegt
+        // weit unter dem Grundrauschen jedes echten Mikrofons (um −66 dBFS).
+        let fireReady = readyPending && chunk.contains { abs($0) > 0.0001 }
+        if fireReady { readyPending = false }
+        let since = startedAt
         lock.unlock()
+
+        if fireReady {
+            let readyCallback = onReady
+            DispatchQueue.main.async { [weak self] in
+                guard self?.isRunning == true else { return }
+                Self.log.info("Mikrofon liefert Signal nach \(Date().timeIntervalSince(since) * 1000, format: .fixed(precision: 0), privacy: .public) ms")
+                readyCallback?()
+            }
+        }
 
         analyze(chunk, generation: gen)
     }

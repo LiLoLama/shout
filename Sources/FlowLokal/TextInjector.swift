@@ -59,7 +59,7 @@ final class TextInjector {
 
         if keepInClipboard {
             // Eine noch geplante Wiederherstellung würde den gerade gewünschten
-            // Inhalt 0,41 s später wieder überschreiben.
+            // Inhalt kurz darauf wieder überschreiben.
             restoreWorkItem?.cancel()
             restoreWorkItem = nil
             savedItems = nil
@@ -95,12 +95,6 @@ final class TextInjector {
         pasteboard.clearContents()
         write(pasteboard, true)
 
-        // Kurze Pause, damit die Zwischenablage sicher übernommen ist, bevor ⌘V kommt
-        // (behebt das gelegentliche „Einfügen kommt nicht an").
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
-            self?.postCommandV()
-        }
-
         // Restore-WorkItem SOFORT erzeugen und referenzieren (nicht erst im 0,06-s-Block)
         // — sonst kann ein Folge-paste() im Fenster davor es nicht canceln, beide Restores
         // laufen, und der zweite schreibt eine bereits geleerte Zwischenablage zurück.
@@ -114,7 +108,17 @@ final class TextInjector {
             self.restoreWorkItem = nil
         }
         restoreWorkItem = restore
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.41, execute: restore)
+
+        // Kurze Pause, damit die Zwischenablage sicher übernommen ist, bevor ⌘V kommt
+        // (behebt das gelegentliche „Einfügen kommt nicht an").
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
+            self?.postCommandV()
+            // Wiederherstellen erst 0,35 s NACH dem tatsächlichen ⌘V, nicht fest 0,41 s
+            // nach dem Schreiben. Steht der Main-Thread kurz (Bluetooth-Ausgang wacht
+            // auf), wären sonst beide überfällig und liefen direkt nacheinander: Die
+            // Ziel-App läse beim Einfügen schon wieder die alte Zwischenablage.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: restore)
+        }
     }
 
     /// Schreibt Text als vertraulich/transient in die Zwischenablage (mit den

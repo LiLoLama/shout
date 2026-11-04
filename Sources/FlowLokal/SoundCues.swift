@@ -29,11 +29,9 @@ final class SoundCues {
     /// Obergrenze für den Spitzenwert (≈ −12 dBFS).
     private static let maxPeak: Float = 0.25
 
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    private let output = Output()
     private let format: AVAudioFormat?
     private var buffers: [Cue: AVAudioPCMBuffer] = [:]
-    private var playToken = 0   // erkennt, ob seit dem Scheduling ein neuer Cue kam
 
     private var enabled: Bool { UserDefaults.standard.object(forKey: "soundCuesEnabled") as? Bool ?? true }
 
@@ -62,32 +60,85 @@ final class SoundCues {
         // vierter, andersartiger Ton wäre nur Unruhe.
         buffers[.done] = buffers[.stop]
 
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: canonical)
-        engine.prepare()
+        output.connect(format: canonical)
     }
 
     func play(_ cue: Cue) {
         guard enabled, let buffer = buffers[cue] else { return }
-        do {
-            // engine.isRunning statt eines Einmal-Flags: nach einem Audio-Config-Wechsel
-            // (Kopfhörer an/ab) stoppt die Engine — dann hier sauber neu starten.
-            if !engine.isRunning { try engine.start() }
-            playToken &+= 1
-            let token = playToken
-            // Nach dem Abspielen Engine pausieren (rendert sonst dauerhaft Stille).
-            // Kommt zwischenzeitlich ein neuer Cue (Token geändert), NICHT pausieren.
-            player.scheduleBuffer(buffer, at: nil, options: .interrupts,
-                                  completionCallbackType: .dataPlayedBack) { [weak self] _ in
-                Task { @MainActor in
-                    guard let self, self.playToken == token else { return }
-                    self.player.pause()
-                    self.engine.pause()
+        output.play(buffer)
+    }
+
+    /// Die eigentliche Wiedergabe, auf einer eigenen Warteschlange.
+    ///
+    /// `engine.start()` wartet, bis das Ausgabegerät läuft. Bei Bluetooth-Kopfhörern
+    /// heißt das: bis ihr Ausgang aufgewacht ist, gemessen bis zu 0,5 s. Auf dem
+    /// Main-Thread stand in der Zeit die ganze App, auch das ⌘V beim Einfügen. Kam
+    /// es dadurch zu spät, fügte shout. die schon wiederhergestellte alte
+    /// Zwischenablage ein statt des Diktats (04.11.2026).
+    private final class Output: @unchecked Sendable {
+        private let queue = DispatchQueue(label: "shout.soundcues", qos: .userInitiated)
+        // Alles Folgende nur auf `queue` (bzw. in `connect` vor dem ersten Klang).
+        private var engine = AVAudioEngine()
+        private var player = AVAudioPlayerNode()
+        private var format: AVAudioFormat?
+        private var observer: NSObjectProtocol?
+        /// Hat das Ausgabegerät seit dem Aufbau umgeschaltet? Dann ist der Aufbau
+        /// veraltet: Die Engine liefe mit dem alten Format an und meldete nur
+        /// Renderfehler (−10874), der Klang bliebe stumm. Typisch bei AirPods, die
+        /// beim Öffnen ihres Mikrofons von 48 auf 24 kHz wechseln (04.11.2026).
+        private var stale = false
+        /// Erkennt, ob seit dem Scheduling ein neuer Klang kam.
+        private var playToken = 0
+
+        func connect(format: AVAudioFormat) {
+            self.format = format
+            build()
+        }
+
+        /// Frische Engine samt Player. Nach einem Gerätewechsel zuverlässiger, als
+        /// die alte Engine umzubauen.
+        private func build() {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            engine.stop()
+            engine = AVAudioEngine()
+            player = AVAudioPlayerNode()
+            engine.attach(player)
+            engine.connect(player, to: engine.mainMixerNode, format: format)
+            engine.prepare()
+            observer = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.queue.async { self.stale = true }
+            }
+            stale = false
+        }
+
+        func play(_ buffer: AVAudioPCMBuffer) {
+            queue.async { [self] in
+                if stale { build() }
+                playToken &+= 1
+                let token = playToken
+                do {
+                    // engine.isRunning statt eines Einmal-Flags: Die Engine ist nach
+                    // jedem Klang pausiert und läuft hier wieder an.
+                    if !engine.isRunning { try engine.start() }
+                    // Nach dem Abspielen Engine pausieren (rendert sonst dauerhaft Stille).
+                    // Kommt zwischenzeitlich ein neuer Klang (Token geändert), NICHT pausieren.
+                    player.scheduleBuffer(buffer, at: nil, options: .interrupts,
+                                          completionCallbackType: .dataPlayedBack) { [self] _ in
+                        queue.async { [self] in
+                            guard playToken == token else { return }
+                            player.pause()
+                            engine.pause()
+                        }
+                    }
+                    if !player.isPlaying { player.play() }
+                } catch {
+                    NSLog("SoundCues: Wiedergabe fehlgeschlagen: \(error)")
+                    stale = true   // beim nächsten Klang frisch aufbauen
                 }
             }
-            if !player.isPlaying { player.play() }
-        } catch {
-            NSLog("SoundCues: Wiedergabe fehlgeschlagen: \(error)")
         }
     }
 

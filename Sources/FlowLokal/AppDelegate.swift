@@ -2118,12 +2118,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Halten-Modus stoppt ja das Loslassen.
         recorder.autoStopEnabled = (settings.mode != .hold && !held && settings.autoStop)
         recorder.silenceSeconds = settings.silenceSeconds
+        // Der Start-Ton heißt „jetzt sprechen“, also erst, wenn vom Mikrofon echtes
+        // Signal kommt (siehe `AudioRecorder.onReady`). Bei AirPods dauert das rund
+        // eine Sekunde, beim eingebauten Mikrofon ein paar Millisekunden.
+        recorder.onReady = { [weak self] in
+            guard let self, self.state == .recording else { return }
+            self.sounds.play(.start)
+        }
         do {
             try recorder.start()
             state = .recording
             recIndicator.show()
             if case .scratchpad = dictationTarget { scratchpadMic.isRecording = true }
-            sounds.play(.start)
         } catch {
             sounds.play(.error)
             NSLog("Aufnahme-Start fehlgeschlagen: \(error)")

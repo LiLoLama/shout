@@ -56,6 +56,15 @@ final class MeetingRecorder: ObservableObject {
     private var sawMicrophoneSignal = false
     /// Name des Mikrofons im Mitschnitt, für den Hinweis.
     private var microphoneName: String?
+    /// Angemeldete Beobachter (Unterbrechungen, Gerätewechsel). Als Token
+    /// gemerkt: `removeObserver(self)` erreicht Block-Beobachter nicht.
+    private var observers: [NSObjectProtocol] = []
+    /// Beobachtet die Mikrofon-Engine auf `AVAudioEngineConfigurationChange`.
+    private var engineObserver: NSObjectProtocol?
+    /// Mikrofon der laufenden Aufnahme, für den Neustart nach einem Gerätewechsel.
+    private var activeMicrophoneUID: String?
+    /// Neustarts, die der laufenden Aufnahme noch zustehen (siehe `AudioRecorder`).
+    private var restartsLeft = 0
 
     #if os(macOS)
     private var tap: Any?
@@ -195,7 +204,7 @@ final class MeetingRecorder: ObservableObject {
         // Bewusst ohne .duckOthers: Bei einem Mitschnitt soll nichts anderes leiser
         // werden. .playAndRecord statt .record, damit die Klang-Signale hörbar bleiben.
         try session.setCategory(.playAndRecord, mode: .default,
-                                options: [.defaultToSpeaker, .allowBluetooth])
+                                options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setActive(true)
         #endif
 
@@ -251,6 +260,7 @@ final class MeetingRecorder: ObservableObject {
 
         isRecording = true
         isPaused = false
+        restartsLeft = 5
         observeInterruptions()
         watchForSilence()
         return target
@@ -282,14 +292,48 @@ final class MeetingRecorder: ObservableObject {
         }
         #endif
         let inputFormat = input.inputFormat(forBus: 0)
-        guard let converter = AVAudioConverter(from: inputFormat, to: writeFormat) else {
+        // Mitten im Umschalten meldet das Gerät kurz 0 Hz oder 0 Kanäle.
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
+              let converter = AVAudioConverter(from: inputFormat, to: writeFormat) else {
             throw MeetingRecorderError.converterFailed
         }
         input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat) { [weak self] buffer, _ in
             self?.handle(buffer, converter: converter, format: writeFormat)
         }
+        // Gerätewechsel (etwa AirPods ins Headset-Profil, sobald der Start-Ton
+        // spielt) halten die Engine an. Dann mit dem neuen Format neu starten,
+        // sonst läuft der Mitschnitt stumm weiter.
+        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+        engineObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.restartMicrophone() }
+        }
+        activeMicrophoneUID = microphoneUID
         engine.prepare()
         try engine.start()
+    }
+
+    /// Startet die Mikrofon-Aufnahme nach einem Gerätewechsel mit frischer Engine
+    /// neu. Die Datei läuft weiter, es fehlt nur der Moment des Umschaltens.
+    private func restartMicrophone() {
+        guard isRecording, let writeFormat = file?.processingFormat else { return }
+        guard restartsLeft > 0 else {
+            NSLog("shout: Audio-Gerät schaltet ständig um, Mitschnitt wird nicht mehr neu gestartet")
+            return
+        }
+        restartsLeft -= 1
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        do {
+            try startMicrophone(writeFormat: writeFormat, microphoneUID: activeMicrophoneUID)
+            NSLog("shout: Audio-Gerät hat umgeschaltet, Mitschnitt läuft weiter")
+        } catch {
+            NSLog("shout: Neustart nach Gerätewechsel fehlgeschlagen, neuer Versuch: \(error)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                MainActor.assumeIsolated { self?.restartMicrophone() }
+            }
+        }
     }
 
     #if os(macOS)
@@ -415,7 +459,11 @@ final class MeetingRecorder: ObservableObject {
         isPaused = false
         paused = false
         level = 0
-        NotificationCenter.default.removeObserver(self)
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        observers.removeAll()
+        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+        engineObserver = nil
+        activeMicrophoneUID = nil
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
@@ -530,7 +578,7 @@ final class MeetingRecorder: ObservableObject {
     /// wäre das schlechteste denkbare Verhalten.
     private func observeInterruptions() {
         #if os(iOS)
-        NotificationCenter.default.addObserver(
+        observers.append(NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(), queue: .main
         ) { [weak self] note in
@@ -549,7 +597,7 @@ final class MeetingRecorder: ObservableObject {
                     break
                 }
             }
-        }
+        })
         #endif
     }
 }

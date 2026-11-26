@@ -18,6 +18,7 @@
          Nur die Dateien hier stehen ohne diese Abhängigkeiten. -->
     <Compile Include="../../src/Shout/Core/TextChunker.cs" Link="Core/TextChunker.cs" />
     <Compile Include="../../src/Shout/Core/TranscriptLayout.cs" Link="Core/TranscriptLayout.cs" />
+    <Compile Include="../../src/Shout/Core/PhantomClosing.cs" Link="Core/PhantomClosing.cs" />
     <Compile Include="../../src/Shout/Core/TranscriptMinutes.cs" Link="Core/TranscriptMinutes.cs" />
     <Compile Include="../../src/Shout/Core/SubtitleWriter.cs" Link="Core/SubtitleWriter.cs" />
     <Compile Include="../../src/Shout/Core/FormattingGuard.cs" Link="Core/FormattingGuard.cs" />

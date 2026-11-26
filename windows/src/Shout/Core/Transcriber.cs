@@ -63,7 +63,14 @@ public sealed class Transcriber : IDisposable
 
     /// <summary>Fertiger Text fürs Diktat.</summary>
     public async Task<string> TranscribeAsync(float[] samples, CancellationToken cancel = default)
-        => (await RecognizeAsync(samples, cancel)).Text;
+    {
+        var result = await RecognizeAsync(samples, cancel);
+        // Whisper erfindet in der Stille am Ende gern „Vielen Dank." — siehe PhantomClosing.
+        var text = PhantomClosing.Strip(result.Text, result.Segments, samples);
+        if (text != result.Text)
+            StoreIO.Log($"Erfundene Schlussfloskel gestrichen: {result.Segments[^1].Text}");
+        return text;
+    }
 
     /// <summary>Wie <see cref="TranscribeAsync"/>, liefert aber die Abschnitte mit
     /// Zeitmarken — Grundlage für Untertitel und die Gliederung bei der

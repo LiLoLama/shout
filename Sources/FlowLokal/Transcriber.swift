@@ -96,7 +96,16 @@ actor Transcriber {
         } else if TranscriptPlausibility.tooLittleText(characters: result.text.count, audioSeconds: seconds) {
             Self.log.warning("Transkript verdächtig: nur \(result.text.count) Zeichen für \(seconds, format: .fixed(precision: 0)) s Audio")
         }
-        return result.text
+
+        // Whisper erfindet in der Stille am Ende gern „Vielen Dank." — siehe
+        // `TranscriptPlausibility.withoutPhantomClosing`.
+        let text = TranscriptPlausibility.withoutPhantomClosing(text: result.text,
+                                                                 segments: result.segments,
+                                                                 samples: samples)
+        if text != result.text {
+            Self.log.info("Erfundene Schlussfloskel gestrichen: \(result.segments.last?.text ?? "", privacy: .public)")
+        }
+        return text
     }
 
     /// Wie `transcribe`, liefert aber die Abschnitte mit Zeitmarken — Grundlage für

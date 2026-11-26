@@ -6,6 +6,15 @@ dem Update im Fenster „Neu in shout.“), optional `video: <name>` (Animation 
 `Resources/Explainers/<name>.html`), dann `### Deutsch` und `### English`.
 Innerhalb der Sprachblöcke keine `###`-Überschriften — **fett** statt dessen.
 
+## 1.14.3 — 2026-11-26
+zeigen: nein
+
+### Deutsch
+**Behoben:** Die Spracherkennung hängte an Diktate manchmal ein „Vielen Dank.“ an, das nie gesagt wurde. Whisper erfindet solche Untertitel-Floskeln gern in der kurzen Stille am Ende einer Aufnahme. shout. streicht sie jetzt, wenn in diesem Moment keine Sprache zu hören war. Ein „Vielen Dank“, das du wirklich sagst, bleibt stehen.
+
+### English
+**Fixed:** Speech recognition sometimes added a “Thank you.” (in German: “Vielen Dank.”) to the end of a dictation that was never said. Whisper tends to invent such subtitle phrases in the short silence at the end of a recording. shout. now removes them when no speech could be heard at that moment. A “thank you” you actually say stays in.
+
 ## 1.14.2 — 2026-11-03
 zeigen: nein
 
